@@ -1,0 +1,50 @@
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/site/**"
+      - "src/aniflow/static/**"
+      - "src/aniflow/vendor/**"
+      - "src/aniflow/icons/**"
+      - "src/aniflow/themes.py"
+      - ".github/workflows/pages.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Copy the library, vendor files and icons
+        run: docs/site/assemble.sh
+      - name: Version the stylesheet and script links
+        run: |
+          # Pages lets browsers cache files for ten minutes, so a new page
+          # must not be paired with an old stylesheet or script.
+          sed -i -e "s#site\.css\"#site.css?v=${GITHUB_SHA::8}\"#" \
+            -e "s#site\.js\"#site.js?v=${GITHUB_SHA::8}\"#" \
+            -e "s#lib/aniflow\.min\.js\"#lib/aniflow.min.js?v=${GITHUB_SHA::8}\"#" \
+            -e "s#lib/aniflow\.css\"#lib/aniflow.css?v=${GITHUB_SHA::8}\"#" docs/site/index.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/site
+      - id: deployment
+        uses: actions/deploy-pages@v4

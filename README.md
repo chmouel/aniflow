@@ -7,6 +7,8 @@ caption explains each step, and a document can turn into slides.
 It comes as a small command that serves a folder of Markdown files, and as a
 JavaScript library other apps can embed (sharei uses it for its reader).
 
+The site at <https://chmouel.github.io/aniflow/> has a diagram you can play.
+
 ![A fix travels from issue to release in a playing diagram](docs/screenshots/demo.gif)
 
 ## Run it

@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en" data-mode="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>aniflow: Markdown in your browser, with diagrams that play</title>
+<meta name="description" content="aniflow serves a folder of Markdown on localhost. A few %% lines under a Mermaid diagram turn it into a walkthrough: a dot follows the arrows, boxes light up and a caption explains each step.">
+<meta property="og:title" content="aniflow">
+<meta property="og:description" content="Markdown in your browser, with Mermaid diagrams that play step by step.">
+<meta property="og:image" content="https://chmouel.github.io/aniflow/img/slide.png">
+<link rel="icon" href="img/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="lib/vendor/github-markdown.css">
+<link rel="stylesheet" href="lib/modes.css">
+<link rel="stylesheet" href="lib/aniflow.css">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<a class="skip" href="#what">Skip to the content</a>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="./"><img src="img/logo.svg" width="190" height="53" alt="aniflow"></a>
+    <nav aria-label="Page sections">
+      <a href="#what">What it does</a>
+      <a href="#write">Writing one</a>
+      <a href="#agents">Agents</a>
+      <a href="#library">Library</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/chmouel/aniflow">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section class="land-hero">
+  <div class="wrap">
+    <div class="hero-text">
+      <h1>Markdown in your browser, with diagrams that play.</h1>
+      <div>
+        <p class="lede">aniflow serves a folder of Markdown files on your machine. Put a few <code>%%</code> lines under a Mermaid diagram and it turns into a walkthrough: a dot follows the arrows, boxes light up, and a caption tells the reader what is happening.</p>
+        <div class="actions">
+          <a class="button" href="#install"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7.5 10 12l-5 4.5M12.5 17H19"/></svg>Run it</a>
+          <a class="button ghost" href="#write"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/></svg>Write a walkthrough</a>
+          <a class="button ghost" href="https://github.com/chmouel/aniflow"><svg class="solid" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2 0-.4-.5-1.6.2-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.7 18.3 5 18.3 5c.7 1.6.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg>GitHub</a>
+        </div>
+      </div>
+    </div>
+    <figure class="browser live">
+      <span class="bar">127.0.0.1:8811/files/release.md</span>
+      <div class="reader demo"><article class="markdown-body" id="demo" aria-label="A live aniflow diagram"></article></div>
+      <noscript><img src="img/slide.png" width="1600" height="1000" alt="An aniflow diagram half way through its walkthrough."></noscript>
+      <figcaption>This is aniflow running on this page. Press play, step with the arrow keys, or click a box to see what it connects to.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="block" id="what" aria-labelledby="what-title">
+  <div class="wrap">
+    <h2 id="what-title" class="prose">What it does</h2>
+    <div class="features">
+      <article>
+        <h3>Opens the folder you are in</h3>
+        <p>Run <code>aniflow</code> in a directory of notes or docs and open the address it prints. Links and pictures between your files work as they do on GitHub. It only reads: nothing in the folder is ever written.</p>
+      </article>
+      <article>
+        <h3>Plays flowcharts and sequence diagrams</h3>
+        <p>Step forward and back with the arrow keys, slow it down, or let the view follow the box that is talking. One diagram can tell more than one story, say the normal path and the rollback.</p>
+      </article>
+      <article>
+        <h3>Lets you point at things</h3>
+        <p>Click a box to dim everything it doesn't touch. On a call, draw over the diagram with the pen or wave the laser pointer around.</p>
+      </article>
+      <article>
+        <h3>Saves a PNG, a GIF or a video</h3>
+        <p>The browser records the walkthrough itself, so you can drop it in a pull request or a chat without screen capture tools.</p>
+      </article>
+      <article>
+        <h3>Turns a page into slides</h3>
+        <p>Press Present and every section becomes a slide. The right arrow plays the diagram on the slide first and moves on once its story ends.</p>
+      </article>
+      <article>
+        <h3>Has 106 icons ready to use</h3>
+        <p>There are icons for agents, databases, pipelines, pods and reviewers. Put one in a box with <code>img: "/icons/agent.svg"</code>, and <code>aniflow --spec</code> lists the names.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="write" aria-labelledby="write-title">
+  <div class="wrap split">
+    <div class="prose">
+      <h2 id="write-title">Writing a walkthrough</h2>
+      <p>This is the source of the diagram at the top of this page. Everything above the blank line is plain Mermaid. The <code>%%</code> lines under it are comments to Mermaid, so GitHub and your editor still draw an ordinary diagram and ignore the story.</p>
+      <p>Each <code>%% A -> B</code> line sends the dot along one arrow. The words after the colon ride on the dot, and the text after the bar shows up as a caption under the diagram.</p>
+      <table class="where">
+        <tr><th scope="row"><code>%% play: Title</code></th><td>starts a story</td></tr>
+        <tr><th scope="row"><code>%% A -> B : tag | text</code></th><td>moves the dot, with a tag and a caption</td></tr>
+        <tr><th scope="row"><code>%% A -> B, C</code></th><td>sends two dots at once</td></tr>
+        <tr><th scope="row"><code>%% skip A B</code></th><td>fades boxes this story doesn't use</td></tr>
+        <tr><th scope="row"><code>%% wait 1500</code></th><td>holds the picture for a second and a half</td></tr>
+      </table>
+      <p>The rest is in the <a href="https://github.com/chmouel/aniflow/blob/main/docs/diagram-walkthroughs.md">walkthrough guide</a>, or run <code>aniflow --spec</code>.</p>
+    </div>
+    <pre class="cmd source" aria-label="Source of the diagram above"><span class="k">```mermaid</span>
+flowchart LR
+  I@{ img: "/icons/issue.svg", label: "Issue" }
+  A@{ img: "/icons/agent.svg", label: "Agent" }
+  M@{ img: "/icons/model.svg", label: "Model" }
+  P@{ img: "/icons/pipeline.svg", label: "CI" }
+  R@{ img: "/icons/reviewer.svg", label: "Review" }
+  S@{ img: "/icons/release.svg", label: "Release" }
+  I --> A
+  A &lt;--> M
+  A --> P --> R --> S
+
+<span class="p">%% play: Ship a fix</span>
+<span class="s">%% I -> A : <b>#42</b> | <i>A reader reports that exports crop the last row.</i></span>
+<span class="s">%% A -> M : <b>prompt</b> | <i>The agent asks the model for a patch.</i></span>
+<span class="s">%% M -> A : <b>diff</b> | <i>The model answers with a two-line fix.</i></span>
+<span class="s">%% A -> P : <b>PR</b> | <i>The agent opens a pull request and CI runs the tests.</i></span>
+<span class="s">%% P -> R : <b>green</b> | <i>Every check passes, so a reviewer takes a look.</i></span>
+<span class="s">%% R -> S : <b>merge</b> | <i>The fix is merged and goes out in the next release.</i></span>
+<span class="p">%% wait 1500</span>
+<span class="k">```</span></pre>
+  </div>
+</section>
+
+<section class="band" aria-labelledby="band-title">
+  <div class="wrap">
+    <div>
+      <h2 id="band-title">Present it without making slides</h2>
+      <p>Present mode shows the document you already wrote as slides. Each <code>##</code> heading starts a slide, a slide with only a diagram gets the whole screen, and the arrow keys walk through the story before they turn the page.</p>
+      <p>Pick Light, Dark, Dracula, Tokyo Night, Rosé Pine or Rosé Pine Dawn from the menu. The diagrams take the colours of whichever you choose.</p>
+      <a class="button" href="https://github.com/chmouel/aniflow/blob/main/docs/diagram-walkthroughs.md">Read the walkthrough guide</a>
+    </div>
+    <figure class="browser dark">
+      <span class="bar">Present mode, Tokyo Night</span>
+      <img loading="lazy" src="img/slide.png" width="1600" height="1000" alt="A slide titled The path, with the fix walkthrough half way through and the caption The model answers with a two-line fix.">
+    </figure>
+  </div>
+</section>
+
+<section class="block" id="agents" aria-labelledby="agents-title">
+  <div class="wrap split flip">
+    <figure class="browser">
+      <span class="bar">127.0.0.1:8811/files/release.md#L3-L4</span>
+      <img loading="lazy" src="img/review.png" width="1600" height="1000" alt="A document in review mode with line numbers and a comment on lines 3 to 4.">
+    </figure>
+    <div class="prose">
+      <h2 id="agents-title">Working with a coding agent</h2>
+      <p>Plans and reports from coding agents usually arrive as Markdown, so aniflow lets you answer back: pick a few lines, or a box or an arrow in a diagram, and leave a comment. The diagram's comment panel then copies them to the clipboard with the file name, the line and the text each one is about, ready to paste into Claude Code, Copilot or Codex.</p>
+      <p>Comments live in aniflow's cache folder, never in your Markdown.</p>
+      <p>To get the agent to draw walkthroughs in the first place, point it at <code>aniflow --spec</code>, which prints the syntax and the icon names, or install the <a href="https://github.com/chmouel/aniflow/tree/main/skills/aniflow-diagrams">aniflow-diagrams skill</a>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="library" aria-labelledby="library-title">
+  <div class="wrap split">
+    <div class="prose">
+      <h2 id="library-title">Use it in your own app</h2>
+      <p>The reader is also a JavaScript library with no build step: one script that defines <code>Aniflow</code>, an ES module if you prefer, and a stylesheet. Give it some Markdown and an element, and you get the same rendering, contents rail, slides and diagram player as the command. The diagram at the top of this page runs this way.</p>
+      <p>It is what <a href="https://github.com/chmouel/sharei">sharei</a>, my file sharing server, uses to show Markdown, and the Python package has the server pieces it builds on.</p>
+    </div>
+    <pre class="cmd"><span class="c">&lt;!-- markdown-it, its footnote and emoji plugins and DOMPurify go first --&gt;</span>
+&lt;article class="markdown-body"&gt;&lt;/article&gt;
+&lt;script src="aniflow.min.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+  Aniflow.reader({
+    source: '# Hello\n\nSome *markdown*.',
+    mermaid: 'mermaid.min.js',
+  });
+&lt;/script&gt;</pre>
+  </div>
+</section>
+
+<section class="block" id="install" aria-labelledby="install-title">
+  <div class="wrap split">
+    <div class="prose">
+      <h2 id="install-title">Run it</h2>
+      <p>You need Python 3.12 or newer and <a href="https://docs.astral.sh/uv/">uv</a>. There is nothing else to install. <code>uvx</code> tries it once, <code>uv tool install</code> keeps the command around.</p>
+      <p>It starts on a free port, prints the address and lists the folder. Open <em>Demo &amp; help</em> there for a tour that plays every feature.</p>
+      <div class="links">
+        <a href="https://github.com/chmouel/aniflow">Source on GitHub</a>
+        <a href="https://github.com/chmouel/aniflow/blob/main/docs/diagram-walkthroughs.md">Walkthrough guide</a>
+        <a href="https://github.com/chmouel/aniflow/tree/main/skills/aniflow-diagrams">Agent skill</a>
+      </div>
+    </div>
+    <div>
+      <pre class="cmd"><span class="c"># try it in the current folder</span>
+uvx --from git+https://github.com/chmouel/aniflow aniflow
+
+<span class="c"># or install the command</span>
+uv tool install git+https://github.com/chmouel/aniflow
+
+<span class="c"># serve another folder on a fixed port</span>
+aniflow ./docs --port 8080</pre>
+      <figure class="browser small">
+        <span class="bar">127.0.0.1:8811/files/</span>
+        <img loading="lazy" src="img/files.png" width="1600" height="1000" alt="The aniflow folder listing in the Rosé Pine Dawn theme, with docs and notes folders and two documents.">
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="author" aria-labelledby="author-title">
+  <div class="wrap">
+    <div class="author-card">
+      <img class="avatar" src="img/chmouel.jpg" width="120" height="120" alt="Chmouel Boudjnah">
+      <div class="author-text">
+        <h2 id="author-title">Made by Chmouel</h2>
+        <p>I build aniflow and sharei and keep both free and open source. If aniflow helps you explain something, you can follow the work on GitHub or sponsor it.</p>
+      </div>
+      <div class="author-actions">
+        <a class="button sponsor" href="https://github.com/sponsors/chmouel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-7.5-10A4.2 4.2 0 0 1 12 7.8a4.2 4.2 0 0 1 7.5 2.7c0 5.4-7.5 10-7.5 10z"/></svg>Sponsor</a>
+        <a class="button ghost" href="https://github.com/chmouel"><svg class="solid" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2 0-.4-.5-1.6.2-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.7 18.3 5 18.3 5c.7 1.6.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg>GitHub</a>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>aniflow is released under the Apache 2.0 licence. It bundles Mermaid, markdown-it, DOMPurify and icons from Lucide, under their own licences.</p>
+  </div>
+</footer>
+
+<script src="lib/vendor/markdown-it.min.js"></script>
+<script src="lib/vendor/markdown-it-footnote.min.js"></script>
+<script src="lib/vendor/markdown-it-emoji.min.js"></script>
+<script src="lib/vendor/purify.min.js"></script>
+<script src="lib/aniflow.min.js"></script>
+<script src="site.js"></script>
+</body>
+</html>

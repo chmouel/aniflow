@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="sun" x2="0" y2="1">
+      <stop stop-color="#ffbd6b"/>
+      <stop offset=".55" stop-color="#ff3bc8"/>
+      <stop offset="1" stop-color="#8572ff"/>
+    </linearGradient>
+    <clipPath id="disc"><circle cx="32" cy="30" r="18"/></clipPath>
+  </defs>
+  <path d="M10 2H54L62 10V54L54 62H10L2 54V10Z" fill="#13102c"/>
+  <g clip-path="url(#disc)">
+    <circle cx="32" cy="30" r="18" fill="url(#sun)"/>
+    <path d="M12 30H52M12 36H52M12 42H52" stroke="#13102c" stroke-width="2.6"/>
+  </g>
+  <path d="M6 48H58" stroke="#2feaff" stroke-width="2"/>
+  <path d="M32 48 14 62M32 48 50 62M32 48V62" stroke="#2feaff" stroke-width="1.2" opacity=".55"/>
+</svg>

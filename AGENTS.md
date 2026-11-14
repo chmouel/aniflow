@@ -75,6 +75,12 @@ the wheel, so `uvx --from git+...` works without Node.
   rather than restating it, so it holds workflow and taste only.
 - `docs/diagram-walkthroughs.md`: the design notes and a live demo, with its
   icons in `docs/diagram-icons/`.
+- `docs/site/`: the GitHub Pages site, plain HTML and CSS with a live
+  diagram from `site.js`. `assemble.sh` copies the built library, its vendor
+  files, the icons and the `html[data-mode]` colours into the ignored
+  `docs/site/lib/`; the `pages` workflow runs it and deploys on pushes to
+  main. Preview with `docs/site/assemble.sh` then
+  `python3 -m http.server -d docs/site`.
 
 ## The aniflow command
 
