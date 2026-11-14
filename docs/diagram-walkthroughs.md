@@ -293,7 +293,7 @@ reaches a picture, and GIF and video exports leave out the strokes too.
 
 In full screen, the speech bubble button opens a comments panel beside the
 diagram (a sheet along the bottom on a phone). It only appears on pages that
-take comments: shared markdown in sharei and every page in aniflow. With
+take comments, which in aniflow is every page. With
 the panel open, hovering outlines the box or arrow under the pointer, and a
 click opens a draft for it. A click on the background comments on the whole
 diagram. Ctrl+Enter saves, Escape drops the draft, and a second Escape
@@ -385,13 +385,8 @@ aniflow accepts four kinds of picture:
 
 - A file next to the markdown, such as `logo.png` or `icons/logo.png`. The
   reader resolves it against the document, like an ordinary markdown image.
-  In sharei, `sharec` uploads it along with the markdown and rewrites the
-  path, with the same checks it applies to markdown images: the file must sit
-  inside the git checkout or the document's folder, with no hidden folder or
-  symlink escape on the way, its contents must match its extension, and you
-  confirm the upload.
 - A path on the server itself, starting with `/`. This is how the built-in
-  icons below are used, and what `sharec` writes in place of a local file.
+  icons below are used.
 - An `https://` URL.
 - A `data:image/...` URL for PNG, JPEG, GIF, WebP or SVG.
 
@@ -405,11 +400,8 @@ sits on the picture's corner, and skipped ones fade.
 
 GitHub draws mermaid in a separate frame where a relative picture path does
 not resolve. If a diagram has to look right on GitHub as well, use https URLs
-for its pictures. On sharei's notes pages from the Obsidian vault, use https or data
-pictures: the vault serves a file only when a note links to it with ordinary
-markdown, and a picture inside a diagram does not count as such a link.
-The built-in icons work everywhere the reader draws the diagram, sharei's
-notes included.
+for its pictures. The built-in icons work everywhere the reader draws the
+diagram.
 
 ### Built-in icons
 
@@ -525,8 +517,6 @@ The markdown is untrusted, and so is everything in a walkthrough.
   is a fixed data URL.
 - The reader page keeps its nonce-based CSP. Its `img-src 'self' https: data:`
   already covered these pictures, so the policy did not change.
-- In sharei, `sharec` scans `img:` values inside mermaid fences only, and uploads them
-  through the existing image checks.
 
 ## Not covered
 

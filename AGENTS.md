@@ -6,8 +6,8 @@ repo holds two things that ship together:
 - a JavaScript library (ES modules under `js/`, bundled by esbuild), the
   reader itself
 - a Python package (`src/aniflow/`): the `aniflow` command, which serves a
-  folder of Markdown read only, and the server pieces sharei builds its own
-  reader on
+  folder of Markdown read only, and the server pieces other apps can build
+  their own reader on
 
 The built JS and CSS are committed under `src/aniflow/static/` and ship in
 the wheel, so `uvx --from git+...` works without Node.
@@ -57,7 +57,7 @@ the wheel, so `uvx --from git+...` works without Node.
   limits. Storage is a JSON file the caller chooses.
 - `src/aniflow/themes.py`: `THEMES`, `READER_THEMES`, the theme CSS and
   `theme_script(nonce, key)`, which applies the choice kept in localStorage
-  under `key` (`aniflow-theme` here, sharei passes its own).
+  under `key` (`aniflow-theme` here; an embedding app passes its own).
 - `src/aniflow/brand.py`, `ui.py`: the aniflow logo and the file browser.
 - `src/aniflow/help.md`: the `/help` demo and walkthrough.
 - `src/aniflow/spec.md`: the walkthrough syntax reference for agents.
@@ -115,8 +115,8 @@ On read, `comments.anchor()` keeps a comment whose lines still equal its
 
 `resolveLink` and `resolveImage` turn a relative link or picture into a URL,
 or return null to leave it alone. `plugins` are markdown-it plugins and
-`preprocess` runs on the text first; sharei passes its Obsidian flavour
-through these.
+`preprocess` runs on the text first, so an embedding app can add its own
+Markdown flavour through these.
 
 ### Diagrams
 

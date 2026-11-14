@@ -160,7 +160,7 @@ flowchart LR
     <div class="prose">
       <h2 id="library-title">Use it in your own app</h2>
       <p>The reader is also a JavaScript library with no build step: one script that defines <code>Aniflow</code>, an ES module if you prefer, and a stylesheet. Give it some Markdown and an element, and you get the same rendering, contents rail, slides and diagram player as the command. The diagram at the top of this page runs this way.</p>
-      <p>It is what <a href="https://github.com/chmouel/sharei">sharei</a>, my file sharing server, uses to show Markdown, and the Python package has the server pieces it builds on.</p>
+      <p>If your app has its own server, the Python package has the pieces for it: comment storage, the page shell with its security headers, and the themes.</p>
     </div>
     <pre class="cmd"><span class="c">&lt;!-- markdown-it, its footnote and emoji plugins and DOMPurify go first --&gt;</span>
 &lt;article class="markdown-body"&gt;&lt;/article&gt;
@@ -209,7 +209,7 @@ aniflow ./docs --port 8080</pre>
       <img class="avatar" src="img/chmouel.jpg" width="120" height="120" alt="Chmouel Boudjnah">
       <div class="author-text">
         <h2 id="author-title">Made by Chmouel</h2>
-        <p>I build aniflow and sharei and keep both free and open source. If aniflow helps you explain something, you can follow the work on GitHub or sponsor it.</p>
+        <p>I build aniflow and keep it free and open source. If aniflow helps you explain something, you can follow the work on GitHub or sponsor it.</p>
       </div>
       <div class="author-actions">
         <a class="button sponsor" href="https://github.com/sponsors/chmouel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-7.5-10A4.2 4.2 0 0 1 12 7.8a4.2 4.2 0 0 1 7.5 2.7c0 5.4-7.5 10-7.5 10z"/></svg>Sponsor</a>

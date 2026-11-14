@@ -1,7 +1,7 @@
 ---
 name: aniflow-diagrams
 description: Write animated Mermaid diagram walkthroughs that look good and
-  play in aniflow or sharei - a dot travelling along the arrows, boxes
+  play in aniflow - a dot travelling along the arrows, boxes
   lighting up, captions, pictures, several stories, slides. Use when asked to
   draw, explain, animate or walk through a flow, pipeline, request path,
   deployment, agent loop or architecture; when preparing a talk or slides
@@ -129,9 +129,3 @@ The same done badly: every box is a picture, box labels are full sentences,
 every step has a caption, the red path is a second copy of the diagram, and
 steps name labels (`%% Developer -> Pull request`) instead of ids, so none
 of them play.
-
-## Sharing it
-
-aniflow is enough for a local preview. To hand the document to someone on
-another device, use the `sharei` skill; its reader plays the same
-walkthroughs.

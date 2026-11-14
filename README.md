@@ -5,7 +5,7 @@ animated walkthroughs: a dot travels along the arrows, boxes light up, a
 caption explains each step, and a document can turn into slides.
 
 It comes as a small command that serves a folder of Markdown files, and as a
-JavaScript library other apps can embed (sharei uses it for its reader).
+JavaScript library other apps can embed.
 
 The site at <https://chmouel.github.io/aniflow/> has a diagram you can play.
 
@@ -123,7 +123,7 @@ Call `Aniflow.reader()` once per page: the markdown-it setup and the event
 handlers it installs stay for the life of the page.
 
 The Python package also exposes the server pieces (`aniflow.web`,
-`aniflow.page`, `aniflow.comments`, `aniflow.themes`) that sharei builds on.
+`aniflow.page`, `aniflow.comments`, `aniflow.themes`) for apps that serve the reader themselves.
 
 ## Develop
 
