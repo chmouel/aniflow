@@ -2049,6 +2049,7 @@ function diagramWarnings(stage, tools, scenarios) {
   list.hidden = true;
   for (const row of rows) {
     const item = document.createElement("li");
+    item.dataset.line = String(row.line);
     const where = document.createElement("small");
     where.textContent = row.story + " \xB7 line " + row.line;
     const reason = document.createElement("span");

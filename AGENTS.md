@@ -82,7 +82,10 @@ the wheel, so `uvx --from git+...` works without Node.
   main. Preview with `docs/site/assemble.sh` then
   `python3 -m http.server -d docs/site`. `try/` is a playground: a textarea
   feeding `update()`, examples, a draft in localStorage `aniflow-try` and
-  share links holding the source deflated into `#src=`.
+  share links holding the source deflated into `#src=`. It lists Mermaid
+  errors, dropped walkthrough steps (`.diagram-problems li[data-line]`) and
+  missing pictures under the editor by document line, and marks those lines
+  in the textarea.
 
 ## The aniflow command
 

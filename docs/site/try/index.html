@@ -39,12 +39,17 @@
       <select id="example"></select>
     </label>
     <button type="button" class="button ghost" id="share" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>Copy link</button>
+    <button type="button" class="try-count" id="problem-count" hidden></button>
     <span id="status" class="try-status" role="status"></span>
   </div>
   <div class="try-split">
     <div class="try-editor">
       <label class="sr-only" for="source">Markdown source</label>
-      <textarea id="source" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+      <div class="try-code">
+        <div class="try-marks" id="marks" aria-hidden="true"></div>
+        <textarea id="source" spellcheck="false" autocapitalize="off" autocomplete="off" aria-describedby="problems"></textarea>
+      </div>
+      <div class="try-problems" id="problems" role="status" hidden></div>
       <details class="try-help">
         <summary>The <code>%%</code> lines</summary>
         <table class="where">

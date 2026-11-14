@@ -96,16 +96,141 @@ const own = new Option('Your text', '');
 own.disabled = true;
 picker.add(own);
 
-// The reader only puts a Mermaid error in the block's tooltip; here it is written out under the block.
-new MutationObserver(() => {
-  for (const block of document.querySelectorAll('#preview .highlight-source-mermaid[title^="Mermaid:"]')) {
-    if (block.nextElementSibling?.classList.contains('try-error')) continue;
+// Problems from the preview, listed under the editor with document line numbers and marked in it.
+const marks = document.getElementById('marks');
+const problemsBox = document.getElementById('problems');
+const preview = document.getElementById('preview');
+const counter = document.getElementById('problem-count');
+counter.addEventListener('click', () => {
+  if (problems.length) gotoLine(problems[0].line);
+  problemsBox.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+});
+
+function mermaidProblem(block) {
+  const raw = block.title.replace(/^Mermaid: /, '');
+  const start = Number(block.dataset.line) || 1;
+  const lines = block.textContent.replace(/\n$/, '').split('\n');
+  const lastLine = Math.max(1, lines.findLastIndex((line) => line.trim()) + 1);
+  const firstLine = Math.max(1, lines.findIndex((line) => line.trim()) + 1);
+  let at = Number(/on line (\d+)/.exec(raw)?.[1]) || firstLine;
+  let message = raw.split('\n')[0];
+  if (/No diagram type detected/i.test(raw)) {
+    at = firstLine;
+    message = 'The first line has to name the diagram, such as flowchart LR or sequenceDiagram.';
+  } else if (/got 'EOF'/.test(raw)) {
+    at = lastLine;
+    message = 'The diagram stops in the middle of a statement, such as an arrow with nothing after it.';
+  } else if (/^Parse error/.test(raw)) {
+    const [, context = '', caret = ''] = raw.split('\n');
+    const near = context.slice(caret.indexOf('^')).trim().split(/\s+/)[0];
+    message = 'Mermaid cannot read this line' + (caret.includes('^') && near ? ', near ' + near + '.' : '.');
+  } else if (/^Lexical error/.test(raw)) {
+    message = 'Mermaid does not recognise some of the text on this line.';
+  }
+  at = Math.min(at, lastLine);
+  // Mermaid skips blank and %% lines, so an error reported on one belongs to the statement before it.
+  while (at > 1 && /^\s*(%%.*)?$/.test(lines[at - 1])) at -= 1;
+  return { line: start + at, kind: 'error', message, raw, block };
+}
+
+function collectProblems() {
+  const found = [];
+  for (const block of preview.querySelectorAll('.highlight-source-mermaid[title^="Mermaid:"]')) found.push(mermaidProblem(block));
+  for (const item of preview.querySelectorAll('.diagram-problems li[data-line]')) {
+    const story = item.querySelector('small')?.textContent.split(' · ')[0];
+    found.push({ line: Number(item.dataset.line), kind: 'warn', message: item.querySelector('span')?.textContent + (story ? ' (story "' + story + '")' : '') });
+  }
+  for (const holder of preview.querySelectorAll('.mermaid-diagram[title*="Pictures not shown"]')) {
+    found.push({ line: Number(holder.dataset.line) || 1, kind: 'warn', message: holder.title.trim() + '.' });
+  }
+  return found.sort((a, b) => a.line - b.line);
+}
+
+function gotoLine(line) {
+  const lines = textarea.value.split('\n');
+  const begin = lines.slice(0, line - 1).reduce((sum, text) => sum + text.length + 1, 0);
+  textarea.focus({ preventScroll: true });
+  textarea.setSelectionRange(begin, begin + (lines[line - 1] || '').length);
+  const style = getComputedStyle(textarea);
+  textarea.scrollTop = Math.max(0, (line - 1) * parseFloat(style.lineHeight) - textarea.clientHeight / 3);
+  if (textarea.getBoundingClientRect().top < 0) textarea.scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+
+function lineButton(line) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'try-line';
+  button.textContent = 'Line ' + line;
+  button.addEventListener('click', () => gotoLine(line));
+  return button;
+}
+
+function drawMarks(problems) {
+  const style = getComputedStyle(textarea);
+  const height = parseFloat(style.lineHeight);
+  const top = parseFloat(style.paddingTop) + parseFloat(style.borderTopWidth);
+  marks.replaceChildren(...problems.map((problem) => {
+    const band = document.createElement('div');
+    band.className = 'try-mark ' + problem.kind;
+    band.style.top = top + (problem.line - 1) * height - textarea.scrollTop + 'px';
+    band.style.height = height + 'px';
+    return band;
+  }));
+}
+textarea.addEventListener('scroll', () => { if (marks.childElementCount) drawMarks(problems); });
+
+let problems = [];
+function showProblems() {
+  problems = collectProblems();
+  drawMarks(problems);
+  problemsBox.hidden = !problems.length;
+  counter.hidden = !problems.length;
+  counter.textContent = problems.length === 1 ? '1 problem' : problems.length + ' problems';
+  counter.classList.toggle('error', problems.some((problem) => problem.kind === 'error'));
+  problemsBox.classList.remove('stale');
+  if (!problems.length) {
+    problemsBox.replaceChildren();
+    return;
+  }
+  const errors = problems.filter((problem) => problem.kind === 'error').length;
+  const head = document.createElement('p');
+  head.className = 'try-problems-head';
+  head.textContent = problems.length === 1 ? '1 problem' : problems.length + ' problems';
+  if (errors) head.textContent += errors === problems.length ? '' : ', ' + errors + ' stopping a diagram from drawing';
+  const list = document.createElement('ul');
+  for (const problem of problems) {
+    const item = document.createElement('li');
+    item.className = problem.kind;
+    const text = document.createElement('span');
+    text.textContent = problem.message;
+    item.append(lineButton(problem.line), text);
+    if (problem.raw) {
+      const more = document.createElement('details');
+      const summary = document.createElement('summary');
+      summary.textContent = 'Mermaid says';
+      const pre = document.createElement('pre');
+      pre.textContent = problem.raw;
+      more.append(summary, pre);
+      item.append(more);
+    }
+    list.append(item);
+  }
+  problemsBox.replaceChildren(head, list);
+  for (const problem of problems) {
+    if (!problem.block || problem.block.nextElementSibling?.classList.contains('try-error')) continue;
     const note = document.createElement('p');
     note.className = 'try-error';
-    note.textContent = block.title;
-    block.after(note);
+    note.append(lineButton(problem.line), document.createTextNode(' ' + problem.message));
+    problem.block.after(note);
   }
-}).observe(document.getElementById('preview'), { subtree: true, attributes: true, attributeFilter: ['title'] });
+}
+
+let settle = 0;
+new MutationObserver((records) => {
+  if (records.every((record) => [...record.addedNodes].every((node) => node.classList?.contains('try-error')))) return;
+  clearTimeout(settle);
+  settle = setTimeout(showProblems, 150);
+}).observe(preview, { subtree: true, childList: true, attributes: true, attributeFilter: ['title'] });
 
 const page = Aniflow.reader({
   article: '#preview',
@@ -125,6 +250,8 @@ let timer = 0;
 textarea.addEventListener('input', () => {
   clearTimeout(timer);
   timer = setTimeout(render, 400);
+  problemsBox.classList.add('stale');
+  marks.replaceChildren();
   const index = examples.findIndex((example) => example.source === textarea.value);
   picker.value = index < 0 ? '' : String(index);
   try { localStorage.setItem(draftKey, textarea.value); } catch (error) { /* private mode */ }
