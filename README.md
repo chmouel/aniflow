@@ -120,7 +120,9 @@ Mermaid is loaded on demand from the `mermaid` URL.
 - `presentButton`: the button that starts slides
 
 Call `Aniflow.reader()` once per page: the markdown-it setup and the event
-handlers it installs stay for the life of the page.
+handlers it installs stay for the life of the page. It returns
+`{ update(source) }`, which renders new Markdown into the same article, as
+an editor with a live preview needs.
 
 The Python package also exposes the server pieces (`aniflow.web`,
 `aniflow.page`, `aniflow.comments`, `aniflow.themes`) for apps that serve the reader themselves.

@@ -1,3 +1,4 @@
+import { host } from '../host.js';
 import { diagramBusy } from './busy.js';
 import { gifWriter } from './gif.js';
 import { SVG_NS, diagramLinks, diagramNodes } from './graph.js';
@@ -174,7 +175,7 @@ export function playDiagram(stage, svg, tools, scripts, home, share, edges) {
   };
   showSpeed();
   speedButton.addEventListener('click', () => setDiagramSpeed(0));
-  addEventListener('aniflow-diagram-speed', showSpeed);
+  addEventListener('aniflow-diagram-speed', showSpeed, { signal: host.render?.signal });
   const rail = document.createElement('div');
   rail.className = 'play-rail';
   rail.setAttribute('aria-hidden', 'true');
@@ -504,6 +505,10 @@ export function playDiagram(stage, svg, tools, scripts, home, share, edges) {
   function tick(now) {
     frame = 0;
     if (!playing) return;
+    if (!stage.isConnected) {
+      pause();
+      return;
+    }
     const done = advance(Math.min(100, now - last) * diagramRate(), stepping);
     last = now;
     if (done === 'step') {

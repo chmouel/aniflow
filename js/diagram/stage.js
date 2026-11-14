@@ -1,3 +1,4 @@
+import { host } from '../host.js';
 import { addBusyCheck, diagramBusy } from './busy.js';
 import { diagramComments } from './comments.js';
 import { focusDiagram } from './focus.js';
@@ -289,7 +290,7 @@ export function panZoom(holder, scenarios, edges, about) {
     if (!stage.closest('dialog') && document.querySelector('dialog[open]')) return;
     event.preventDefault();
     for (const stroke of ink.querySelectorAll('.ink-stroke')) stroke.remove();
-  });
+  }, { signal: host.render?.signal });
 
   // One pointer drags, two pinch. Touch at the fitted size is left to the page so it still scrolls.
   // With the pen on, one pointer draws instead, and a second one turns the stroke into a pinch.

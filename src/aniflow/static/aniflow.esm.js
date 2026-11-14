@@ -1550,7 +1550,7 @@ function diagramComments(stage, svg, after, about) {
     } else {
       close();
     }
-  });
+  }, { signal: host.render?.signal });
   new ResizeObserver(zoom).observe(stage);
   return {
     shown: () => load().catch(() => {
@@ -1616,7 +1616,7 @@ function focusDiagram(stage, svg, edges) {
     event.preventDefault();
     selected.clear();
     paint();
-  });
+  }, { signal: host.render?.signal });
   return {
     get: () => [...selected],
     set(wanted) {
@@ -2016,7 +2016,7 @@ function diagramShare(stage, svg, tools) {
   });
   document.addEventListener("pointerdown", (event) => {
     if (!menu.hidden && !group.contains(event.target)) menu.hidden = true;
-  });
+  }, { signal: host.render?.signal });
   group.addEventListener("keydown", (event) => {
     if (event.key !== "Escape" || menu.hidden) return;
     event.stopPropagation();
@@ -2067,7 +2067,7 @@ function diagramWarnings(stage, tools, scenarios) {
   button.addEventListener("click", () => show2(list.hidden));
   document.addEventListener("pointerdown", (event) => {
     if (!list.hidden && !group.contains(event.target)) show2(false);
-  });
+  }, { signal: host.render?.signal });
   group.addEventListener("keydown", (event) => {
     if (event.key !== "Escape" || list.hidden) return;
     event.stopPropagation();
@@ -2238,7 +2238,7 @@ function playDiagram(stage, svg, tools, scripts, home, share, edges) {
   };
   showSpeed();
   speedButton.addEventListener("click", () => setDiagramSpeed(0));
-  addEventListener("aniflow-diagram-speed", showSpeed);
+  addEventListener("aniflow-diagram-speed", showSpeed, { signal: host.render?.signal });
   const rail = document.createElement("div");
   rail.className = "play-rail";
   rail.setAttribute("aria-hidden", "true");
@@ -2554,6 +2554,10 @@ function playDiagram(stage, svg, tools, scripts, home, share, edges) {
   function tick(now) {
     frame = 0;
     if (!playing) return;
+    if (!stage.isConnected) {
+      pause();
+      return;
+    }
     const done = advance(Math.min(100, now - last) * diagramRate(), stepping);
     last = now;
     if (done === "step") {
@@ -3040,7 +3044,7 @@ function panZoom(holder, scenarios, edges, about) {
     if (!stage.closest("dialog") && document.querySelector("dialog[open]")) return;
     event.preventDefault();
     for (const stroke of ink.querySelectorAll(".ink-stroke")) stroke.remove();
-  });
+  }, { signal: host.render?.signal });
   const pointers = /* @__PURE__ */ new Map();
   stage.addEventListener("pointerdown", (event) => {
     if (event.button !== 0 || event.target.closest(".diagram-tools")) return;
@@ -3159,12 +3163,17 @@ function drawDiagrams() {
     }
     mermaid.initialize(themeVariables ? { startOnLoad: false, securityLevel: "strict", theme: "base", themeVariables } : { startOnLoad: false, securityLevel: "strict", theme: dark ? "dark" : "default" });
     for (const [position, block] of diagrams.entries()) {
+      if (!block.isConnected) continue;
       const id = "mermaid-" + diagramCount++;
       try {
         const scenarios = playScript(block.textContent, Number(block.dataset.line) || 0);
         const pictures = await diagramImages(block.textContent);
         const edges = await diagramEdges(pictures.source);
         const result = await mermaid.render(id, pictures.source);
+        if (!block.isConnected) {
+          document.getElementById("d" + id)?.remove();
+          continue;
+        }
         const holder = document.createElement("div");
         holder.className = "mermaid-diagram";
         if (block.dataset.line) {
@@ -3240,6 +3249,8 @@ function show(content) {
     const url = host.resolveLink(link.getAttribute("href"));
     if (url) link.setAttribute("href", url);
   }
+  host.render?.abort();
+  host.render = new AbortController();
   host.article.replaceChildren(content);
   const seen = /* @__PURE__ */ new Map();
   const entries = [];
@@ -3515,6 +3526,13 @@ function reader(options = {}) {
   addEventListener("hashchange", () => {
     for (const stage of article.querySelectorAll(".diagram-stage[data-diagram]")) if (diagramFromHash(stage)) break;
   });
+  return {
+    // Renders new markdown into the same article, replacing the diagrams already drawn.
+    update(source) {
+      host.source = source ?? "";
+      show(renderLocal());
+    }
+  };
 }
 var directoryResolver = (root) => (value) => directoryUrl(value, root);
 export {

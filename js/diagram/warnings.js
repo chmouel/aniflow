@@ -1,3 +1,4 @@
+import { host } from '../host.js';
 import { diagramIcon } from './icons.js';
 
 // A walkthrough step that cannot play is dropped, and this badge says which and why, so a
@@ -41,7 +42,7 @@ export function diagramWarnings(stage, tools, scenarios) {
   button.addEventListener('click', () => show(list.hidden));
   document.addEventListener('pointerdown', (event) => {
     if (!list.hidden && !group.contains(event.target)) show(false);
-  });
+  }, { signal: host.render?.signal });
   group.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape' || list.hidden) return;
     event.stopPropagation();

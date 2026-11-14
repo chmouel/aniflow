@@ -42,6 +42,9 @@ export function show(content) {
     const url = host.resolveLink(link.getAttribute('href'));
     if (url) link.setAttribute('href', url);
   }
+  // Listeners a diagram puts on document or window take this signal, so a re-render drops them.
+  host.render?.abort();
+  host.render = new AbortController();
   host.article.replaceChildren(content);
 
   const seen = new Map();

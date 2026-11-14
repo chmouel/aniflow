@@ -19,12 +19,17 @@ export function drawDiagrams() {
       ? { startOnLoad: false, securityLevel: 'strict', theme: 'base', themeVariables: themeVariables }
       : { startOnLoad: false, securityLevel: 'strict', theme: dark ? 'dark' : 'default' });
     for (const [position, block] of diagrams.entries()) {
+      if (!block.isConnected) continue;
       const id = 'mermaid-' + diagramCount++;
       try {
         const scenarios = playScript(block.textContent, Number(block.dataset.line) || 0);
         const pictures = await diagramImages(block.textContent);
         const edges = await diagramEdges(pictures.source);
         const result = await mermaid.render(id, pictures.source);
+        if (!block.isConnected) {
+          document.getElementById('d' + id)?.remove();
+          continue;
+        }
         const holder = document.createElement('div');
         holder.className = 'mermaid-diagram';
         if (block.dataset.line) {

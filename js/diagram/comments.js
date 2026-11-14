@@ -513,7 +513,7 @@ export function diagramComments(stage, svg, after, about) {
     } else {
       close();
     }
-  });
+  }, { signal: host.render?.signal });
   new ResizeObserver(zoom).observe(stage);
 
   return {

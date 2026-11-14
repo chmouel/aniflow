@@ -1,3 +1,4 @@
+import { host } from '../host.js';
 import { diagramHash } from './hash.js';
 import { diagramIcon } from './icons.js';
 import { diagramCanvas } from './picture.js';
@@ -112,7 +113,7 @@ export function diagramShare(stage, svg, tools) {
   });
   document.addEventListener('pointerdown', (event) => {
     if (!menu.hidden && !group.contains(event.target)) menu.hidden = true;
-  });
+  }, { signal: host.render?.signal });
   group.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape' || menu.hidden) return;
     event.stopPropagation();

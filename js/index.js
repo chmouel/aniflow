@@ -52,6 +52,13 @@ export function reader(options = {}) {
   addEventListener('hashchange', () => {
     for (const stage of article.querySelectorAll('.diagram-stage[data-diagram]')) if (diagramFromHash(stage)) break;
   });
+  return {
+    // Renders new markdown into the same article, replacing the diagrams already drawn.
+    update(source) {
+      host.source = source ?? '';
+      show(renderLocal());
+    },
+  };
 }
 
 // Keeps links and pictures that point inside the served directory root, for resolveLink/resolveImage.

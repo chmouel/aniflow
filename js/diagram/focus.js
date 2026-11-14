@@ -1,3 +1,4 @@
+import { host } from '../host.js';
 import { diagramBusy } from './busy.js';
 import { diagramLinks, diagramNodes } from './graph.js';
 
@@ -53,7 +54,7 @@ export function focusDiagram(stage, svg, edges) {
     event.preventDefault();
     selected.clear();
     paint();
-  });
+  }, { signal: host.render?.signal });
   return {
     get: () => [...selected],
     set(wanted) {
