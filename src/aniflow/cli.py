@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import html
 import os
+import re
 import secrets
 import socket
 import sys
+import webbrowser
+import zlib
 from datetime import UTC, datetime
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -28,6 +32,30 @@ from aniflow.ui import (
 FILES = "/files/"
 HELP = Path(__file__).with_name("help.md")
 SPEC = Path(__file__).with_name("spec.md")
+TRY_URL = "https://chmouel.github.io/aniflow/try/"
+SHARE_LONG = 8000
+PICTURE = re.compile(r"""\bimg:\s*["']([^"']+)["']|!\[[^\]]*\]\(\s*<?([^)\s>]+)""")
+
+
+def share_url(text: str) -> str:
+    """The try page link holding text, deflated and base64url encoded in #src= as try.js reads it."""
+    packer = zlib.compressobj(9, zlib.DEFLATED, -15)
+    packed = packer.compress(text.encode("utf-8")) + packer.flush()
+    return TRY_URL + "#src=" + base64.urlsafe_b64encode(packed).decode().rstrip("=")
+
+
+def offline_pictures(text: str) -> list[str]:
+    """Pictures the try page cannot load: anything besides built-in icons, https and data URLs."""
+    found = (a or b for a, b in PICTURE.findall(text))
+    return sorted(
+        {
+            value
+            for value in found
+            if not value.startswith(("/icons/", "https://", "data:image/"))
+        }
+    )
+
+
 NEXT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>'
 
 
@@ -360,10 +388,49 @@ def main() -> None:
         action="store_true",
         help="print the diagram walkthrough syntax reference and exit",
     )
+    parser.add_argument(
+        "--share",
+        metavar="FILE",
+        help="print a link that opens FILE (or - for stdin) in the online try "
+        "page, with the text inside the link, and exit",
+    )
+    parser.add_argument(
+        "--open",
+        action="store_true",
+        help="with --share, also open the link in the default browser",
+    )
     args = parser.parse_args()
     if args.spec:
         sys.stdout.write(SPEC.read_text("utf-8"))
         return
+    if args.share:
+        try:
+            text = (
+                sys.stdin.read()
+                if args.share == "-"
+                else Path(args.share).read_text("utf-8")
+            )
+        except (OSError, UnicodeDecodeError) as error:
+            parser.error(f"cannot read {args.share}: {error}")
+        url = share_url(text)
+        missing = offline_pictures(text)
+        if missing:
+            print(
+                "aniflow: these pictures will not show on the try page: "
+                + ", ".join(missing),
+                file=sys.stderr,
+            )
+        if len(url) > SHARE_LONG:
+            print(
+                f"aniflow: the link is {len(url)} characters, some chat apps may cut it",
+                file=sys.stderr,
+            )
+        print(url)
+        if args.open:
+            webbrowser.open(url)
+        return
+    if args.open:
+        parser.error("--open goes with --share")
     if not args.directory.is_dir():
         parser.error(f"not a directory: {args.directory}")
     try:

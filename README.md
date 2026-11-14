@@ -74,6 +74,14 @@ a cheat sheet or for a coding agent writing diagrams.
 [`docs/diagram-walkthroughs.md`](docs/diagram-walkthroughs.md) shows every
 feature in a live document.
 
+To show a walkthrough to someone without aniflow installed,
+`aniflow --share FILE` prints a link to the [online try
+page](https://chmouel.github.io/aniflow/try/) with the file inside it, and
+`--open` opens it in your browser as well. The text travels in the part of
+the link after `#`, which browsers don't send to the server, but anyone with
+the link can read it. Local pictures don't come along; the command names
+the ones that won't show.
+
 Coding agents that support skills (Claude Code, Copilot CLI, Codex and the
 like) can use [`skills/aniflow-diagrams`](skills/aniflow-diagrams/SKILL.md):
 copy or link that folder into the agent's skills directory and it will draw

@@ -457,3 +457,29 @@ def test_comment_cache_is_not_served(aniflow_server, tmp_path):
         "/files/%2e%2e/cache/" + storage.name,
     ):
         assert aniflow_server(path)[0] == 404
+
+
+def test_share_prints_try_link(tmp_path, monkeypatch, capsys):
+    import base64
+    import zlib
+
+    text = '# Ünïcode\n\n```mermaid\nflowchart LR\n  A@{ img: "me.png" } --> B@{ img: "/icons/user.svg" }\n```\n'
+    source = tmp_path / "walk.md"
+    source.write_text(text, "utf-8")
+    monkeypatch.setattr("sys.argv", ["aniflow", "--share", str(source)])
+    monkeypatch.setattr(cli, "Server", lambda *a, **k: pytest.fail("no server"))
+    cli.main()
+    captured = capsys.readouterr()
+    url = captured.out.strip()
+    assert url.startswith(cli.TRY_URL + "#src=")
+    packed = url.split("#src=")[1]
+    packed += "=" * (-len(packed) % 4)
+    assert zlib.decompress(base64.urlsafe_b64decode(packed), -15).decode() == text
+    assert "me.png" in captured.err and "user.svg" not in captured.err
+
+
+def test_open_needs_share(monkeypatch, capsys):
+    monkeypatch.setattr("sys.argv", ["aniflow", "--open"])
+    with pytest.raises(SystemExit, match="2"):
+        cli.main()
+    assert "--open goes with --share" in capsys.readouterr().err

@@ -40,6 +40,11 @@ the wheel, so `uvx --from git+...` works without Node.
 - `src/aniflow/cli.py`: the `aniflow` command (`main`), its `Server` and
   `Handler`, the directory page and the reader page with aniflow's own
   chrome. `aniflow --spec` prints `spec.md` and exits.
+  `aniflow --share FILE` (`-` for stdin) prints a `TRY_URL#src=` link,
+  raw deflate plus unpadded base64url as `docs/site/try/try.js` decodes
+  it, warns on stderr about pictures the site cannot load
+  (`offline_pictures()`) and links over `SHARE_LONG`, and exits; `--open`
+  also opens it.
 - `src/aniflow/web.py`: `Handler`, a `BaseHTTPRequestHandler` with the
   request checks (`request_allowed()`, `host_allowed()`,
   `origin_allowed()`; `allowed_hosts()` and `allowed_origins()` are for a
