@@ -86,7 +86,9 @@ the wheel, so `uvx --from git+...` works without Node.
   `docs/site/lib/`; the `pages` workflow runs it and deploys on pushes to
   main. Preview with `docs/site/assemble.sh` then
   `python3 -m http.server -d docs/site`. `try/` is a playground: a textarea
-  feeding `update()`, examples, a draft in localStorage `aniflow-try` and
+  feeding `update()`, examples (the first, a slide deck touring every
+  feature, loads when there is no link or draft), a draft in localStorage
+  `aniflow-try` and
   share links holding the source deflated into `#src=`. It lists Mermaid
   errors, dropped walkthrough steps (`.diagram-problems li[data-line]`) and
   missing pictures under the editor by document line, and marks those lines

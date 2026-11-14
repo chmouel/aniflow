@@ -1,6 +1,145 @@
 // The playground: a textarea whose Markdown is rendered by the aniflow library as you type.
 const examples = [
   {
+    name: 'Tour (slides)',
+    source: `# A tour of aniflow
+
+Press **Present** or <kbd>P</kbd>, then use the arrow keys. Each \`##\` heading is a slide, and on a slide with a diagram the arrows walk its story first.
+
+Everything here is the Markdown on the left. Change a line and the preview follows.
+
+## A story
+
+\`\`\`mermaid
+flowchart LR
+  I@{ img: "/icons/issue.svg", label: "Issue", w: 56, h: 56, constraint: "on" }
+  A@{ img: "/icons/agent.svg", label: "Agent", w: 56, h: 56, constraint: "on" }
+  M@{ img: "/icons/model.svg", label: "Model", w: 56, h: 56, constraint: "on" }
+  P@{ img: "/icons/pipeline.svg", label: "CI", w: 56, h: 56, constraint: "on" }
+  S@{ img: "/icons/release.svg", label: "Release", w: 56, h: 56, constraint: "on" }
+  I --> A
+  A <--> M
+  A --> P --> S
+
+%% play: Ship a fix
+%% I -> A : #42 | A reader reports that exports crop the last row.
+%% A -> M : prompt | The agent asks the model for a patch.
+%% M -> A : diff | The model answers with a two-line fix.
+%% A -> P : PR | CI runs the tests on the pull request.
+%% P -> S : green | Everything passes and the fix ships.
+\`\`\`
+
+Labels ride on the dot. Captions show under the diagram.
+
+## Fan out, then meet
+
+\`\`\`mermaid
+flowchart LR
+  C@{ img: "/icons/commit.svg", label: "Commit", w: 52, h: 52, constraint: "on" }
+  T@{ img: "/icons/test.svg", label: "Tests", w: 52, h: 52, constraint: "on" }
+  L@{ img: "/icons/inspect.svg", label: "Lint", w: 52, h: 52, constraint: "on" }
+  B@{ img: "/icons/build.svg", label: "Build", w: 52, h: 52, constraint: "on" }
+  G@{ img: "/icons/merge.svg", label: "Merge", w: 52, h: 52, constraint: "on" }
+  C --> T & L & B
+  T & L & B --> G
+
+%% play: Checks
+%% C -> T, L, B | One push starts three jobs at once.
+%% T, L, B -> G | Each finishes at its own pace, then they meet.
+\`\`\`
+
+\`A -> B, C\` sends one dot down each edge. \`A, B -> C\` brings them together.
+
+## Two stories, skip and wait
+
+\`\`\`mermaid
+flowchart LR
+  G@{ img: "/icons/repository.svg", label: "Repo", w: 48, h: 48, constraint: "on" }
+  B@{ img: "/icons/pipeline.svg", label: "Build", w: 48, h: 48, constraint: "on" }
+  C@{ img: "/icons/cluster.svg", label: "Cluster", w: 48, h: 48, constraint: "on" }
+  U@{ img: "/icons/users.svg", label: "Users", w: 48, h: 48, constraint: "on" }
+  W@{ img: "/icons/alert.svg", label: "Alert", w: 48, h: 48, constraint: "on" }
+  G --> B --> C --> U
+  C --> W --> G
+
+%% play: Deploy
+%% skip W | The alert has no part in a good deploy.
+%% G -> B : v2 | A tag starts the build.
+%% B -> C : image | The new image rolls out.
+%% C -> U | Users get version 2.
+%% wait 1200
+
+%% play: Roll back
+%% C -> U, W : 500s | Users hit errors and the alert fires.
+%% W -> G : revert | Someone reverts the tag.
+%% G -> B : v1
+%% B -> C : v1
+%% C -> U | Version 1 is back.
+\`\`\`
+
+Pick the story from the menu in the diagram toolbar.
+
+## Pick an edge by its id
+
+\`\`\`mermaid
+flowchart LR
+  P@{ img: "/icons/pipeline.svg", label: "Run", w: 52, h: 52, constraint: "on" }
+  R@{ img: "/icons/report.svg", label: "Report", w: 52, h: 52, constraint: "on" }
+  T@{ img: "/icons/notification.svg", label: "Team", w: 52, h: 52, constraint: "on" }
+  P ok@-->|pass| R
+  P bad@-->|flaky| R
+  R --> T
+
+%% play: Retry
+%% P -> R @bad : red | A flaky test fails the first run.
+%% P -> R @ok : green | The retry passes.
+%% R -> T | The team gets one clean report.
+\`\`\`
+
+Two edges join the same boxes, so each step names the one it takes.
+
+## Sequence diagrams
+
+\`\`\`mermaid
+sequenceDiagram
+  participant Dev as Developer
+  participant GH as GitHub
+  participant CI
+  Dev->>GH: push
+  GH->>CI: webhook
+  CI->>GH: status
+  GH->>Dev: notification
+
+%% play: Push
+%% Dev -> GH | You push a commit.
+%% GH -> CI : event | GitHub tells CI about it.
+%% CI -> GH : green | The result goes back to GitHub.
+%% GH -> Dev | You get a notification.
+\`\`\`
+
+## Plain Markdown works too
+
+| Key | Does |
+| --- | --- |
+| Arrows | step the story, then the slides |
+| Space | play or pause |
+| < and > | slower or faster |
+| Esc | leave |
+
+- [x] tables and task lists
+- [x] GitHub alerts and code blocks
+
+> [!TIP]
+> Click a box in a diagram to spotlight it and its neighbours.
+
+## Your turn
+
+Edit the text on the left, or pick another example. **Copy link** gives you a link with your text inside it, and the diagram's share button saves a PNG, GIF or video.
+
+On your own machine, the \`aniflow\` command serves a folder of Markdown files the same way.
+`,
+  },
+  {
     name: 'Ship a fix',
     source: `# Ship a fix
 
@@ -59,40 +198,6 @@ flowchart LR
 %% B -> C : v1
 %% C -> U | Version 1 is back for everyone.
 \`\`\`
-`,
-  },
-  {
-    name: 'Slides',
-    source: `# How a fix ships
-
-Each \`##\` heading is a slide. Press Present, then use the arrow keys.
-
-## The bug
-
-A reader reports that exports crop the last row of a table.
-
-- It only happens with more than 40 rows.
-- The fix is two lines.
-
-## The path
-
-\`\`\`mermaid
-flowchart LR
-  I@{ img: "/icons/issue.svg", label: "Issue", w: 56, h: 56, constraint: "on" }
-  A@{ img: "/icons/agent.svg", label: "Agent", w: 56, h: 56, constraint: "on" }
-  P@{ img: "/icons/pipeline.svg", label: "CI", w: 56, h: 56, constraint: "on" }
-  S@{ img: "/icons/release.svg", label: "Release", w: 56, h: 56, constraint: "on" }
-  I --> A --> P --> S
-
-%% play: Ship it
-%% I -> A : #42 | The issue lands with the agent.
-%% A -> P : PR | A pull request runs the tests.
-%% P -> S : green | Everything passes and it ships.
-\`\`\`
-
-## What changed
-
-Exports now page through every row before writing the file.
 `,
   },
   {
