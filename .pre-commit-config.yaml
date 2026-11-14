@@ -1,0 +1,45 @@
+# Same checks as .github/workflows/ci.yml, run before pushing only:
+#   uvx pre-commit install --hook-type pre-push
+#
+# Everything is a local hook: ruff and pytest come from the pyproject dev
+# group and the JS checks from package.json, like CI. Nothing runs at commit time.
+default_stages: [pre-push]
+fail_fast: true
+
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-format
+        name: ruff format --check
+        entry: uv run --group dev ruff format --check .
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --group dev ruff check .
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: pytest
+        name: pytest
+        entry: uv run --group dev pytest
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: js-test
+        name: node --test
+        entry: npm test
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: js-build
+        name: built files up to date
+        entry: npm run check
+        language: system
+        pass_filenames: false
+        always_run: true

@@ -1,0 +1,18 @@
+  * { box-sizing:border-box }
+  html { scroll-padding-top:64px; }
+  body { margin:0; background:var(--bgColor-default, Canvas); color:var(--fgColor-default, CanvasText); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif; }
+  .bar { position:sticky; top:0; z-index:2; display:flex; align-items:center; gap:12px; padding:10px max(16px, env(safe-area-inset-left)); background:color-mix(in srgb, var(--bgColor-muted) 92%, transparent); border-bottom:1px solid var(--borderColor-default); backdrop-filter:blur(8px); font-size:14px; }
+  .bar a { color:var(--fgColor-accent); text-decoration:none; font-weight:600; white-space:nowrap; }
+  .bar a:hover { text-decoration:underline; }
+  .bar .name { flex:1; min-width:0; overflow:hidden; color:var(--fgColor-muted); text-overflow:ellipsis; white-space:nowrap; }
+  .bar nav { display:flex; gap:14px; }
+  .bar nav select { max-width:120px; min-width:0; border:1px solid var(--borderColor-default); border-radius:6px; background:var(--bgColor-default); color:var(--fgColor-default); font:inherit; }
+  .bar nav button { padding:0; border:0; background:none; color:var(--fgColor-accent); font:inherit; font-weight:600; cursor:pointer; }
+  .bar nav button:hover { text-decoration:underline; }
+  .bar nav .renderer { display:inline-flex; align-items:center; gap:3px; margin:-4px 0; padding:4px 6px; border-radius:6px; color:var(--fgColor-muted); }
+  .bar nav .renderer:hover { color:var(--fgColor-default); text-decoration:none; }
+  .bar nav .renderer[aria-pressed="true"] { color:var(--fgColor-accent); background:color-mix(in srgb, var(--fgColor-accent) 18%, transparent); }
+  .bar nav .renderer[hidden] { display:none; }
+  .renderer svg { display:block; fill:currentColor; }
+  .page { width:min(100%, 980px); margin:0 auto; padding:24px 16px 64px; }
+  .notice { margin:0 0 16px; padding:10px 14px; border:1px solid color-mix(in srgb, var(--borderColor-attention-emphasis) 45%, transparent); border-radius:6px; background:var(--bgColor-attention-muted); color:var(--fgColor-default); font-size:14px; }

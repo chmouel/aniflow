@@ -6,7 +6,12 @@ import threading
 
 import pytest
 
-from sharei import aniflow, notes, server
+from aniflow import cli, comments, page, web
+
+
+def json_block(body, name):
+    block = body.decode().split(f'<script type="application/json" id="{name}">')[1]
+    return json.loads(block.split("</script>", 1)[0])
 
 
 @pytest.fixture
@@ -42,7 +47,7 @@ def aniflow_servers(tmp_path, monkeypatch):
     running = []
 
     def start(root):
-        httpd = aniflow.Server(("127.0.0.1", 0), root)
+        httpd = cli.Server(("127.0.0.1", 0), root)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         running.append((httpd, thread))
@@ -88,29 +93,23 @@ def test_browse_folders_and_markdown(aniflow_server):
     assert aniflow_server("/files/guides/%C3%A9%20space.markdown")[0] == 200
 
 
-def test_reader_is_standard_markdown_without_sharei_tools(aniflow_server, monkeypatch):
-    monkeypatch.setattr(notes, "VAULT", object())
-    monkeypatch.setattr(server, "QR_ENABLED", True)
+def test_reader_page(aniflow_server):
     status, headers, body = aniflow_server("/files/guides/start.md")
     assert status == 200
-    assert b'data-local-root="/files/"' in body
     assert b'href="/files/guides/"' in body
     assert b'id="theme-select"' in body
-    for unwanted in (
-        b"data-notes",
-        b"data-qr ",
-        b"data-search ",
-        b'id="notes-links"',
-    ):
-        assert unwanted not in body
-    assert b'data-comments="/comments/file/guides/start.md"' in body
+    options = json_block(body, "aniflow-options")
+    assert options["root"] == "/files/"
+    assert options["comments"]["url"] == "/comments/file/guides/start.md"
     policy = headers["Content-Security-Policy"]
     nonce = policy.split("'nonce-")[1].split("'")[0]
     assert "'self'" not in policy.split("script-src ")[1].split(";")[0]
     for script in re.findall(rb"<script([^>]*)>", body):
         assert b"application/json" in script or f'nonce="{nonce}"'.encode() in script
-    for name in (*server.MARKDOWN_SCRIPTS, "github-markdown.css", "mermaid.min.js"):
+    for name in (*page.MARKDOWN_SCRIPTS, "github-markdown.css", "mermaid.min.js"):
         assert aniflow_server("/vendor/" + name)[0] == 200
+    for name in ("aniflow.min.js", "aniflow.css", "page.css"):
+        assert aniflow_server("/static/" + name)[0] == 200
 
 
 def test_source_is_escaped_and_reread(aniflow_server, local_docs):
@@ -118,10 +117,7 @@ def test_source_is_escaped_and_reread(aniflow_server, local_docs):
     (local_docs / "README.md").write_text(source, encoding="utf-8")
     _, _, body = aniflow_server("/files/README.md")
     assert b"<script>alert(1)" not in body
-    block = body.decode().split(
-        '<script type="application/json" id="markdown-source">'
-    )[1]
-    assert json.loads(block.split("</script>", 1)[0]) == source
+    assert json_block(body, "markdown-source") == source
     status, headers, body = aniflow_server("/files/README.md?raw")
     assert status == 200 and body.decode() == source
     assert headers["Content-Type"] == "text/plain; charset=utf-8"
@@ -214,14 +210,11 @@ def test_help_works_without_files_or_configuration(aniflow_server, local_docs):
     before = set(local_docs.rglob("*"))
     status, headers, body = aniflow_server("/help")
     assert status == 200
-    assert b'data-local-root="/"' in body
+    assert json_block(body, "aniflow-options")["root"] == "/"
     assert b'href="/help?raw=1"' in body
     assert b'href="/files/"' in body
     assert "script-src 'nonce-" in headers["Content-Security-Policy"]
-    block = body.decode().split(
-        '<script type="application/json" id="markdown-source">'
-    )[1]
-    assert json.loads(block.split("</script>", 1)[0]) == aniflow.HELP.read_text("utf-8")
+    assert json_block(body, "markdown-source") == cli.HELP.read_text("utf-8")
     assert set(local_docs.rglob("*")) == before
 
 
@@ -230,10 +223,10 @@ def test_help_source_and_icon_catalog(aniflow_server):
     assert status == 200
     assert headers["Content-Type"] == "text/plain; charset=utf-8"
     assert headers["X-Content-Type-Options"] == "nosniff"
-    assert body == aniflow.HELP.read_bytes()
+    assert body == cli.HELP.read_bytes()
     status, _, body = aniflow_server("/icons/")
     assert status == 200
-    assert json.loads(body) == {"icons": sorted(server.ICON_NAMES)}
+    assert json.loads(body) == {"icons": sorted(web.ICON_NAMES)}
 
 
 def test_help_obeys_request_checks(aniflow_server):
@@ -241,14 +234,9 @@ def test_help_obeys_request_checks(aniflow_server):
     assert aniflow_server("/help", method="POST")[0] == 405
 
 
-def test_main_uses_available_port_without_loading_sharei_config(
-    local_docs, monkeypatch, capsys
-):
+def test_main_uses_available_port(local_docs, monkeypatch, capsys):
     monkeypatch.chdir(local_docs)
     monkeypatch.setattr("sys.argv", ["aniflow"])
-
-    def unexpected_config(*args, **kwargs):
-        pytest.fail("aniflow must not read sharei config")
 
     def stop(httpd):
         assert httpd.root == local_docs
@@ -256,9 +244,8 @@ def test_main_uses_available_port_without_loading_sharei_config(
         assert httpd.server_address[1] > 0
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(server, "load_config", unexpected_config)
-    monkeypatch.setattr(aniflow.Server, "serve_forever", stop)
-    aniflow.main()
+    monkeypatch.setattr(cli.Server, "serve_forever", stop)
+    cli.main()
     output = capsys.readouterr().out
     assert re.search(r"http://127\.0\.0\.1:[1-9]\d*", output)
 
@@ -266,7 +253,7 @@ def test_main_uses_available_port_without_loading_sharei_config(
 def test_main_rejects_missing_directory(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("sys.argv", ["aniflow", str(tmp_path / "missing")])
     with pytest.raises(SystemExit, match="2"):
-        aniflow.main()
+        cli.main()
     assert "not a directory" in capsys.readouterr().err
 
 
@@ -276,8 +263,8 @@ def test_spec_prints_reference_without_serving(tmp_path, monkeypatch, capsys):
     def unexpected_server(*args, **kwargs):
         pytest.fail("--spec must not start a server")
 
-    monkeypatch.setattr(aniflow, "Server", unexpected_server)
-    aniflow.main()
+    monkeypatch.setattr(cli, "Server", unexpected_server)
+    cli.main()
     output = capsys.readouterr().out
     for directive in ("%% play:", "%% skip", "%% wait", "@ok"):
         assert directive in output
@@ -286,7 +273,7 @@ def test_spec_prints_reference_without_serving(tmp_path, monkeypatch, capsys):
             r"`([a-z-]+)`", output.split("### Built-in icons")[1].split("\n## ")[0]
         )
     )
-    assert listed == server.ICON_NAMES
+    assert listed == web.ICON_NAMES
 
 
 def post_comment(request, action, target, data=None, query="", headers=None):
@@ -373,7 +360,8 @@ def test_comments_persist_and_are_separate_by_root_and_document(
         assert status == 200 and json.loads(body)["comments"][0]["body"] == target
     assert json.loads(other("/comments/file/README.md")[2])["comments"] == []
     assert json.loads(other("/comments/help")[2])["comments"] == []
-    assert b'data-comments="/comments/help"' in restarted("/help")[2]
+    help_options = json_block(restarted("/help")[2], "aniflow-options")
+    assert help_options["comments"]["url"] == "/comments/help"
 
 
 @pytest.mark.parametrize(
@@ -407,7 +395,7 @@ def test_comments_validate_requests(aniflow_server):
         {"start": 0, "body": "x"},
         {"start": True, "body": "x"},
         {"start": 1, "end": 100, "body": "x"},
-        {"start": 1, "body": "x" * (server.COMMENT_MAX_CHARS + 1)},
+        {"start": 1, "body": "x" * (comments.COMMENT_MAX_CHARS + 1)},
     ):
         assert post_comment(aniflow_server, "add", target, data)[0] == 400
     assert (

@@ -12,7 +12,7 @@ description: Write animated Mermaid diagram walkthroughs that look good and
 
 # aniflow diagrams
 
-aniflow is a local Markdown browser that ships with sharei. It plays Mermaid
+aniflow is a local Markdown browser. It plays Mermaid
 flowcharts and sequence diagrams as short stories, driven by `%%` comment
 lines inside the fence. Everything else that renders Mermaid ignores those
 lines and draws a plain diagram, so a walkthrough never breaks a document.
@@ -25,7 +25,7 @@ built-in icon names:
 
 ```bash
 aniflow --spec
-uvx --from git+https://github.com/chmouel/sharei aniflow --spec   # aniflow not on PATH
+uvx --from git+https://github.com/chmouel/aniflow aniflow --spec   # aniflow not on PATH
 ```
 
 Do not rely on memory for the syntax; the reference is the source of truth.

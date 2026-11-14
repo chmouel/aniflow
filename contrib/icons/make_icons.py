@@ -1,6 +1,6 @@
-"""Build sharei's diagram icons from Lucide.
+"""Build the diagram icons from Lucide.
 
-Usage: python contrib/icons/make_icons.py LUCIDE_STATIC_DIR src/sharei/icons
+Usage: python contrib/icons/make_icons.py LUCIDE_STATIC_DIR src/aniflow/icons
 
 LUCIDE_STATIC_DIR is an unpacked lucide-static package (npm pack lucide-static).
 Each icon becomes a 48x48 tile: a tinted rounded square with the Lucide glyph

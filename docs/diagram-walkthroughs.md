@@ -1,16 +1,15 @@
 # Diagram walkthroughs
 
-sharei can play a mermaid flowchart or sequence diagram as a short story. A
+aniflow can play a mermaid flowchart or sequence diagram as a short story. A
 labelled dot travels from box to box, the box it reaches lights up, finished
 boxes get a check mark,
 and boxes the story does not use fade out. One diagram can hold several
 stories, and boxes can carry pictures.
 
-This document describes how that works. It is also the demo: share it with
-`sharec docs/diagram-walkthroughs.md` and press play on the diagram below. The
-picker next to the button switches between the two stories.
+This document describes how that works. It is also the demo: open it with
+`aniflow docs` and press play on the diagram below. The picker next to the button switches between the two stories.
 
-GitHub draws the same diagram without playback. Paused halfway, sharei shows
+GitHub draws the same diagram without playback. Paused halfway, aniflow shows
 this:
 
 ![The demo paused while the dot carries "prompt" to the agent](screenshots/walkthrough.png)
@@ -60,7 +59,7 @@ flowchart LR
 
 A walkthrough lives in the same mermaid block as the flowchart, written as
 `%%` comment lines. Mermaid, GitHub and every other renderer ignore comments,
-so the diagram still draws everywhere else and only sharei plays it.
+so the diagram still draws everywhere else and only aniflow plays it.
 
 ```text
 %% play: Title          starts a story; the title shows in the picker
@@ -97,7 +96,7 @@ own edge would have alone, so a short edge finishes first and its box lights
 up while the longer one is still travelling. The step ends when the last dot
 arrives. The label rides on the first dot only. Every listed box takes part:
 if one pair has no edge, the whole step is skipped. Listing several boxes on
-both sides (`A, B -> C, D`) is ambiguous, so sharei skips it the same way;
+both sides (`A, B -> C, D`) is ambiguous, so aniflow skips it the same way;
 write one step per edge instead.
 
 ### Choosing between parallel edges
@@ -141,7 +140,7 @@ through it with the step that follows, and waits get no tick on the rail.
 ### Steps that cannot play
 
 When a step names a node that does not exist, a pair with no edge, an
-unknown edge id, or a `wait` without a number, sharei leaves it out and the
+unknown edge id, or a `wait` without a number, aniflow leaves it out and the
 rest of the story plays. A warning badge with the count shows in the
 toolbar, and opening it lists each dropped step with its story, its line in
 the document and the reason. The same list goes to the browser console. A
@@ -382,18 +381,17 @@ A@{ img: "logo.png", label: "Build", w: 48, h: 48, constraint: "on" }
 `w` and `h` size the picture, and `constraint: "on"` keeps its proportions.
 `pos: "t"` moves the label above the picture.
 
-sharei accepts four kinds of picture:
+aniflow accepts four kinds of picture:
 
 - A file next to the markdown, such as `logo.png` or `icons/logo.png`. The
-  reader looks it up by name in the same drop folder, like an ordinary
-  markdown image. `sharec` uploads it along with the markdown and rewrites the
+  reader resolves it against the document, like an ordinary markdown image.
+  In sharei, `sharec` uploads it along with the markdown and rewrites the
   path, with the same checks it applies to markdown images: the file must sit
   inside the git checkout or the document's folder, with no hidden folder or
   symlink escape on the way, its contents must match its extension, and you
   confirm the upload.
-- A path on the sharei server itself, starting with `/`. This is what
-  `sharec` writes in place of a local file, and how the built-in icons below
-  are used.
+- A path on the server itself, starting with `/`. This is how the built-in
+  icons below are used, and what `sharec` writes in place of a local file.
 - An `https://` URL.
 - A `data:image/...` URL for PNG, JPEG, GIF, WebP or SVG.
 
@@ -407,14 +405,15 @@ sits on the picture's corner, and skipped ones fade.
 
 GitHub draws mermaid in a separate frame where a relative picture path does
 not resolve. If a diagram has to look right on GitHub as well, use https URLs
-for its pictures. On notes pages from the Obsidian vault, use https or data
+for its pictures. On sharei's notes pages from the Obsidian vault, use https or data
 pictures: the vault serves a file only when a note links to it with ordinary
 markdown, and a picture inside a diagram does not count as such a link.
-The built-in icons work everywhere sharei draws the diagram, notes included.
+The built-in icons work everywhere the reader draws the diagram, sharei's
+notes included.
 
 ### Built-in icons
 
-sharei serves a set of icons at `/icons/<name>.svg`, so a diagram can have
+aniflow serves a set of icons at `/icons/<name>.svg`, so a diagram can have
 pictures without shipping any files:
 
 ```text
@@ -463,8 +462,8 @@ leaving full screen; the page scrolls to the slide you were on.
 
 ## How it fits on mermaid's output
 
-All of this happens in the browser, in `MARKDOWN_JS` in
-`src/sharei/reader.py`. The server does not change.
+All of this happens in the browser, in the modules under `js/diagram/`. The
+server does not change.
 
 1. Before rendering, `playScript()` reads the stories out of the block's
    source, since mermaid drops comments from its output, and notes each
@@ -524,9 +523,9 @@ The markdown is untrusted, and so is everything in a walkthrough.
 - Picture URLs go through the allowlist above before mermaid sees them.
   Anything that does not pass is swapped for the built-in placeholder, which
   is a fixed data URL.
-- The `/md` page keeps its nonce-based CSP. Its `img-src 'self' https: data:`
+- The reader page keeps its nonce-based CSP. Its `img-src 'self' https: data:`
   already covered these pictures, so the policy did not change.
-- `sharec` scans `img:` values inside mermaid fences only, and uploads them
+- In sharei, `sharec` scans `img:` values inside mermaid fences only, and uploads them
   through the existing image checks.
 
 ## Not covered

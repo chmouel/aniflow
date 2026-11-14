@@ -284,7 +284,7 @@ THEME_READER_CSS = theme_reader_css()
 
 THEME_JS = """
 (() => {
-  const root = document.documentElement, key = 'sharei-theme';
+  const root = document.documentElement, key = %s;
   const themes = %s;
   const media = matchMedia('(prefers-color-scheme: dark)');
   function picked() {
@@ -303,7 +303,7 @@ THEME_JS = """
     const meta = document.querySelector('meta[name=theme-color]');
     if (meta) meta.content = themes[theme][1];
   }
-  window.shareiTheme = (name) => {
+  window.aniflowTheme = (name) => {
     try { localStorage.setItem(key, name); } catch (error) {}
     apply();
   };
@@ -314,10 +314,12 @@ THEME_JS = """
 """
 
 
-def theme_script(nonce: str = "") -> str:
+def theme_script(nonce: str = "", key: str = "aniflow-theme") -> str:
+    """Sets the page's theme before it paints, from the choice saved under key in localStorage."""
     themes = {name: [mode, values[0]] for name, (_, mode, values) in THEMES.items()}
     attribute = f' nonce="{nonce}"' if nonce else ""
-    return f"<script{attribute}>{THEME_JS % json.dumps(themes)}</script>"
+    script = THEME_JS % (json.dumps(key), json.dumps(themes))
+    return f"<script{attribute}>{script}</script>"
 
 
 def theme_select(nonce: str) -> str:
@@ -330,7 +332,7 @@ def theme_select(nonce: str) -> str:
         f'<script nonce="{nonce}">'
         "const themeSelect = document.getElementById('theme-select');"
         "themeSelect.value = document.documentElement.dataset.choice;"
-        "themeSelect.addEventListener('change', () => window.shareiTheme(themeSelect.value));"
+        "themeSelect.addEventListener('change', () => window.aniflowTheme(themeSelect.value));"
         "</script>"
     )
 
@@ -353,7 +355,7 @@ THEME_PICKER_JS = """
   menu.addEventListener('click', (event) => {
     const item = event.target.closest('button[data-theme]');
     if (!item) return;
-    window.shareiTheme(item.dataset.theme);
+    window.aniflowTheme(item.dataset.theme);
     paint();
   });
   document.addEventListener('click', (event) => { if (!menu.hidden && !menu.contains(event.target)) toggle(false); });
