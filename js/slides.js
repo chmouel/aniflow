@@ -7,6 +7,8 @@ export let slideAt = -1;
 export let slideDock = null;
 export let slideFull = false;
 export let slideIdle = 0;
+// The hash the page had before presenting, such as a try page #src= link, put back on leaving.
+let slideReturn = '';
 export const isHeading = (element) => /^H[1-6]$/.test(element.tagName);
 export function slideGroups() {
   const blocks = [...host.article.children].filter((element) => !element.matches('.frontmatter, .frontmatter-raw, .review-gutter'));
@@ -63,6 +65,7 @@ export function present(at, direction) {
   const groups = slideGroups();
   if (!groups.length || at < 0 || at >= groups.length) return false;
   if (slideAt < 0) {
+    slideReturn = /^#slide=\d+$/.test(location.hash) ? '' : location.hash;
     document.body.classList.add('presenting');
     if (!slideDock) buildDock();
     host.presentButton?.setAttribute('aria-pressed', 'true');
@@ -100,7 +103,8 @@ export function stopPresenting() {
   document.body.classList.remove('presenting', 'slide-solo', 'slide-idle');
   host.presentButton?.setAttribute('aria-pressed', 'false');
   slideAt = -1;
-  history.replaceState(null, '', location.pathname + location.search);
+  history.replaceState(null, '', location.pathname + location.search + slideReturn);
+  slideReturn = '';
   if (slideFull && document.fullscreenElement) document.exitFullscreen().catch(() => {});
   slideFull = false;
   first?.scrollIntoView({ block: 'start' });

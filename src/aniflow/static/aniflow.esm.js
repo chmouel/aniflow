@@ -3311,6 +3311,7 @@ var slideAt = -1;
 var slideDock = null;
 var slideFull = false;
 var slideIdle = 0;
+var slideReturn = "";
 var isHeading = (element2) => /^H[1-6]$/.test(element2.tagName);
 function slideGroups() {
   const blocks = [...host.article.children].filter((element2) => !element2.matches(".frontmatter, .frontmatter-raw, .review-gutter"));
@@ -3362,6 +3363,7 @@ function present(at, direction) {
   const groups = slideGroups();
   if (!groups.length || at < 0 || at >= groups.length) return false;
   if (slideAt < 0) {
+    slideReturn = /^#slide=\d+$/.test(location.hash) ? "" : location.hash;
     document.body.classList.add("presenting");
     if (!slideDock) buildDock();
     host.presentButton?.setAttribute("aria-pressed", "true");
@@ -3397,7 +3399,8 @@ function stopPresenting() {
   document.body.classList.remove("presenting", "slide-solo", "slide-idle");
   host.presentButton?.setAttribute("aria-pressed", "false");
   slideAt = -1;
-  history.replaceState(null, "", location.pathname + location.search);
+  history.replaceState(null, "", location.pathname + location.search + slideReturn);
+  slideReturn = "";
   if (slideFull && document.fullscreenElement) document.exitFullscreen().catch(() => {
   });
   slideFull = false;
