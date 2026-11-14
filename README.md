@@ -7,6 +7,8 @@ caption explains each step, and a document can turn into slides.
 It comes as a small command that serves a folder of Markdown files, and as a
 JavaScript library other apps can embed (sharei uses it for its reader).
 
+![A fix travels from issue to release in a playing diagram](docs/screenshots/demo.gif)
+
 ## Run it
 
 Browse the Markdown in the current directory and its subfolders:
@@ -28,6 +30,11 @@ Documents get syntax highlighting, colour themes, a table of contents and
 interactive Mermaid flowcharts. Relative links and images stay relative to
 each document, including pictures in flowcharts, and the built-in `/icons/`
 pictures work too.
+
+<p align="center">
+  <img src="docs/screenshots/macos.png" width="49%" alt="A document in the light theme, with its contents on the side and a diagram playing">
+  <img src="docs/screenshots/linux.png" width="49%" alt="The same diagram as a slide in the Tokyo Night theme">
+</p>
 
 aniflow binds to `127.0.0.1` by default; use `--host` to change that. It only
 reads files from the chosen directory, leaving out hidden paths and symlinks
