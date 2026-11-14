@@ -42,10 +42,10 @@ Do not rely on memory for the syntax; the reference is the source of truth.
    in the background and stop it when done.
 5. If the diagram toolbar shows a warning badge, open it: every dropped step
    is listed with its line and reason. Fix all of them.
-6. Once it plays cleanly, ask the user whether they want a link that opens
-   the document in the online try page. Only after they say yes, run
-   `aniflow --share <file>` (or the `uvx` command with `--share <file>` in
-   place of `--spec`) and give them the printed URL. Add `--open` if they
+6. Share it only when the user asks for a link or to share the diagram.
+   Don't offer it on your own. Then run `aniflow --share <file>` (or the
+   `uvx` command with `--share <file>` in place of `--spec`) and give them
+   the printed URL. Add `--open` if they
    want it opened in their browser. Tell them the whole text sits in the
    link, so anyone who gets the link can read it. Pictures other than
    `/icons/` and https URLs will not show there; the command lists them on
