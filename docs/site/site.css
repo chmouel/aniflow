@@ -199,3 +199,33 @@ footer { padding: 40px 0 64px; border-top: 1px solid var(--rule); color: var(--i
   .try-preview { position: static; height: auto; min-height: 420px; box-shadow: 6px 6px 0 var(--night); }
 }
 .try-error { margin-top: -8px; font-size: 0.9rem; color: #b42318; }
+
+/* Presenting from the try page: only the preview stays, at full size */
+body.presenting :is(header.top, footer, .try-head, .try-tools, .try-editor, .skip) { display: none !important; }
+body.presenting .try-split { display: block; width: 100%; padding: 0; }
+body.presenting .try-preview { position: static; height: auto; overflow: visible; border: 0; border-radius: 0; box-shadow: none; background: var(--bgColor-muted, #f6f6f3); }
+body.presenting .try-preview .reader.demo { display: flex; flex-direction: column; justify-content: center; min-height: 100dvh; padding: clamp(28px, 7vh, 88px) clamp(20px, 7vw, 120px) 96px; }
+body.presenting.slide-solo .try-preview .reader.demo { height: 100dvh; }
+body.presenting .try-error { display: none; }
+
+/* The big round "Try it" at the top of the home page */
+.hero-stage { position: relative; }
+.try-circle {
+  position: absolute; top: -78px; right: -44px; z-index: 2;
+  display: grid; place-content: center; text-align: center;
+  width: 148px; height: 148px; border-radius: 50%;
+  background: var(--gold); color: var(--night); text-decoration: none;
+  border: 2px solid var(--night); box-shadow: 6px 6px 0 var(--night);
+  transform: rotate(-8deg); transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
+}
+.try-circle strong { font: 700 2.1rem/1 var(--serif); }
+.try-circle span { font-size: 0.8rem; line-height: 1.25; margin-top: 4px; }
+.try-circle:hover { background: var(--pink); transform: rotate(0deg) scale(1.05); box-shadow: 8px 8px 0 var(--night); }
+.try-circle:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+@media (prefers-reduced-motion: reduce) { .try-circle { transition: none; } }
+@media (max-width: 1200px) { .try-circle { right: -10px; } }
+@media (max-width: 900px) {
+  .try-circle { top: -64px; right: -6px; width: 104px; height: 104px; }
+  .try-circle strong { font-size: 1.45rem; }
+  .try-circle span { font-size: 0.7rem; }
+}

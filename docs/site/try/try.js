@@ -62,6 +62,40 @@ flowchart LR
 `,
   },
   {
+    name: 'Slides',
+    source: `# How a fix ships
+
+Each \`##\` heading is a slide. Press Present, then use the arrow keys.
+
+## The bug
+
+A reader reports that exports crop the last row of a table.
+
+- It only happens with more than 40 rows.
+- The fix is two lines.
+
+## The path
+
+\`\`\`mermaid
+flowchart LR
+  I@{ img: "/icons/issue.svg", label: "Issue", w: 56, h: 56, constraint: "on" }
+  A@{ img: "/icons/agent.svg", label: "Agent", w: 56, h: 56, constraint: "on" }
+  P@{ img: "/icons/pipeline.svg", label: "CI", w: 56, h: 56, constraint: "on" }
+  S@{ img: "/icons/release.svg", label: "Release", w: 56, h: 56, constraint: "on" }
+  I --> A --> P --> S
+
+%% play: Ship it
+%% I -> A : #42 | The issue lands with the agent.
+%% A -> P : PR | A pull request runs the tests.
+%% P -> S : green | Everything passes and it ships.
+\`\`\`
+
+## What changed
+
+Exports now page through every row before writing the file.
+`,
+  },
+  {
     name: 'Sequence diagram',
     source: `# A push, step by step
 
@@ -237,6 +271,7 @@ const page = Aniflow.reader({
   source: '',
   mermaid: '../lib/vendor/mermaid.min.js',
   resolveImage: (url) => (url.startsWith('/icons/') ? '../lib' + url : null),
+  presentButton: '#present',
 });
 
 let shown = null;

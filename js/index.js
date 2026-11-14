@@ -7,7 +7,7 @@ import { readFrontMatter } from './reader/frontmatter.js';
 import { directoryUrl, renderLocal } from './reader/render.js';
 import { initReview } from './reader/review.js';
 import { initShow, show } from './reader/show.js';
-import { initSlides } from './slides.js';
+import { initSlides, slideGroups, stopPresenting } from './slides.js';
 
 const element = (value) => typeof value === 'string' ? document.querySelector(value) : value || null;
 const none = () => null;
@@ -55,8 +55,10 @@ export function reader(options = {}) {
   return {
     // Renders new markdown into the same article, replacing the diagrams already drawn.
     update(source) {
+      stopPresenting();
       host.source = source ?? '';
       show(renderLocal());
+      if (host.presentButton) host.presentButton.hidden = slideGroups().length < 2;
     },
   };
 }

@@ -39,6 +39,7 @@
       <select id="example"></select>
     </label>
     <button type="button" class="button ghost" id="share" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>Copy link</button>
+    <button type="button" class="button ghost" id="present" aria-pressed="false" title="Present (P)" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4.5h18v11H3zM12 15.5V20M8 20h8M10 8l4 2.5-4 2.5z"/></svg>Present</button>
     <button type="button" class="try-count" id="problem-count" hidden></button>
     <span id="status" class="try-status" role="status"></span>
   </div>
@@ -59,7 +60,7 @@
           <tr><td><code>%% skip A B</code></td><td>fades boxes this story doesn't use</td></tr>
           <tr><td><code>%% wait 1500</code></td><td>holds the picture for a second and a half</td></tr>
         </table>
-        <p>Pictures go in a box with <code>img: "/icons/agent.svg"</code>. Tab indents; press Escape first to move on with Tab.</p>
+        <p>Each <code>##</code> heading starts a slide; Present shows them one at a time, and the arrow keys walk each diagram's story before moving on. Pictures go in a box with <code>img: "/icons/agent.svg"</code>. Tab indents; press Escape first to move on with Tab.</p>
       </details>
     </div>
     <div class="try-preview">

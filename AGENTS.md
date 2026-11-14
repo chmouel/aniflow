@@ -85,7 +85,9 @@ the wheel, so `uvx --from git+...` works without Node.
   share links holding the source deflated into `#src=`. It lists Mermaid
   errors, dropped walkthrough steps (`.diagram-problems li[data-line]`) and
   missing pictures under the editor by document line, and marks those lines
-  in the textarea.
+  in the textarea. Its Present button (`presentButton`) shows the preview
+  as slides, and body `presenting` CSS in `site.css` hides the rest of the
+  page.
 
 ## The aniflow command
 

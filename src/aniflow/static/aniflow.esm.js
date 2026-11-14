@@ -3393,6 +3393,7 @@ function stopPresenting() {
   const first = host.article.querySelector(":scope > .slide-on");
   for (const element2 of host.article.querySelectorAll(":scope > .slide-on")) element2.classList.remove("slide-on");
   host.article.classList.remove("slide-enter");
+  clearTimeout(slideIdle);
   document.body.classList.remove("presenting", "slide-solo", "slide-idle");
   host.presentButton?.setAttribute("aria-pressed", "false");
   slideAt = -1;
@@ -3530,8 +3531,10 @@ function reader(options = {}) {
   return {
     // Renders new markdown into the same article, replacing the diagrams already drawn.
     update(source) {
+      stopPresenting();
       host.source = source ?? "";
       show(renderLocal());
+      if (host.presentButton) host.presentButton.hidden = slideGroups().length < 2;
     }
   };
 }

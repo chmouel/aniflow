@@ -96,6 +96,7 @@ export function stopPresenting() {
   const first = host.article.querySelector(':scope > .slide-on');
   for (const element of host.article.querySelectorAll(':scope > .slide-on')) element.classList.remove('slide-on');
   host.article.classList.remove('slide-enter');
+  clearTimeout(slideIdle);
   document.body.classList.remove('presenting', 'slide-solo', 'slide-idle');
   host.presentButton?.setAttribute('aria-pressed', 'false');
   slideAt = -1;
