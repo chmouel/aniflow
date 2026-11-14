@@ -41,7 +41,8 @@ jobs:
           sed -i -e "s#site\.css\"#site.css?v=${GITHUB_SHA::8}\"#" \
             -e "s#site\.js\"#site.js?v=${GITHUB_SHA::8}\"#" \
             -e "s#lib/aniflow\.min\.js\"#lib/aniflow.min.js?v=${GITHUB_SHA::8}\"#" \
-            -e "s#lib/aniflow\.css\"#lib/aniflow.css?v=${GITHUB_SHA::8}\"#" docs/site/index.html
+            -e "s#lib/aniflow\.css\"#lib/aniflow.css?v=${GITHUB_SHA::8}\"#" \
+            -e "s#try\.js\"#try.js?v=${GITHUB_SHA::8}\"#" docs/site/index.html docs/site/try/index.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

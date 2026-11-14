@@ -149,3 +149,35 @@ footer { padding: 40px 0 64px; border-top: 1px solid var(--rule); color: var(--i
 @media (max-width: 520px) {
   .wrap { width: calc(100% - 32px); }
 }
+
+/* Try it page */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.try-head { padding-top: 28px; }
+.try-head h1 { font: 700 2.4rem/1.1 var(--serif); margin: 0 0 8px; }
+.try-head p { margin: 0; color: var(--ink-soft); max-width: 42rem; }
+.try-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding-top: 22px; padding-bottom: 14px; }
+.try-tools label { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; color: var(--ink-soft); }
+.try-tools select { font: inherit; color: var(--ink); background: #fbfbf9; border: 1px solid var(--ink); border-radius: 6px; padding: 6px 10px; }
+.try-tools .button { padding: 6px 14px; font-size: 0.9rem; }
+.try-status { font-size: 0.88rem; color: var(--accent); }
+.try-page .wrap { width: min(1400px, 100% - 48px); }
+.try-split { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 22px; width: min(1400px, 100% - 48px); margin: 0 auto; padding-bottom: 56px; align-items: start; }
+.try-editor textarea {
+  display: block; width: 100%; height: min(72vh, 760px); resize: vertical;
+  background: var(--night); color: #ece8f5; caret-color: var(--gold);
+  border: 1px solid var(--night); border-radius: 8px; padding: 16px 18px;
+  font: 0.84rem/1.65 var(--mono); tab-size: 2; white-space: pre; overflow-wrap: normal;
+}
+.try-editor textarea:focus { outline: 3px solid var(--accent); outline-offset: 2px; }
+.try-help { margin-top: 12px; font-size: 0.9rem; }
+.try-help summary { cursor: pointer; color: var(--ink-soft); }
+.try-help p { color: var(--ink-soft); margin: 10px 0 0; }
+.try-preview { background: #fbfbf9; border: 1px solid var(--ink); border-radius: 8px; box-shadow: 10px 10px 0 var(--night); height: min(72vh, 760px); overflow: auto; position: sticky; top: 16px; }
+.try-preview .reader.demo { min-height: 0; }
+@media (max-width: 900px) {
+  .try-page .wrap, .try-split { width: calc(100% - 32px); }
+  .try-split { grid-template-columns: 1fr; }
+  .try-editor textarea { height: 44vh; }
+  .try-preview { position: static; height: auto; min-height: 420px; box-shadow: 6px 6px 0 var(--night); }
+}
+.try-error { margin-top: -8px; font: 0.82rem/1.5 var(--mono); color: #b42318; white-space: pre-wrap; overflow-wrap: anywhere; }

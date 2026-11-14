@@ -80,7 +80,9 @@ the wheel, so `uvx --from git+...` works without Node.
   files, the icons and the `html[data-mode]` colours into the ignored
   `docs/site/lib/`; the `pages` workflow runs it and deploys on pushes to
   main. Preview with `docs/site/assemble.sh` then
-  `python3 -m http.server -d docs/site`.
+  `python3 -m http.server -d docs/site`. `try/` is a playground: a textarea
+  feeding `update()`, examples, a draft in localStorage `aniflow-try` and
+  share links holding the source deflated into `#src=`.
 
 ## The aniflow command
 
@@ -101,7 +103,12 @@ tables, footnotes and code (`div.highlight.highlight-source-<lang>`, which
 the mermaid step looks for) so github-markdown.css styles it, then sanitizes
 with DOMPurify. `reader.css` styles the result scoped under `.reader`. Code
 blocks get a copy button, the contents become a sticky side rail from
-1240px, and a progress line runs under the bar.
+1240px, and a progress line runs under the bar. `reader()` returns
+`update(source)`, which sets `host.source` and calls `show()` again. Each
+`show()` aborts the previous `host.render` AbortController and makes a new
+one; per-diagram document and window listeners pass its `signal`, a player
+stops ticking once its stage is disconnected, and `drawDiagrams` skips
+blocks replaced mid-render.
 
 An `aniflow_lines` core rule copies markdown-it's `token.map` onto blocks as
 `data-line`/`data-line-end` (1-based, inclusive) and `data-code` on code
