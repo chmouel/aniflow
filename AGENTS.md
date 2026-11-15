@@ -169,7 +169,9 @@ Shift+arrow pans.
 Deep links (`#diagram=N&story=S&step=K&focus=A,B`, `hash.js`) use the
 `where()`/`restore()` API `playDiagram` returns and `focusDiagram`'s
 `get()`/`set()`, kept on the stage as `diagramPlay` and `diagramFocus`. A
-match opens the diagram full screen through `stage.diagramFull()`.
+match opens the diagram full screen through `stage.diagramFull()`. The site's
+hero button holds `diagramPlay` too, calling `playing()` and `toggle()` to run
+the demo.
 
 Labels and captions are set with `textContent` or `fillText`. Unresolved
 steps are dropped with a reason and listed by `diagramWarnings()` in a

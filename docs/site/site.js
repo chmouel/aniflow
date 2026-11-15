@@ -28,3 +28,25 @@ Aniflow.reader({
   mermaid: 'lib/vendor/mermaid.min.js',
   resolveImage: (url) => (url.startsWith('/icons/') ? 'lib' + url : null),
 });
+
+// "Run it" runs the hero workflow rather than leaving for the install notes: it presses the
+// stage's own play button, or waits for mermaid to finish drawing the stage first.
+const run = document.getElementById('run');
+const play = () => {
+  const stage = document.querySelector('#demo .diagram-stage');
+  if (!stage?.diagramPlay) return false;
+  if (!stage.diagramPlay.playing()) stage.diagramPlay.toggle();
+  stage.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  return true;
+};
+let waiting = false;
+run.addEventListener('click', () => {
+  if (play() || waiting) return;
+  waiting = true;
+  const observer = new MutationObserver(() => {
+    if (!play()) return;
+    waiting = false;
+    observer.disconnect();
+  });
+  observer.observe(document.getElementById('demo'), { childList: true, subtree: true });
+});

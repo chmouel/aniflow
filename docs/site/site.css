@@ -46,7 +46,7 @@ h3 { font: 600 1.35rem/1.25 var(--serif); margin: 0 0 8px; }
 .prose { max-width: 38em; }
 .prose p { margin: 0 0 1em; }
 
-.button { display: inline-block; background: var(--ink); color: #fff; padding: 9px 20px; border-radius: 999px; text-decoration: none; font-weight: 500; font-size: 0.95rem; line-height: 1.4; }
+.button { display: inline-block; background: var(--ink); color: #fff; padding: 9px 20px; border: 0; border-radius: 999px; text-decoration: none; font-family: inherit; font-weight: 500; font-size: 0.95rem; line-height: 1.4; cursor: pointer; }
 .button:hover { background: var(--accent); }
 .button svg { width: 1.15em; height: 1.15em; margin: -2px 8px 0 -2px; vertical-align: middle; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .button svg.solid { fill: currentColor; stroke: none; }

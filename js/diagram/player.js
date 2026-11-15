@@ -733,5 +733,5 @@ export function playDiagram(stage, svg, tools, scripts, home, share, edges) {
     return true;
   }
   sync();
-  return { where: where, restore: restore, aim: aim, walk: walk, toggle: () => (playing ? pause() : play()) };
+  return { where: where, restore: restore, aim: aim, walk: walk, playing: () => playing, toggle: () => (playing ? pause() : play()) };
 }

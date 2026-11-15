@@ -2772,7 +2772,7 @@ function playDiagram(stage, svg, tools, scripts, home, share, edges) {
     return true;
   }
   sync();
-  return { where, restore, aim, walk, toggle: () => playing ? pause() : play() };
+  return { where, restore, aim, walk, playing: () => playing, toggle: () => playing ? pause() : play() };
 }
 
 // js/diagram/stage.js
