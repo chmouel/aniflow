@@ -16,14 +16,16 @@ the wheel, so `uvx --from git+...` works without Node.
 
 - `js/index.js`: the public API. `reader(options)` copies the options into
   the shared `host` object (`js/host.js`), renders, then wires slides,
-  review and diagram deep links. Also exports `directoryResolver(root)`,
+  review and diagram deep links. `diagrams(options)` animates the Mermaid
+  blocks already in a page rendered elsewhere (a static site) and returns
+  `{redraw()}`. Also exports `directoryResolver(root)`,
   `diagramExport(stage, kind)` for a gif, mp4, webm or png of one diagram,
   `addBusyCheck`, `busy`, `parse` (`playScript`), `diagramLines`,
   `flowchartLines`, `readFrontMatter` and `setSpeed`.
 - `js/host.js`: page settings every module reads (`host.article`,
   `host.nonce`, `host.mermaid`, `host.resolveImage`, `host.commentsUrl`...).
-  Only `reader()` writes it; `host.save(name, blob)` hands a finished diagram
-  file to the page behind the reader's `save` option.
+  Only `reader()` and `diagrams()` write it; `host.save(name, blob)` hands
+  a finished diagram file to the page behind the reader's `save` option.
 - `js/reader/`: `render.js` (the markdown-it pipeline and
   `directoryUrl()`), `frontmatter.js`, `github.js` (task lists, alerts,
   callouts, `sanitize()` through DOMPurify), `code.js` (copy buttons),
@@ -32,8 +34,10 @@ the wheel, so `uvx --from git+...` works without Node.
 - `js/diagram/`: the walkthrough engine, see below.
 - `js/slides.js`: presentation mode.
 - `js/css/`: `page.css` (the page around the reader: bar, layout, notice),
-  `markdown.css` and `reader.css` (the document, diagrams, slides). The
-  build joins the last two into `aniflow.css`.
+  `markdown.css`, `diagram.css` and `reader.css` (the document, diagrams,
+  slides). The
+  build joins all three into `aniflow.css`; `diagram.css`
+  alone is `aniflow-diagrams.css` for `diagrams()`.
 - `build.mjs`: esbuild to `aniflow.min.js` (IIFE, global `Aniflow`),
   `aniflow.esm.js`, `aniflow.css`, `page.css`. `--check` fails when the
   committed files differ from a fresh build.
@@ -46,7 +50,9 @@ the wheel, so `uvx --from git+...` works without Node.
   raw deflate plus unpadded base64url as `docs/site/try/try.js` decodes
   it, warns on stderr about pictures the site cannot load
   (`offline_pictures()`) and links over `SHARE_LONG`, and exits; `--open`
-  also opens it.
+  also opens it. `aniflow --check FILE...` draws each file in headless
+  Chrome (`export.check()`) and prints failed diagrams, dropped steps and
+  missing pictures as `file:line:`, exiting 1 on any.
 - `src/aniflow/web.py`: `Handler`, a `BaseHTTPRequestHandler` with the
   request checks (`request_allowed()`, `host_allowed()`,
   `origin_allowed()`; `allowed_hosts()` and `allowed_origins()` are for a

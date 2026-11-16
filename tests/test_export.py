@@ -439,3 +439,59 @@ def test_export_end_to_end_writes_kind(tmp_path, capsys, kind, prefix):
     captured = capsys.readouterr()
     assert str(written[0]) in captured.out
     assert "wrote" in captured.err
+
+
+def test_export_server_records_what_a_check_found(export_server):
+    server, request = export_server
+    payload = {
+        "failures": [{"diagram": 2, "line": 9, "message": "Parse error"}],
+        "problems": [{"line": 7, "story": "Ship", "reason": "no box named C"}],
+        "pictures": [{"line": 3, "message": "/icons/nope.svg (did not load)"}],
+    }
+    status, _, _ = request(
+        server.done_url, method="POST", body=json.dumps(payload).encode()
+    )
+    assert status == 200
+    assert server.failures == [{"diagram": 2, "line": 9, "message": "Parse error"}]
+    assert server.problems == payload["problems"]
+    assert server.pictures == payload["pictures"]
+
+
+def test_check_prints_file_lines_and_fails(tmp_path, monkeypatch, capsys):
+    plain = tmp_path / "plain.md"
+    plain.write_text("# No diagram\n", encoding="utf-8")
+    walk = tmp_path / "walk.md"
+    walk.write_text("```mermaid\nflowchart LR\n  A --> B\n```\n", encoding="utf-8")
+    rendered = []
+
+    def render(text, folder, name, outdir, kind, diagrams):
+        rendered.append((name, kind))
+        server = export.ExportServer(text, folder, name, outdir, kind)
+        server.server_close()
+        server.problems.append(
+            {"line": 4, "story": "Ship", "reason": "no box named C", "text": "B -> C"}
+        )
+        server.failures.append({"diagram": 2, "line": 9, "message": "Parse error"})
+        return server, 0
+
+    monkeypatch.setattr(export, "render", render)
+    assert export.check([str(plain), str(walk)]) == 1
+    assert rendered == [("walk.md", "check")]
+    out = capsys.readouterr().out.splitlines()
+    assert out == [
+        f"{walk}:9: diagram does not render: Parse error",
+        f"{walk}:4: Ship: no box named C (B -> C)",
+    ]
+
+
+def test_check_passes_a_clean_document(tmp_path, monkeypatch):
+    walk = tmp_path / "walk.md"
+    walk.write_text("```mermaid\nflowchart LR\n  A --> B\n```\n", encoding="utf-8")
+
+    def render(text, folder, name, outdir, kind, diagrams):
+        server = export.ExportServer(text, folder, name, outdir, kind)
+        server.server_close()
+        return server, 0
+
+    monkeypatch.setattr(export, "render", render)
+    assert export.check([str(walk)]) == 0

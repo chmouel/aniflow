@@ -13,7 +13,8 @@ const banner = { js: '/* aniflow, Apache-2.0, https://github.com/chmouel/aniflow
 await build({ entryPoints: ['js/index.js'], bundle: true, format: 'iife', globalName: 'Aniflow', minify: true, target: 'es2022', outfile: join(out, 'aniflow.min.js'), banner, legalComments: 'none' });
 await build({ entryPoints: ['js/index.js'], bundle: true, format: 'esm', target: 'es2022', outfile: join(out, 'aniflow.esm.js'), banner });
 const css = (names) => names.map((name) => readFileSync(join('js/css', name), 'utf8')).join('');
-writeFileSync(join(out, 'aniflow.css'), css(['markdown.css', 'reader.css']));
+writeFileSync(join(out, 'aniflow.css'), css(['markdown.css', 'diagram.css', 'reader.css']));
+writeFileSync(join(out, 'aniflow-diagrams.css'), css(['diagram.css']));
 writeFileSync(join(out, 'page.css'), css(['page.css']));
 
 if (check) {

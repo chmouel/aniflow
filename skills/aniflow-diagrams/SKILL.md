@@ -42,6 +42,8 @@ Do not rely on memory for the syntax; the reference is the source of truth.
    in the background and stop it when done.
 5. If the diagram toolbar shows a warning badge, open it: every dropped step
    is listed with its line and reason. Fix all of them.
+   `aniflow --check <files>` reports the same problems as `file:line`
+   without a browser window and exits 1 while any remain.
 6. Share it only when the user asks for a link or to share the diagram.
    Don't offer it on your own. Then run `aniflow --share <file>` (or the
    `uvx` command with `--share <file>` in place of `--spec`) and give them

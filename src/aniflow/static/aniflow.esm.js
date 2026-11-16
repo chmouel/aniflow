@@ -20,32 +20,6 @@ function diagramBusy(on) {
   addBusyCheck(() => diagramsBusy > 0);
 }
 
-// js/diagram/hash.js
-function diagramHash(stage) {
-  const number = stage.dataset.diagram;
-  if (!number) return "";
-  const parts = ["diagram=" + number];
-  const at = stage.diagramPlay?.where();
-  if (at) {
-    parts.push("story=" + at.story);
-    if (at.step !== null) parts.push("step=" + at.step);
-  }
-  const lit = stage.diagramFocus?.get() || [];
-  if (lit.length) parts.push("focus=" + lit.map(encodeURIComponent).join(","));
-  return "#" + parts.join("&");
-}
-function diagramFromHash(stage) {
-  if (!location.hash.startsWith("#diagram=")) return false;
-  const wanted = new URLSearchParams(location.hash.slice(1));
-  if (wanted.get("diagram") !== stage.dataset.diagram) return false;
-  const number = (name) => /^\d+$/.test(wanted.get(name) || "") ? Number(wanted.get(name)) : null;
-  if (stage.diagramPlay && (number("story") !== null || number("step") !== null)) stage.diagramPlay.restore(number("story") || 1, number("step"));
-  if (stage.diagramFocus) stage.diagramFocus.set((wanted.get("focus") || "").split(",").filter(Boolean));
-  stage.closest(".mermaid-diagram")?.scrollIntoView({ block: "center" });
-  stage.diagramFull?.();
-  return true;
-}
-
 // js/diagram/parse.js
 function diagramLines(source, kinds) {
   const lines = source.split(/\r?\n/);
@@ -123,27 +97,75 @@ function playScript(source, base) {
   return scenarios.filter((scenario) => scenario.steps.length);
 }
 
-// js/diagram/icons.js
-var DIAGRAM_ICONS = {
-  out: '<path d="M3 8h10"/>',
-  in: '<path d="M3 8h10M8 3v10"/>',
-  fit: '<path d="M13 8a5 5 0 1 1-1.46-3.54M13.5 2v3h-3"/>',
-  full: '<path d="M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4"/>',
-  close: '<path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/>',
-  play: '<path d="M5 3.2v9.6L12.6 8z"/>',
-  pause: '<path d="M5.5 3.5v9M10.5 3.5v9"/>',
-  stop: '<rect x="4" y="4" width="8" height="8" rx="1.2"/>',
-  share: '<path d="M8 2.5v7.5M5 5.2l3-2.7 3 2.7M4.5 8H3.5v5.5h9V8h-1"/>',
-  back: '<path d="M10.5 3.5L6 8l4.5 4.5M4 3.5v9"/>',
-  next: '<path d="M5.5 3.5L10 8l-4.5 4.5M12 3.5v9"/>',
-  left: '<path d="M10 3.5L5.5 8l4.5 4.5"/>',
-  right: '<path d="M6 3.5L10.5 8 6 12.5"/>',
-  pen: '<path d="M10.5 2.8l2.7 2.7-7.4 7.4-3.3.6.6-3.3z"/><path d="M9 4.3l2.7 2.7"/>',
-  follow: '<path d="M2.5 5.5h2.2l1.1-1.7h4.4l1.1 1.7h2.2v7h-11z"/><circle cx="8" cy="9" r="2.1"/>',
-  warn: '<path d="M8 2.2l6 10.6H2z"/><path d="M8 6.6v2.8M8 11.1v.1"/>',
-  comment: '<path d="M2.5 3.5h11v7.2H8.2l-3.2 2.6v-2.6H2.5z"/><path d="M5 6.3h6M5 8.3h4"/>'
-};
-var diagramIcon = (name) => '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">' + DIAGRAM_ICONS[name] + "</svg>";
+// js/diagram/graph.js
+var SVG_NS = "http://www.w3.org/2000/svg";
+function diagramNodes(svg) {
+  const nodes = /* @__PURE__ */ new Map();
+  for (const group of svg.querySelectorAll(":is(g.node, g.image-shape)[id]")) {
+    const match = /-flowchart-(.+)-\d+$/.exec(group.id);
+    if (match && !nodes.has(match[1])) nodes.set(match[1], group);
+  }
+  return nodes;
+}
+async function diagramEdges(source) {
+  if (!flowchartLines(source)) return null;
+  try {
+    const parsed = await mermaid.mermaidAPI.getDiagramFromText(source);
+    return parsed.db.getEdges().filter((edge) => edge.id).map((edge) => ({ id: String(edge.id), from: edge.start, to: edge.end }));
+  } catch (error) {
+    return null;
+  }
+}
+function diagramLinks(svg, nodes, edges) {
+  const ends = new Map((edges || []).map((edge) => [edge.id, edge]));
+  const links = [];
+  for (const path of svg.querySelectorAll("path[data-edge][data-id]")) {
+    const id = path.dataset.id;
+    let from = ends.get(id)?.from;
+    let to = ends.get(id)?.to;
+    if (!edges) {
+      for (const name of nodes.keys()) {
+        if (!id.startsWith("L_" + name + "_")) continue;
+        const rest = id.slice(name.length + 3);
+        to = [...nodes.keys()].find((end) => rest.startsWith(end + "_") && /^\d+$/.test(rest.slice(end.length + 1)));
+        if (to) {
+          from = name;
+          break;
+        }
+      }
+    }
+    if (!from || !to || !nodes.has(from) || !nodes.has(to)) continue;
+    const label = svg.querySelector('g.edgeLabels [data-id="' + CSS.escape(id) + '"]');
+    links.push({ id, from, to, path, label: label && (label.closest("g.edgeLabel") || label) });
+  }
+  return links;
+}
+
+// js/diagram/hash.js
+function diagramHash(stage) {
+  const number = stage.dataset.diagram;
+  if (!number) return "";
+  const parts = ["diagram=" + number];
+  const at = stage.diagramPlay?.where();
+  if (at) {
+    parts.push("story=" + at.story);
+    if (at.step !== null) parts.push("step=" + at.step);
+  }
+  const lit = stage.diagramFocus?.get() || [];
+  if (lit.length) parts.push("focus=" + lit.map(encodeURIComponent).join(","));
+  return "#" + parts.join("&");
+}
+function diagramFromHash(stage) {
+  if (!location.hash.startsWith("#diagram=")) return false;
+  const wanted = new URLSearchParams(location.hash.slice(1));
+  if (wanted.get("diagram") !== stage.dataset.diagram) return false;
+  const number = (name) => /^\d+$/.test(wanted.get(name) || "") ? Number(wanted.get(name)) : null;
+  if (stage.diagramPlay && (number("story") !== null || number("step") !== null)) stage.diagramPlay.restore(number("story") || 1, number("step"));
+  if (stage.diagramFocus) stage.diagramFocus.set((wanted.get("focus") || "").split(",").filter(Boolean));
+  stage.closest(".mermaid-diagram")?.scrollIntoView({ block: "center" });
+  stage.diagramFull?.();
+  return true;
+}
 
 // js/diagram/images.js
 var DIAGRAM_IMAGE = /(\bimg\s*:\s*)(?:(["'])(.*?)\2|([^\s,}"']+))/g;
@@ -201,125 +223,27 @@ async function diagramImages(source) {
   return { source: rewritten, problems };
 }
 
-// js/diagram/picture.js
-var XLINK_NS = "http://www.w3.org/1999/xlink";
-var PICTURE_SHAPE = ["fill", "fill-opacity", "stroke", "stroke-width", "stroke-opacity", "stroke-dasharray", "opacity", "filter", "visibility"];
-var PICTURE_TEXT = ["font-family", "font-size", "font-weight", "font-style", "line-height", "letter-spacing", "color", "margin-top", "margin-bottom"];
-async function diagramImageData(svg) {
-  const found = /* @__PURE__ */ new Map();
-  for (const image of svg.querySelectorAll("image")) {
-    const href = image.getAttribute("href") || image.getAttributeNS(XLINK_NS, "href");
-    if (!href || found.has(href)) continue;
-    if (href.startsWith("data:")) {
-      found.set(href, href);
-      continue;
-    }
-    try {
-      const url = new URL(href, location.href);
-      if (url.origin !== location.origin) throw new Error("other site");
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(response.status);
-      const blob = await response.blob();
-      found.set(href, await new Promise((resolve, reject) => {
-        const reader2 = new FileReader();
-        reader2.onload = () => resolve(reader2.result);
-        reader2.onerror = reject;
-        reader2.readAsDataURL(blob);
-      }));
-    } catch (error) {
-      found.set(href, DIAGRAM_IMAGE_MISSING);
-    }
-  }
-  return found;
-}
-function diagramPicture(svg, home, size, images, still) {
-  const copy = svg.cloneNode(true);
-  const from = svg.querySelectorAll("*");
-  const to = copy.querySelectorAll("*");
-  for (let at = 0; at < from.length; at++) {
-    const element2 = from[at];
-    let names = null;
-    if (element2 instanceof SVGTextContentElement) names = PICTURE_SHAPE.concat(PICTURE_TEXT);
-    else if (element2 instanceof SVGGraphicsElement) names = PICTURE_SHAPE;
-    else if (element2 instanceof HTMLElement) names = PICTURE_TEXT;
-    if (!names) continue;
-    const computed = getComputedStyle(element2);
-    for (const name of names) to[at].style.setProperty(name, computed.getPropertyValue(name), "important");
-  }
-  copy.setAttribute("viewBox", [home.x, home.y, home.w, home.h].join(" "));
-  copy.setAttribute("width", String(size.w));
-  copy.setAttribute("height", String(size.h));
-  copy.removeAttribute("style");
-  for (const ink of copy.querySelectorAll(still ? ".diagram-ink :is(.ink-laser, circle)" : ".diagram-ink")) ink.remove();
-  copy.querySelector(".diagram-pins")?.remove();
-  for (const image of copy.querySelectorAll("image")) {
-    const href = image.getAttribute("href") || image.getAttributeNS(XLINK_NS, "href");
-    image.removeAttributeNS(XLINK_NS, "href");
-    image.setAttribute("href", images.get(href) || DIAGRAM_IMAGE_MISSING);
-  }
-  const picture = new Image();
-  picture.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(copy));
-  return picture.decode().then(() => picture);
-}
-async function diagramCanvas(svg, home, limit, captioned, still) {
-  const PAD = 24;
-  const scale = Math.min(still ? Infinity : 2, (limit - 2 * PAD) / Math.max(home.w, home.h), Math.sqrt((still ? 8e6 : 19e5) / (home.w * home.h)));
-  const size = { w: home.w * scale, h: home.h * scale };
-  const even = (value) => Math.max(2, Math.round(value / 2) * 2);
-  const element2 = document.createElement("canvas");
-  element2.width = even(size.w + 2 * PAD);
-  const fontSize = Math.round(Math.max(15, Math.min(30, element2.width / 40)));
-  const band = captioned ? Math.round(fontSize * 2 * 1.35 + PAD) : 0;
-  element2.height = even(size.h + 2 * PAD + band);
-  const context = element2.getContext("2d", { willReadFrequently: true });
-  const style = getComputedStyle(host.article);
-  const colour = (name, fallback) => style.getPropertyValue(name).trim() || fallback;
-  const background = colour("--bgColor-default", getComputedStyle(document.body).backgroundColor);
-  const ink = colour("--fgColor-default", getComputedStyle(document.body).color);
-  const rule = colour("--borderColor-muted", ink);
-  const font = "500 " + fontSize + "px system-ui, -apple-system, sans-serif";
-  const images = await diagramImageData(svg);
-  function lines(text) {
-    const room = element2.width - 2 * PAD;
-    const result = [""];
-    for (const word of text.split(/\s+/)) {
-      const last = result.length - 1;
-      const joined = result[last] ? result[last] + " " + word : word;
-      if (!result[last] || context.measureText(joined).width <= room) result[last] = joined;
-      else result.push(word);
-    }
-    if (result.length > 2) {
-      let second = result[1];
-      while (second && context.measureText(second + "\u2026").width > room) second = second.slice(0, -1);
-      result.splice(1, result.length, second.trimEnd() + "\u2026");
-    }
-    return result;
-  }
-  return {
-    element: element2,
-    width: element2.width,
-    height: element2.height,
-    async draw(text) {
-      const picture = await diagramPicture(svg, home, size, images, still);
-      context.fillStyle = background;
-      context.fillRect(0, 0, element2.width, element2.height);
-      context.drawImage(picture, (element2.width - size.w) / 2, (element2.height - band - size.h) / 2, size.w, size.h);
-      if (!band || !text) return;
-      const top = element2.height - band;
-      context.fillStyle = rule;
-      context.fillRect(PAD, top, element2.width - 2 * PAD, 1);
-      context.font = font;
-      context.fillStyle = ink;
-      context.textAlign = "center";
-      context.textBaseline = "middle";
-      const rows = lines(text);
-      const height = fontSize * 1.35;
-      const first = top + band / 2 - (rows.length - 1) * height / 2;
-      rows.forEach((row, at) => context.fillText(row, element2.width / 2, first + at * height));
-    },
-    pixels: () => context.getImageData(0, 0, element2.width, element2.height).data
-  };
-}
+// js/diagram/icons.js
+var DIAGRAM_ICONS = {
+  out: '<path d="M3 8h10"/>',
+  in: '<path d="M3 8h10M8 3v10"/>',
+  fit: '<path d="M13 8a5 5 0 1 1-1.46-3.54M13.5 2v3h-3"/>',
+  full: '<path d="M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4"/>',
+  close: '<path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/>',
+  play: '<path d="M5 3.2v9.6L12.6 8z"/>',
+  pause: '<path d="M5.5 3.5v9M10.5 3.5v9"/>',
+  stop: '<rect x="4" y="4" width="8" height="8" rx="1.2"/>',
+  share: '<path d="M8 2.5v7.5M5 5.2l3-2.7 3 2.7M4.5 8H3.5v5.5h9V8h-1"/>',
+  back: '<path d="M10.5 3.5L6 8l4.5 4.5M4 3.5v9"/>',
+  next: '<path d="M5.5 3.5L10 8l-4.5 4.5M12 3.5v9"/>',
+  left: '<path d="M10 3.5L5.5 8l4.5 4.5"/>',
+  right: '<path d="M6 3.5L10.5 8 6 12.5"/>',
+  pen: '<path d="M10.5 2.8l2.7 2.7-7.4 7.4-3.3.6.6-3.3z"/><path d="M9 4.3l2.7 2.7"/>',
+  follow: '<path d="M2.5 5.5h2.2l1.1-1.7h4.4l1.1 1.7h2.2v7h-11z"/><circle cx="8" cy="9" r="2.1"/>',
+  warn: '<path d="M8 2.2l6 10.6H2z"/><path d="M8 6.6v2.8M8 11.1v.1"/>',
+  comment: '<path d="M2.5 3.5h11v7.2H8.2l-3.2 2.6v-2.6H2.5z"/><path d="M5 6.3h6M5 8.3h4"/>'
+};
+var diagramIcon = (name) => '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">' + DIAGRAM_ICONS[name] + "</svg>";
 
 // js/reader/code.js
 var COPY_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"></path><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path></svg>';
@@ -374,936 +298,6 @@ function frameCode() {
     body.append(box);
     figure.append(head, body);
   }
-}
-
-// js/diagram/share.js
-var VIDEO_TYPES = {
-  mp4: ["video/mp4;codecs=avc1.640028", "video/mp4"],
-  webm: ["video/webm;codecs=vp9", "video/webm"]
-};
-function diagramVideoType(kind) {
-  if (typeof MediaRecorder === "undefined" || !HTMLCanvasElement.prototype.captureStream) return "";
-  const types = kind === "mp4" ? VIDEO_TYPES.mp4 : kind === "webm" ? VIDEO_TYPES.webm : [...VIDEO_TYPES.mp4, ...VIDEO_TYPES.webm];
-  return types.find((type) => MediaRecorder.isTypeSupported(type)) || "";
-}
-function diagramExportName(title, extension) {
-  const slug = (text) => text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  let page = location.pathname.split("/").pop() || "";
-  try {
-    page = decodeURIComponent(page);
-  } catch (error) {
-  }
-  page = page.replace(/\.(md|markdown)$/i, "");
-  return ([slug(page), slug(title || "")].filter(Boolean).join("-").slice(0, 120) || "diagram") + "." + extension;
-}
-function saveBlob(blob, name) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = name;
-  link.hidden = true;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 6e4);
-}
-function diagramShare(stage, svg, tools) {
-  const group = document.createElement("div");
-  group.className = "diagram-share";
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "play-record";
-  button.innerHTML = diagramIcon("share");
-  const menu = document.createElement("div");
-  menu.className = "diagram-export";
-  menu.hidden = true;
-  group.append(button, menu);
-  tools.prepend(group);
-  const share = {
-    button,
-    title: "Share or save this diagram",
-    name: () => "",
-    choose: null,
-    cancel: () => false,
-    label(text) {
-      button.title = text || share.title;
-      button.setAttribute("aria-label", button.title);
-    },
-    choice(kind, text, note) {
-      const element2 = document.createElement("button");
-      element2.type = "button";
-      element2.dataset.kind = kind;
-      element2.dataset.note = note;
-      element2.textContent = text;
-      const small = document.createElement("small");
-      small.textContent = note;
-      element2.append(small);
-      menu.append(element2);
-      return element2;
-    }
-  };
-  share.link = share.choice("link", "Copy link", "To this diagram and spotlight");
-  share.choice("png", "PNG", "What you see right now");
-  share.label();
-  async function savePicture() {
-    const box = svg.viewBox.baseVal;
-    const caption = stage.querySelector(":scope > .diagram-caption");
-    const text = caption && !caption.hidden ? caption.textContent : "";
-    const name = diagramExportName(share.name(), "png");
-    try {
-      const canvas = await diagramCanvas(svg, { x: box.x, y: box.y, w: box.width, h: box.height }, 2400, Boolean(text), true);
-      await canvas.draw(text);
-      const blob = await new Promise((resolve) => canvas.element.toBlob(resolve, "image/png"));
-      if (!blob) throw new Error("the browser made no picture");
-      await host.save(name, blob);
-      share.label();
-      return { name, blob };
-    } catch (error) {
-      share.label("Could not save the PNG: " + (error.message || error));
-      throw error;
-    }
-  }
-  stage.diagramPicture = savePicture;
-  button.addEventListener("click", () => {
-    if (share.cancel()) return;
-    menu.hidden = !menu.hidden;
-  });
-  menu.addEventListener("click", async (event) => {
-    const choice = event.target.closest("button[data-kind]");
-    if (!choice) return;
-    if (choice.dataset.kind === "link") {
-      const note = choice.querySelector("small");
-      const hash = diagramHash(stage);
-      if (!hash) return;
-      history.replaceState(history.state, "", location.pathname + location.search + hash);
-      note.textContent = await copyText(location.href) ? "Copied" : "Could not copy, the address bar has it";
-      setTimeout(() => {
-        menu.hidden = true;
-        note.textContent = choice.dataset.note;
-      }, 900);
-      return;
-    }
-    menu.hidden = true;
-    if (choice.dataset.kind === "png") savePicture().catch(() => {
-    });
-    else if (share.choose) share.choose(choice.dataset.kind);
-  });
-  document.addEventListener("pointerdown", (event) => {
-    if (!menu.hidden && !group.contains(event.target)) menu.hidden = true;
-  }, { signal: host.render?.signal });
-  group.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape" || menu.hidden) return;
-    event.stopPropagation();
-    event.preventDefault();
-    menu.hidden = true;
-    button.focus();
-  });
-  return share;
-}
-
-// js/diagram/speed.js
-var DIAGRAM_SPEEDS = [0.5, 0.75, 1, 1.5, 2];
-var DIAGRAM_PACE = 0.6;
-var diagramSpeed = DIAGRAM_SPEEDS.includes(Number(localStorage.getItem("aniflow-diagram-speed"))) ? Number(localStorage.getItem("aniflow-diagram-speed")) : 1;
-var diagramRate = () => diagramSpeed * DIAGRAM_PACE;
-function setDiagramSpeed(by) {
-  const at = DIAGRAM_SPEEDS.indexOf(diagramSpeed);
-  diagramSpeed = by ? DIAGRAM_SPEEDS[Math.max(0, Math.min(DIAGRAM_SPEEDS.length - 1, at + by))] : DIAGRAM_SPEEDS[(at + 1) % DIAGRAM_SPEEDS.length];
-  localStorage.setItem("aniflow-diagram-speed", String(diagramSpeed));
-  dispatchEvent(new Event("aniflow-diagram-speed"));
-}
-
-// js/reader/frontmatter.js
-var FRONT_KEY = /^([A-Za-z0-9_][\w .\/-]*?)[ \t]*:(?:[ \t]+(.*?))?[ \t]*$/;
-var FRONT_DATE = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
-var FRONT_LIMIT = 200;
-function readFrontMatter(text) {
-  const lines = text.split("\n", FRONT_LIMIT + 2);
-  if (!/^---[ \t]*$/.test(lines[0])) return null;
-  let close = 1;
-  while (close < lines.length && close <= FRONT_LIMIT && !/^(?:---|\.\.\.)[ \t]*$/.test(lines[close])) close++;
-  if (close >= lines.length || close > FRONT_LIMIT) return null;
-  const inner = lines.slice(1, close);
-  const first = inner.find((line) => line.trim() && !/^\s*#/.test(line));
-  if (!first || /^\s/.test(first) || !FRONT_KEY.test(first)) return null;
-  return { lines: close + 1, yaml: inner.join("\n"), entries: frontEntries(inner) };
-}
-function frontEntries(lines) {
-  const entries = [];
-  for (const line of lines) {
-    const key = /^\s/.test(line) ? null : FRONT_KEY.exec(line);
-    if (key) entries.push({ key: key[1], inline: key[2] || "", rest: [] });
-    else if (!line.trim() || /^\s*#/.test(line)) entries.length && entries[entries.length - 1].rest.push(line);
-    else if (entries.length) entries[entries.length - 1].rest.push(line);
-    else return null;
-  }
-  return entries.map(frontValue);
-}
-function frontUnquote(text) {
-  text = text.trim();
-  if (/^"(?:[^"\\]|\\.)*"$/.test(text)) return text.slice(1, -1).replace(/\\(.)/g, (all, c) => c === "n" ? "\n" : c === "t" ? "	" : c);
-  if (/^'(?:[^']|'')*'$/.test(text)) return text.slice(1, -1).replace(/''/g, "'");
-  return text.replace(/\s+#.*$/, "");
-}
-function frontSplit(text) {
-  const items = [];
-  let current2 = "", quote = "";
-  for (const c of text) {
-    if (quote) {
-      if (c === quote) quote = "";
-      current2 += c;
-    } else if (c === '"' || c === "'") {
-      quote = c;
-      current2 += c;
-    } else if (c === ",") {
-      items.push(current2);
-      current2 = "";
-    } else current2 += c;
-  }
-  if (current2.trim() || items.length) items.push(current2);
-  return items.map(frontUnquote).filter((item) => item !== "");
-}
-function frontValue({ key, inline, rest }) {
-  const trimmed = inline.trim();
-  const quoted = /^("(?:[^"\\]|\\.)*"|'(?:[^']|'')*')(?:\s+#.*)?$/.exec(trimmed);
-  const value = quoted ? quoted[1] : trimmed.replace(/(?:^|\s+)#.*$/, "");
-  const body = rest.filter((line) => line.trim() && !/^\s*#/.test(line));
-  const indent = body.length ? Math.min(...body.map((line) => /^\s*/.exec(line)[0].length)) : 0;
-  const block = rest.map((line) => line.slice(indent)).join("\n").replace(/\s+$/, "");
-  const raw = () => ({ key, kind: "raw", value: [value, block].filter(Boolean).join("\n") });
-  if (/^[|>][+-]?\d*$/.test(value)) {
-    return { key, kind: "text", value: value[0] === ">" ? block.replace(/([^\n])\n(?=[^\n])/g, "$1 ") : block };
-  }
-  if (!value.trim()) {
-    if (!body.length) return { key, kind: "empty" };
-    if (body.every((line) => /^\s*-(?:\s+|$)/.test(line))) {
-      return { key, kind: "list", value: body.map((line) => frontUnquote(line.replace(/^\s*-\s*/, ""))).filter((item) => item !== "") };
-    }
-    return raw();
-  }
-  if (/^\[.*\]$/.test(value.trim()) && !body.length) return { key, kind: "list", value: frontSplit(value.trim().slice(1, -1)) };
-  if (/^[{&*!]/.test(value.trim())) return raw();
-  if (body.length) {
-    if (/^["']/.test(value.trim())) return raw();
-    return { key, kind: "scalar", value: [value, ...body].map((line) => line.trim()).join(" ") };
-  }
-  return { key, kind: "scalar", value: frontUnquote(value) };
-}
-var frontEscape = (text) => String(text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-function frontDate(text) {
-  const match = FRONT_DATE.exec(text);
-  if (!match) return null;
-  const [, year, month, day, hour, minute, second, zone] = match;
-  const date = hour === void 0 ? new Date(Number(year), Number(month) - 1, Number(day)) : zone ? new Date(text.replace(" ", "T")) : new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second || 0));
-  if (Number.isNaN(date.getTime()) || date.getMonth() !== Number(month) - 1) return null;
-  const style = hour === void 0 ? { dateStyle: "medium" } : { dateStyle: "medium", timeStyle: "short" };
-  return '<time datetime="' + frontEscape(text.replace(" ", "T")) + '" title="' + frontEscape(text) + '">' + frontEscape(new Intl.DateTimeFormat(void 0, style).format(date)) + "</time>";
-}
-function frontScalar(text) {
-  if (text === "" || /^(?:null|~)$/i.test(text)) return '<span class="frontmatter-empty">empty</span>';
-  if (/^(?:true|false)$/i.test(text)) return /^t/i.test(text) ? "Yes" : "No";
-  const date = frontDate(text);
-  if (date) return date;
-  if (/^https?:\/\/\S+$/i.test(text)) {
-    const label = text.replace(/^https?:\/\//i, "").replace(/\/$/, "");
-    return '<a href="' + frontEscape(text) + '" title="' + frontEscape(text) + '">' + frontEscape(label) + "</a>";
-  }
-  return frontEscape(text.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (all, target, alias) => alias || target));
-}
-function frontPanel(front, map) {
-  const where = map ? ' data-line="' + (map[0] + 1) + '" data-line-end="' + map[1] + '"' : "";
-  if (!front.entries || !front.entries.length) {
-    return '<div class="frontmatter frontmatter-raw"' + where + "><pre><code>" + frontEscape(front.yaml) + "</code></pre></div>\n";
-  }
-  let html = '<dl class="frontmatter"' + where + ">";
-  for (const entry of front.entries) {
-    const tags = /^tags?$/i.test(entry.key);
-    let items = entry.kind === "list" ? entry.value : null;
-    if (tags && entry.kind === "scalar") items = entry.value.split(/[\s,]+/).filter(Boolean);
-    let value;
-    if (items) {
-      value = items.length ? '<span class="frontmatter-list">' + items.map((item) => '<span class="frontmatter-pill' + (tags ? " frontmatter-tag" : "") + '">' + (tags ? frontEscape("#" + item.replace(/^#/, "")) : frontScalar(item)) + "</span>").join("") + "</span>" : '<span class="frontmatter-empty">empty</span>';
-    } else if (entry.kind === "text") value = '<span class="frontmatter-text">' + frontEscape(entry.value) + "</span>";
-    else if (entry.kind === "raw") value = '<code class="frontmatter-code">' + frontEscape(entry.value) + "</code>";
-    else if (entry.kind === "empty") value = '<span class="frontmatter-empty">empty</span>';
-    else value = frontScalar(entry.value);
-    html += "<dt>" + frontEscape(entry.key) + "</dt><dd>" + value + "</dd>";
-  }
-  return html + "</dl>\n";
-}
-function frontMatterPlugin(markdown2) {
-  markdown2.block.ruler.before("table", "aniflow_frontmatter", (state, startLine, endLine, silent) => {
-    if (startLine !== 0 || state.parentType !== "root" || state.sCount[0] !== 0) return false;
-    const front = readFrontMatter(state.src);
-    if (!front || front.lines > endLine) return false;
-    if (silent) return true;
-    const token = state.push("front_matter", "", 0);
-    token.block = true;
-    token.map = [0, front.lines];
-    token.meta = front;
-    state.line = front.lines;
-    return true;
-  });
-  markdown2.renderer.rules.front_matter = (tokens, index) => frontPanel(tokens[index].meta, tokens[index].map);
-}
-
-// js/reader/github.js
-var CALLOUTS = {
-  note: "note",
-  info: "note",
-  todo: "note",
-  abstract: "note",
-  summary: "note",
-  tldr: "note",
-  tip: "tip",
-  hint: "tip",
-  success: "tip",
-  check: "tip",
-  done: "tip",
-  important: "important",
-  question: "important",
-  help: "important",
-  faq: "important",
-  example: "important",
-  quote: "important",
-  cite: "important",
-  warning: "warning",
-  caution: "warning",
-  attention: "warning",
-  failure: "warning",
-  fail: "warning",
-  missing: "warning",
-  bug: "warning",
-  danger: "caution",
-  error: "caution"
-};
-var CALLOUT_MARK = /^\[!([\w-]+)\]([+-]?)[ \t]*([^\n]*)(?:\n|$)/;
-var ALERTS = {
-  note: ["Note", "info", "M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"],
-  tip: ["Tip", "light-bulb", "M8 1.5c-2.363 0-4 1.69-4 3.75 0 .984.424 1.625.984 2.304l.214.253c.223.264.47.556.673.848.284.411.537.896.621 1.49a.75.75 0 0 1-1.484.211c-.04-.282-.163-.547-.37-.847a8.456 8.456 0 0 0-.542-.68c-.084-.1-.173-.205-.268-.32C3.201 7.75 2.5 6.766 2.5 5.25 2.5 2.31 4.863 0 8 0s5.5 2.31 5.5 5.25c0 1.516-.701 2.5-1.328 3.259-.095.115-.184.22-.268.319-.207.245-.383.453-.541.681-.208.3-.33.565-.37.847a.751.751 0 0 1-1.485-.212c.084-.593.337-1.078.621-1.489.203-.292.45-.584.673-.848.075-.088.147-.173.213-.253.561-.679.985-1.32.985-2.304 0-2.06-1.637-3.75-4-3.75ZM5.75 12h4.5a.75.75 0 0 1 0 1.5h-4.5a.75.75 0 0 1 0-1.5ZM6 15.25a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1-.75-.75Z"],
-  important: ["Important", "report", "M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v9.5A1.75 1.75 0 0 1 14.25 13H8.06l-2.573 2.573A1.458 1.458 0 0 1 3 14.543V13H1.75A1.75 1.75 0 0 1 0 11.25Zm1.75-.25a.25.25 0 0 0-.25.25v9.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h6.5a.25.25 0 0 0 .25-.25v-9.5a.25.25 0 0 0-.25-.25Zm7 2.25v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 9a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"],
-  warning: ["Warning", "alert", "M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.575Zm1.763.707a.25.25 0 0 0-.44 0L1.698 13.132a.25.25 0 0 0 .22.368h12.164a.25.25 0 0 0 .22-.368Zm.53 3.996v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 11a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"],
-  caution: ["Caution", "stop", "M4.47.22A.749.749 0 0 1 5 0h6c.199 0 .389.079.53.22l4.25 4.25c.141.14.22.331.22.53v6a.749.749 0 0 1-.22.53l-4.25 4.25A.749.749 0 0 1 11 16H5a.749.749 0 0 1-.53-.22L.22 11.53A.749.749 0 0 1 0 11V5c0-.199.079-.389.22-.53Zm.84 1.28L1.5 5.31v5.38l3.81 3.81h5.38l3.81-3.81V5.31L10.69 1.5ZM8 4a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"]
-};
-var ALERT_MARK = /^\[!(note|tip|important|warning|caution)\][ \t]*(?:\n|$)/i;
-var TASK_MARK = /^\[([ xX])\][ \t]+/;
-function githubFlavour(markdown2) {
-  markdown2.core.ruler.push("aniflow_github", (state) => {
-    const tokens = state.tokens;
-    for (let index = 0; index < tokens.length; index++) {
-      const token = tokens[index];
-      if ((token.type === "th_open" || token.type === "td_open") && token.attrGet("style")) {
-        const align = /text-align:(left|right|center)/.exec(token.attrGet("style"));
-        token.attrs = token.attrs.filter((attr) => attr[0] !== "style");
-        if (align) token.attrSet("align", align[1]);
-      }
-      const inline = tokens[index + 2];
-      if (!inline || inline.type !== "inline" || tokens[index + 1].type !== "paragraph_open") continue;
-      const children = inline.children || [];
-      if (token.type === "blockquote_open") {
-        const match = (host.callouts ? CALLOUT_MARK : ALERT_MARK).exec(inline.content);
-        if (!match) continue;
-        const type = match[1].toLowerCase();
-        const kind = host.callouts ? CALLOUTS[type] || "note" : type;
-        const title = host.callouts ? match[3].trim() || type[0].toUpperCase() + type.slice(1) : ALERTS[kind][0];
-        const fold = host.callouts ? match[2] : "";
-        let depth = 0, close = index;
-        for (; close < tokens.length; close++) {
-          if (tokens[close].type === "blockquote_open") depth++;
-          else if (tokens[close].type === "blockquote_close" && --depth === 0) break;
-        }
-        token.meta = { alert: kind, title, fold };
-        tokens[close].meta = { alert: kind, fold };
-        const marker = match[0].trim();
-        let consumed = "";
-        while (children.length && children[0].type === "text" && consumed.length < marker.length) consumed += children.shift().content;
-        if (children.length && /^(soft|hard)break$/.test(children[0].type)) children.shift();
-        if (!children.length) tokens[index + 1].hidden = tokens[index + 3].hidden = true;
-      } else if (token.type === "list_item_open") {
-        const match = TASK_MARK.exec(inline.content);
-        if (!match || !children.length || children[0].type !== "text" || !children[0].content.startsWith(match[0])) continue;
-        children[0].content = children[0].content.slice(match[0].length);
-        const box = new state.Token("html_inline", "", 0);
-        box.content = '<input type="checkbox" class="task-list-item-checkbox" disabled' + (match[1] === " " ? "" : " checked") + "> ";
-        children.unshift(box);
-        token.attrJoin("class", "task-list-item");
-        for (let back = index - 1; back >= 0; back--) {
-          const list = tokens[back];
-          if (list.level === token.level - 1 && /^(bullet|ordered)_list_open$/.test(list.type)) {
-            if (!(list.attrGet("class") || "").includes("contains-task-list")) list.attrJoin("class", "contains-task-list");
-            break;
-          }
-        }
-      }
-    }
-  });
-  markdown2.core.ruler.push("aniflow_lines", (state) => {
-    const tokens = state.tokens;
-    for (let index = 0; index < tokens.length; index++) {
-      const token = tokens[index];
-      if (!token.map || !/^(paragraph_open|heading_open|tr_open|hr)$/.test(token.type)) continue;
-      const target = token.hidden ? tokens[index - 1] : token;
-      if (!target || token.hidden && target.type !== "list_item_open") continue;
-      target.attrSet("data-line", String(token.map[0] + 1));
-      target.attrSet("data-line-end", String(Math.max(token.map[1], token.map[0] + 1)));
-    }
-  });
-  const lines = (token, first) => token.map ? ' data-line="' + (token.map[0] + 1) + '" data-line-end="' + token.map[1] + '" data-code="' + first + '"' : "";
-  const rules = markdown2.renderer.rules;
-  rules.code_block = (tokens, index) => {
-    const token = tokens[index];
-    return "<pre" + lines(token, token.map ? token.map[0] + 1 : 0) + "><code>" + markdown2.utils.escapeHtml(token.content.replace(/\n$/, "")) + "</code></pre>\n";
-  };
-  rules.blockquote_open = (tokens, index, options, env, self) => {
-    const meta = tokens[index].meta;
-    if (!meta || !meta.alert) return self.renderToken(tokens, index, options);
-    const [, icon, path] = ALERTS[meta.alert];
-    const svg = '<svg class="octicon octicon-' + icon + ' mr-2" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="' + path + '"></path></svg>';
-    const title = markdown2.utils.escapeHtml(meta.title);
-    const classes = "markdown-alert markdown-alert-" + meta.alert;
-    if (meta.fold) return '<details class="' + classes + '"' + (meta.fold === "+" ? " open" : "") + '><summary class="markdown-alert-title">' + svg + title + "</summary>\n";
-    return '<div class="' + classes + '"><p class="markdown-alert-title">' + svg + title + "</p>\n";
-  };
-  rules.blockquote_close = (tokens, index, options, env, self) => {
-    const meta = tokens[index].meta;
-    if (!meta || !meta.alert) return self.renderToken(tokens, index, options);
-    return meta.fold ? "</details>\n" : "</div>\n";
-  };
-  rules.fence = (tokens, index) => {
-    const token = tokens[index];
-    const text = token.content.replace(/\n$/, "");
-    const language = (token.info.trim().split(/\s+/)[0] || "").toLowerCase().replace(/[^a-z0-9_+#.-]/g, "");
-    const where = lines(token, token.map ? token.map[0] + 2 : 0);
-    if (!language) return '<pre class="notranslate"' + where + "><code>" + markdown2.utils.escapeHtml(text) + "</code></pre>\n";
-    const body = language !== "mermaid" && window.hljs && hljs.getLanguage(language) ? hljs.highlight(text, { language, ignoreIllegals: true }).value : markdown2.utils.escapeHtml(text);
-    return '<div class="highlight highlight-source-' + language + '"' + where + '><pre class="notranslate">' + body + "</pre></div>\n";
-  };
-  if (rules.footnote_ref) {
-    rules.footnote_caption = (tokens, index) => String(tokens[index].meta.id + 1);
-    const footnoteRef = rules.footnote_ref;
-    rules.footnote_ref = (...args) => footnoteRef(...args).replace("<a ", '<a data-footnote-ref aria-describedby="footnote-label" ');
-    rules.footnote_block_open = () => '<section class="footnotes" data-footnotes>\n<h2 id="footnote-label" class="sr-only">Footnotes</h2>\n<ol>\n';
-    rules.footnote_block_close = () => "</ol>\n</section>\n";
-  }
-}
-function sanitize(markup) {
-  return DOMPurify.sanitize(markup, {
-    RETURN_DOM_FRAGMENT: true,
-    FORBID_TAGS: ["style", "form", "button", "textarea", "select"],
-    FORBID_ATTR: ["style"]
-  });
-}
-
-// js/reader/render.js
-var markdown = null;
-function renderLocal() {
-  try {
-    if (!markdown) {
-      markdown = window.markdownit({ html: true, linkify: true, breaks: host.breaks });
-      markdown.linkify.set({ fuzzyLink: false });
-      if (window.markdownitFootnote) markdown.use(window.markdownitFootnote);
-      if (window.markdownitEmoji) markdown.use(window.markdownitEmoji);
-      frontMatterPlugin(markdown);
-      githubFlavour(markdown);
-      for (const plugin of host.plugins) plugin(markdown);
-    }
-    return sanitize(markdown.render(host.preprocess(host.source)));
-  } catch (error) {
-    console.error("markdown rendering failed", error);
-    const pre = document.createElement("pre");
-    pre.textContent = host.source;
-    const fragment = document.createDocumentFragment();
-    fragment.append(pre);
-    return fragment;
-  }
-}
-function directoryUrl(value, root) {
-  if (!value || value.includes("\\") || /^(?:[a-z][a-z0-9+.-]*:|#|\/\/)/i.test(value)) return null;
-  if (value.startsWith("/icons/")) return value;
-  const rooted = value.startsWith("/") && !value.startsWith(root) ? root + value.slice(1) : value;
-  const url = new URL(rooted, location.href);
-  return url.origin === location.origin && url.pathname.startsWith(root) ? url.href : null;
-}
-
-// js/reader/review.js
-function initReview() {
-  if (host.commentsUrl && host.reviewToggle && host.dock) {
-    let make = function(tag, className, text) {
-      const element2 = document.createElement(tag);
-      if (className) element2.className = className;
-      if (text !== void 0) element2.textContent = text;
-      if (tag === "button") element2.type = "button";
-      return element2;
-    }, ago = function(date) {
-      const seconds = (date.getTime() - Date.now()) / 1e3;
-      const format = new Intl.RelativeTimeFormat(void 0, { numeric: "auto" });
-      for (const [unit, size] of [["day", 86400], ["hour", 3600], ["minute", 60]]) {
-        if (Math.abs(seconds) >= size) return format.format(Math.round(seconds / size), unit);
-      }
-      return "just now";
-    }, notify = function(text) {
-      message = text;
-      clearTimeout(messageTimer);
-      messageTimer = setTimeout(() => {
-        message = "";
-        updateDock();
-      }, 3e3);
-      updateDock();
-    }, redraw = function() {
-      const count = view.comments.length;
-      badge.textContent = String(count);
-      badge.hidden = !count;
-      const label = count ? reviewName + ", " + plural(count) : reviewName;
-      host.reviewToggle.setAttribute("aria-label", label);
-      host.reviewToggle.title = label;
-      if (!reviewing) return;
-      buildMarks();
-      drawThreads();
-      paint();
-    }, collect = function() {
-      const found = [];
-      for (const element2 of host.article.querySelectorAll("[data-line]")) {
-        if (element2.closest(".code-body, .review-thread, .review-composer")) continue;
-        const start = Number(element2.dataset.line);
-        if (start) found.push({ element: element2, start, end: Number(element2.dataset.lineEnd) || start, code: false });
-      }
-      for (const box of host.article.querySelectorAll(".code-body [data-code]")) {
-        const first = Number(box.dataset.code);
-        const pre = box.matches("pre") ? box : box.querySelector("pre");
-        if (!first || !pre) continue;
-        const count = pre.textContent.replace(/\n$/, "").split("\n").length;
-        const last = Math.min(first + count - 1, Number(box.dataset.lineEnd) || Infinity);
-        for (let line = first; line <= last; line++) {
-          found.push({ element: box, start: line, end: line, code: true, body: box.closest(".code-body") });
-        }
-      }
-      return found.sort((a, b) => a.start - b.start || a.end - b.end);
-    }, buildMarks = function() {
-      gutter.replaceChildren();
-      for (const old of host.article.querySelectorAll(".code-gutter")) old.remove();
-      const commented = view.comments.filter((comment) => !comment.outdated);
-      marks = collect();
-      const columns = /* @__PURE__ */ new Map();
-      for (const mark of marks) {
-        const button = make("button", "review-line", String(mark.start));
-        button.dataset.start = mark.start;
-        button.dataset.end = mark.end;
-        button.setAttribute("aria-label", range(mark.start, mark.end));
-        if (mark.end > mark.start) button.title = range(mark.start, mark.end);
-        if (commented.some((comment) => comment.start <= mark.end && comment.end >= mark.start)) button.classList.add("commented");
-        mark.button = button;
-        if (mark.code) {
-          let column = columns.get(mark.body);
-          if (!column) {
-            column = make("div", "code-gutter");
-            mark.body.prepend(column);
-            columns.set(mark.body, column);
-          }
-          column.append(button);
-        } else {
-          gutter.append(button);
-        }
-      }
-      host.article.append(gutter);
-      place();
-    }, place = function() {
-      if (!reviewing) return;
-      const top = host.article.getBoundingClientRect().top;
-      for (const mark of marks) {
-        if (mark.code) continue;
-        const box = mark.element.getBoundingClientRect();
-        mark.button.hidden = !box.height;
-        if (!box.height) continue;
-        const row = mark.element.tagName === "TR";
-        const style = getComputedStyle(row ? mark.element.cells[0] || mark.element : mark.element);
-        const line = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.5;
-        const offset = mark.element.tagName === "HR" ? box.height / 2 - 12 : (parseFloat(style.paddingTop) || 0) + (parseFloat(style.borderTopWidth) || 0) + (line - 24) / 2;
-        mark.button.style.top = box.top - top + offset + "px";
-      }
-      drawBands();
-    }, drawBands = function() {
-      for (const band of host.article.querySelectorAll(".code-band")) band.remove();
-      const spans = /* @__PURE__ */ new Map();
-      for (const mark of marks) {
-        if (!mark.code || !inside(mark)) continue;
-        const span = spans.get(mark.body) || [mark.button, mark.button];
-        span[1] = mark.button;
-        spans.set(mark.body, span);
-      }
-      for (const [body, [first, last]] of spans) {
-        const band = make("div", "code-band");
-        band.style.top = first.offsetTop + "px";
-        band.style.height = last.offsetTop + last.offsetHeight - first.offsetTop + "px";
-        body.append(band);
-      }
-    }, paint = function() {
-      for (const element2 of host.article.querySelectorAll(".review-selected")) element2.classList.remove("review-selected");
-      for (const mark of marks) {
-        const on = inside(mark);
-        mark.button.classList.toggle("selected", on);
-        mark.button.setAttribute("aria-pressed", String(on));
-        if (on && !mark.code) mark.element.classList.add("review-selected");
-      }
-      drawBands();
-      updateDock();
-    }, remember = function() {
-      const hash = selection ? "#L" + selection.start + (selection.end > selection.start ? "-L" + selection.end : "") : "";
-      if (hash || /^#L\d/.test(location.hash)) history.replaceState(null, "", location.pathname + location.search + hash);
-    }, choose = function(start, end, extend) {
-      if (extend && selection) {
-        const anchor = selection.anchor;
-        selection = { start: Math.min(anchor.start, start), end: Math.max(anchor.end, end), anchor };
-      } else {
-        selection = { start, end, anchor: { start, end } };
-      }
-      remember();
-      paint();
-    }, clear = function() {
-      selection = null;
-      remember();
-      paint();
-    }, updateDock = function() {
-      const count = view.comments.length;
-      host.dock.classList.toggle("error", message.startsWith("!"));
-      if (message) dockText.textContent = message.replace(/^!/, "");
-      else if (selection) dockText.textContent = range(selection.start, selection.end) + " selected";
-      else if (count) dockText.textContent = plural(count);
-      else dockText.textContent = coarse.matches ? "Tap a line number" : "Click a line number, shift-click for a range";
-      commentButton.hidden = !selection || Boolean(composer);
-      clearButton.hidden = !selection;
-      copyButton.hidden = Boolean(selection) || !count;
-    }, spot = function(line) {
-      let best = null;
-      for (const mark of marks) if (mark.start <= line) best = mark;
-      return best || marks[0] || null;
-    }, slot = function(mark, start) {
-      const element2 = mark.element;
-      if (mark.code) return [element2.closest(".code-block"), "after"];
-      if (element2.tagName === "TR") return [element2.closest("table"), "after"];
-      const own = element2.tagName === "LI" ? element2 : element2.parentElement?.tagName === "LI" ? element2.parentElement : null;
-      if (!own) return [element2, "after"];
-      let item = own;
-      let list = null;
-      while (item && start < lineOf(item) && lineOf(item.parentElement.firstElementChild) >= start) {
-        list = item.parentElement;
-        item = list.parentElement?.tagName === "LI" ? list.parentElement : null;
-      }
-      if (list) return [list, "after"];
-      if (element2 !== own) return [element2, "after"];
-      const nested = own.querySelector(":scope > ul, :scope > ol");
-      return nested ? [nested, "before"] : [own, "append"];
-    }, insertAt = function([node, how], content) {
-      if (how === "before") node.before(content);
-      else if (how === "append") node.append(content);
-      else node.after(content);
-    }, editor = function(text, label, action, save, cancel) {
-      const form = make("form", "review-form");
-      const area = make("textarea");
-      area.value = text;
-      area.rows = 4;
-      area.maxLength = commentMax;
-      area.placeholder = "Leave a comment";
-      area.setAttribute("aria-label", label);
-      const row = make("div", "review-actions");
-      const hint = make("span", "review-hint", /Mac|iP/.test(navigator.platform) ? "\u2318 Enter to save" : "Ctrl+Enter to save");
-      const cancelButton = make("button", "", "Cancel");
-      const submit = make("button", "primary", action);
-      submit.type = "submit";
-      row.append(hint, cancelButton, submit);
-      form.append(area, row);
-      form.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        if (!area.value.trim()) {
-          area.focus();
-          return;
-        }
-        submit.disabled = true;
-        try {
-          await save(area.value);
-        } catch (error) {
-          submit.disabled = false;
-          notify("!Saving failed: " + (error.message || error));
-        }
-      });
-      area.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-          event.preventDefault();
-          form.requestSubmit();
-        } else if (event.key === "Escape") {
-          event.preventDefault();
-          cancel();
-        }
-      });
-      cancelButton.addEventListener("click", cancel);
-      return { form, area };
-    }, closeComposer = function() {
-      if (composer) composer.remove();
-      composer = null;
-      updateDock();
-    }, compose = function() {
-      if (!selection) return;
-      closeComposer();
-      const target = { start: selection.start, end: selection.end };
-      const mark = spot(target.end);
-      if (!mark) return;
-      const holder = make("div", "review-composer");
-      holder.append(make("p", "review-composer-title", "Comment on " + range(target.start, target.end).toLowerCase()));
-      const { form, area } = editor("", "Comment on " + range(target.start, target.end).toLowerCase(), "Comment", async (text) => {
-        await post("add", "", { start: target.start, end: target.end, body: text });
-        closeComposer();
-        clear();
-        notify("Comment added");
-      }, closeComposer);
-      holder.append(form);
-      insertAt(slot(mark, target.start), holder);
-      composer = holder;
-      updateDock();
-      area.focus({ preventScroll: true });
-      holder.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    }, card = function(comment) {
-      const item = make("section", "review-comment" + (comment.outdated ? " outdated" : ""));
-      const head = make("header");
-      const about = comment.target ? comment.target.label ? ", " + comment.target.label : ", diagram" : "";
-      const where = make("button", "review-where", range(comment.start, comment.end) + about);
-      where.setAttribute("aria-label", "Select " + range(comment.start, comment.end).toLowerCase());
-      where.addEventListener("click", () => choose(comment.start, comment.end, false));
-      const stamp = new Date((comment.updated || comment.created) * 1e3);
-      const when = make("time", "", ago(stamp) + (comment.updated > comment.created + 1 ? ", edited" : ""));
-      when.dateTime = stamp.toISOString();
-      when.title = stamp.toLocaleString();
-      const tools = make("span", "review-tools");
-      const edit = make("button", "", "Edit");
-      const remove = make("button", "", "Delete");
-      tools.append(edit, remove);
-      head.append(where, when, tools);
-      item.append(head);
-      if (comment.outdated) {
-        item.append(make("p", "review-note", "These lines changed after the comment. It was written on:"));
-        item.append(make("pre", "review-quote", comment.quote.join("\n")));
-      }
-      const body = make("p", "review-body", comment.body);
-      item.append(body);
-      edit.addEventListener("click", () => {
-        if (item.querySelector("form")) return;
-        const done = () => {
-          form.remove();
-          body.hidden = false;
-          edit.disabled = false;
-        };
-        const { form, area } = editor(comment.body, "Edit the comment on " + range(comment.start, comment.end).toLowerCase(), "Save", async (text) => {
-          await post("edit", "?id=" + encodeURIComponent(comment.id), { body: text });
-          notify("Comment saved");
-        }, done);
-        body.hidden = true;
-        edit.disabled = true;
-        body.after(form);
-        area.focus();
-      });
-      let armed = 0;
-      remove.addEventListener("click", async () => {
-        if (!armed) {
-          remove.textContent = "Confirm delete";
-          remove.classList.add("danger");
-          armed = setTimeout(() => {
-            armed = 0;
-            remove.textContent = "Delete";
-            remove.classList.remove("danger");
-          }, 3e3);
-          return;
-        }
-        clearTimeout(armed);
-        remove.disabled = true;
-        try {
-          await post("delete", "?id=" + encodeURIComponent(comment.id));
-          notify("Comment deleted");
-        } catch (error) {
-          remove.disabled = false;
-          notify("!Deleting failed: " + (error.message || error));
-        }
-      });
-      return item;
-    }, drawThreads = function() {
-      for (const old of host.article.querySelectorAll(".review-thread")) old.remove();
-      const groups = [];
-      for (const comment of view.comments) {
-        const mark = spot(comment.end);
-        if (!mark) continue;
-        const where = slot(mark, comment.start);
-        let group = groups.find((other) => other.where[0] === where[0] && other.where[1] === where[1]);
-        if (!group) groups.push(group = { where, end: 0, comments: [] });
-        group.end = Math.max(group.end, comment.end);
-        group.comments.push(comment);
-      }
-      for (const group of groups.sort((a, b) => b.end - a.end)) {
-        const thread = make("div", "review-thread");
-        for (const comment of group.comments) thread.append(card(comment));
-        insertAt(group.where, thread);
-      }
-    }, enter = function() {
-      reviewing = true;
-      host.article.classList.add("reviewing");
-      document.body.classList.add("reviewing");
-      host.dock.hidden = false;
-      host.reviewToggle.setAttribute("aria-pressed", "true");
-      buildMarks();
-      drawThreads();
-      paint();
-    }, leave = function() {
-      reviewing = false;
-      closeComposer();
-      selection = null;
-      remember();
-      gutter.remove();
-      for (const element2 of host.article.querySelectorAll(".code-gutter, .code-band, .review-thread")) element2.remove();
-      for (const element2 of host.article.querySelectorAll(".review-selected")) element2.classList.remove("review-selected");
-      marks = [];
-      host.article.classList.remove("reviewing");
-      document.body.classList.remove("reviewing");
-      host.dock.hidden = true;
-      host.reviewToggle.setAttribute("aria-pressed", "false");
-    }, follow = function() {
-      const wanted = /^#L(\d+)(?:-L(\d+))?$/.exec(location.hash);
-      if (!wanted) return;
-      if (!reviewing) enter();
-      const start = Math.max(1, Math.min(Number(wanted[1]), view.lines || 1));
-      choose(start, Math.max(start, Math.min(Number(wanted[2] || start), view.lines || start)), false);
-      const first = marks.find(inside);
-      if (first) (first.code ? first.button : first.element).scrollIntoView({ block: "center" });
-    };
-    const reviewName = host.reviewName;
-    if (reviewName === "Comments") {
-      const label = document.createElement("span");
-      label.textContent = "Comments";
-      host.reviewToggle.insertBefore(label, host.reviewToggle.querySelector(".count"));
-    }
-    const coarse = matchMedia("(pointer: coarse)");
-    const commentMax = host.commentMax;
-    const badge = host.reviewToggle.querySelector(".count");
-    const dockText = host.dock.querySelector(".review-dock-text");
-    const commentButton = host.dock.querySelector('[data-review="comment"]');
-    const clearButton = host.dock.querySelector('[data-review="clear"]');
-    const copyButton = host.dock.querySelector('[data-review="copy"]');
-    const gutter = document.createElement("div");
-    gutter.className = "review-gutter";
-    let reviewing = false;
-    let view = { lines: 0, comments: [] };
-    let promptText = "";
-    let selection = null;
-    let marks = [];
-    let composer = null;
-    let message = "";
-    let messageTimer = 0;
-    const range = (start, end) => start === end ? "Line " + start : "Lines " + start + "\u2013" + end;
-    const plural = (count) => count + (count === 1 ? " comment" : " comments");
-    addBusyCheck(() => Boolean(composer) || Boolean(host.article.querySelector(".review-comment form")));
-    async function call(url, options) {
-      const response = await fetch(url, Object.assign({ cache: "no-store" }, options));
-      const answer = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(answer.error || response.statusText);
-      return answer;
-    }
-    async function loadPrompt() {
-      const response = await fetch(host.commentsUrl + "?format=prompt", { cache: "no-store" });
-      promptText = response.ok ? await response.text() : "";
-    }
-    async function refresh() {
-      view = await call(host.commentsUrl);
-      await loadPrompt();
-      redraw();
-    }
-    async function post(action, query, body) {
-      view = await call(host.commentsUrl.replace("/comments/", "/comments/" + action + "/") + query, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: body === void 0 ? "" : JSON.stringify(body)
-      });
-      await loadPrompt();
-      redraw();
-    }
-    const inside = (mark) => Boolean(selection) && mark.start <= selection.end && mark.end >= selection.start;
-    const lineOf = (element2) => Number(element2?.dataset.line || element2?.querySelector("[data-line]")?.dataset.line || 0);
-    host.onShow = () => {
-      if (reviewing) leave();
-    };
-    host.onDiagram = () => {
-      if (!reviewing) return;
-      buildMarks();
-      paint();
-    };
-    host.reviewToggle.hidden = false;
-    host.reviewToggle.addEventListener("click", () => reviewing ? leave() : enter());
-    host.article.addEventListener("mousedown", (event) => {
-      if (event.shiftKey && event.target.closest(".review-line")) event.preventDefault();
-    });
-    host.article.addEventListener("click", (event) => {
-      const button = event.target.closest(".review-line");
-      if (!button || !reviewing) return;
-      const start = Number(button.dataset.start), end = Number(button.dataset.end);
-      const touch = coarse.matches && Boolean(selection);
-      if (touch && start >= selection.start && end <= selection.end) clear();
-      else choose(start, end, event.shiftKey || touch);
-    });
-    commentButton.addEventListener("click", compose);
-    clearButton.addEventListener("click", clear);
-    host.dock.querySelector('[data-review="done"]').addEventListener("click", leave);
-    copyButton.addEventListener("click", async () => {
-      const done = promptText ? await copyText(promptText) : false;
-      notify(done ? "Copied " + plural(view.comments.length) + " as a prompt" : "!Copy failed");
-    });
-    document.addEventListener("keydown", (event) => {
-      if (reviewing && event.key === "Escape" && selection && !composer && !event.target.closest("textarea")) clear();
-    });
-    new ResizeObserver(() => {
-      if (reviewing) requestAnimationFrame(place);
-    }).observe(host.article);
-    addEventListener("hashchange", follow);
-    addEventListener("aniflow-comments", () => refresh().catch((error) => console.error("comments", error)));
-    refresh().catch((error) => console.error("comments", error)).then(follow);
-  }
-}
-
-// js/diagram/graph.js
-var SVG_NS = "http://www.w3.org/2000/svg";
-function diagramNodes(svg) {
-  const nodes = /* @__PURE__ */ new Map();
-  for (const group of svg.querySelectorAll(":is(g.node, g.image-shape)[id]")) {
-    const match = /-flowchart-(.+)-\d+$/.exec(group.id);
-    if (match && !nodes.has(match[1])) nodes.set(match[1], group);
-  }
-  return nodes;
-}
-async function diagramEdges(source) {
-  if (!flowchartLines(source)) return null;
-  try {
-    const parsed = await mermaid.mermaidAPI.getDiagramFromText(source);
-    return parsed.db.getEdges().filter((edge) => edge.id).map((edge) => ({ id: String(edge.id), from: edge.start, to: edge.end }));
-  } catch (error) {
-    return null;
-  }
-}
-function diagramLinks(svg, nodes, edges) {
-  const ends = new Map((edges || []).map((edge) => [edge.id, edge]));
-  const links = [];
-  for (const path of svg.querySelectorAll("path[data-edge][data-id]")) {
-    const id = path.dataset.id;
-    let from = ends.get(id)?.from;
-    let to = ends.get(id)?.to;
-    if (!edges) {
-      for (const name of nodes.keys()) {
-        if (!id.startsWith("L_" + name + "_")) continue;
-        const rest = id.slice(name.length + 3);
-        to = [...nodes.keys()].find((end) => rest.startsWith(end + "_") && /^\d+$/.test(rest.slice(end.length + 1)));
-        if (to) {
-          from = name;
-          break;
-        }
-      }
-    }
-    if (!from || !to || !nodes.has(from) || !nodes.has(to)) continue;
-    const label = svg.querySelector('g.edgeLabels [data-id="' + CSS.escape(id) + '"]');
-    links.push({ id, from, to, path, label: label && (label.closest("g.edgeLabel") || label) });
-  }
-  return links;
 }
 
 // js/diagram/comments.js
@@ -2034,6 +1028,263 @@ function gifWriter(width, height) {
       return new Blob(parts, { type: "image/gif" });
     }
   };
+}
+
+// js/diagram/picture.js
+var XLINK_NS = "http://www.w3.org/1999/xlink";
+var PICTURE_SHAPE = ["fill", "fill-opacity", "stroke", "stroke-width", "stroke-opacity", "stroke-dasharray", "opacity", "filter", "visibility"];
+var PICTURE_TEXT = ["font-family", "font-size", "font-weight", "font-style", "line-height", "letter-spacing", "color", "margin-top", "margin-bottom"];
+async function diagramImageData(svg) {
+  const found = /* @__PURE__ */ new Map();
+  for (const image of svg.querySelectorAll("image")) {
+    const href = image.getAttribute("href") || image.getAttributeNS(XLINK_NS, "href");
+    if (!href || found.has(href)) continue;
+    if (href.startsWith("data:")) {
+      found.set(href, href);
+      continue;
+    }
+    try {
+      const url = new URL(href, location.href);
+      if (url.origin !== location.origin) throw new Error("other site");
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(response.status);
+      const blob = await response.blob();
+      found.set(href, await new Promise((resolve, reject) => {
+        const reader2 = new FileReader();
+        reader2.onload = () => resolve(reader2.result);
+        reader2.onerror = reject;
+        reader2.readAsDataURL(blob);
+      }));
+    } catch (error) {
+      found.set(href, DIAGRAM_IMAGE_MISSING);
+    }
+  }
+  return found;
+}
+function diagramPicture(svg, home, size, images, still) {
+  const copy = svg.cloneNode(true);
+  const from = svg.querySelectorAll("*");
+  const to = copy.querySelectorAll("*");
+  for (let at = 0; at < from.length; at++) {
+    const element2 = from[at];
+    let names = null;
+    if (element2 instanceof SVGTextContentElement) names = PICTURE_SHAPE.concat(PICTURE_TEXT);
+    else if (element2 instanceof SVGGraphicsElement) names = PICTURE_SHAPE;
+    else if (element2 instanceof HTMLElement) names = PICTURE_TEXT;
+    if (!names) continue;
+    const computed = getComputedStyle(element2);
+    for (const name of names) to[at].style.setProperty(name, computed.getPropertyValue(name), "important");
+  }
+  copy.setAttribute("viewBox", [home.x, home.y, home.w, home.h].join(" "));
+  copy.setAttribute("width", String(size.w));
+  copy.setAttribute("height", String(size.h));
+  copy.removeAttribute("style");
+  for (const ink of copy.querySelectorAll(still ? ".diagram-ink :is(.ink-laser, circle)" : ".diagram-ink")) ink.remove();
+  copy.querySelector(".diagram-pins")?.remove();
+  for (const image of copy.querySelectorAll("image")) {
+    const href = image.getAttribute("href") || image.getAttributeNS(XLINK_NS, "href");
+    image.removeAttributeNS(XLINK_NS, "href");
+    image.setAttribute("href", images.get(href) || DIAGRAM_IMAGE_MISSING);
+  }
+  const picture = new Image();
+  picture.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(copy));
+  return picture.decode().then(() => picture);
+}
+async function diagramCanvas(svg, home, limit, captioned, still) {
+  const PAD = 24;
+  const scale = Math.min(still ? Infinity : 2, (limit - 2 * PAD) / Math.max(home.w, home.h), Math.sqrt((still ? 8e6 : 19e5) / (home.w * home.h)));
+  const size = { w: home.w * scale, h: home.h * scale };
+  const even = (value) => Math.max(2, Math.round(value / 2) * 2);
+  const element2 = document.createElement("canvas");
+  element2.width = even(size.w + 2 * PAD);
+  const fontSize = Math.round(Math.max(15, Math.min(30, element2.width / 40)));
+  const band = captioned ? Math.round(fontSize * 2 * 1.35 + PAD) : 0;
+  element2.height = even(size.h + 2 * PAD + band);
+  const context = element2.getContext("2d", { willReadFrequently: true });
+  const style = getComputedStyle(host.article);
+  const colour = (name, fallback) => style.getPropertyValue(name).trim() || fallback;
+  const background = colour("--bgColor-default", getComputedStyle(document.body).backgroundColor);
+  const ink = colour("--fgColor-default", getComputedStyle(document.body).color);
+  const rule = colour("--borderColor-muted", ink);
+  const font = "500 " + fontSize + "px system-ui, -apple-system, sans-serif";
+  const images = await diagramImageData(svg);
+  function lines(text) {
+    const room = element2.width - 2 * PAD;
+    const result = [""];
+    for (const word of text.split(/\s+/)) {
+      const last = result.length - 1;
+      const joined = result[last] ? result[last] + " " + word : word;
+      if (!result[last] || context.measureText(joined).width <= room) result[last] = joined;
+      else result.push(word);
+    }
+    if (result.length > 2) {
+      let second = result[1];
+      while (second && context.measureText(second + "\u2026").width > room) second = second.slice(0, -1);
+      result.splice(1, result.length, second.trimEnd() + "\u2026");
+    }
+    return result;
+  }
+  return {
+    element: element2,
+    width: element2.width,
+    height: element2.height,
+    async draw(text) {
+      const picture = await diagramPicture(svg, home, size, images, still);
+      context.fillStyle = background;
+      context.fillRect(0, 0, element2.width, element2.height);
+      context.drawImage(picture, (element2.width - size.w) / 2, (element2.height - band - size.h) / 2, size.w, size.h);
+      if (!band || !text) return;
+      const top = element2.height - band;
+      context.fillStyle = rule;
+      context.fillRect(PAD, top, element2.width - 2 * PAD, 1);
+      context.font = font;
+      context.fillStyle = ink;
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      const rows = lines(text);
+      const height = fontSize * 1.35;
+      const first = top + band / 2 - (rows.length - 1) * height / 2;
+      rows.forEach((row, at) => context.fillText(row, element2.width / 2, first + at * height));
+    },
+    pixels: () => context.getImageData(0, 0, element2.width, element2.height).data
+  };
+}
+
+// js/diagram/share.js
+var VIDEO_TYPES = {
+  mp4: ["video/mp4;codecs=avc1.640028", "video/mp4"],
+  webm: ["video/webm;codecs=vp9", "video/webm"]
+};
+function diagramVideoType(kind) {
+  if (typeof MediaRecorder === "undefined" || !HTMLCanvasElement.prototype.captureStream) return "";
+  const types = kind === "mp4" ? VIDEO_TYPES.mp4 : kind === "webm" ? VIDEO_TYPES.webm : [...VIDEO_TYPES.mp4, ...VIDEO_TYPES.webm];
+  return types.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+}
+function diagramExportName(title, extension) {
+  const slug = (text) => text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  let page = location.pathname.split("/").pop() || "";
+  try {
+    page = decodeURIComponent(page);
+  } catch (error) {
+  }
+  page = page.replace(/\.(md|markdown)$/i, "");
+  return ([slug(page), slug(title || "")].filter(Boolean).join("-").slice(0, 120) || "diagram") + "." + extension;
+}
+function saveBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.hidden = true;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 6e4);
+}
+function diagramShare(stage, svg, tools) {
+  const group = document.createElement("div");
+  group.className = "diagram-share";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "play-record";
+  button.innerHTML = diagramIcon("share");
+  const menu = document.createElement("div");
+  menu.className = "diagram-export";
+  menu.hidden = true;
+  group.append(button, menu);
+  tools.prepend(group);
+  const share = {
+    button,
+    title: "Share or save this diagram",
+    name: () => "",
+    choose: null,
+    cancel: () => false,
+    label(text) {
+      button.title = text || share.title;
+      button.setAttribute("aria-label", button.title);
+    },
+    choice(kind, text, note) {
+      const element2 = document.createElement("button");
+      element2.type = "button";
+      element2.dataset.kind = kind;
+      element2.dataset.note = note;
+      element2.textContent = text;
+      const small = document.createElement("small");
+      small.textContent = note;
+      element2.append(small);
+      menu.append(element2);
+      return element2;
+    }
+  };
+  share.link = share.choice("link", "Copy link", "To this diagram and spotlight");
+  share.choice("png", "PNG", "What you see right now");
+  share.label();
+  async function savePicture() {
+    const box = svg.viewBox.baseVal;
+    const caption = stage.querySelector(":scope > .diagram-caption");
+    const text = caption && !caption.hidden ? caption.textContent : "";
+    const name = diagramExportName(share.name(), "png");
+    try {
+      const canvas = await diagramCanvas(svg, { x: box.x, y: box.y, w: box.width, h: box.height }, 2400, Boolean(text), true);
+      await canvas.draw(text);
+      const blob = await new Promise((resolve) => canvas.element.toBlob(resolve, "image/png"));
+      if (!blob) throw new Error("the browser made no picture");
+      await host.save(name, blob);
+      share.label();
+      return { name, blob };
+    } catch (error) {
+      share.label("Could not save the PNG: " + (error.message || error));
+      throw error;
+    }
+  }
+  stage.diagramPicture = savePicture;
+  button.addEventListener("click", () => {
+    if (share.cancel()) return;
+    menu.hidden = !menu.hidden;
+  });
+  menu.addEventListener("click", async (event) => {
+    const choice = event.target.closest("button[data-kind]");
+    if (!choice) return;
+    if (choice.dataset.kind === "link") {
+      const note = choice.querySelector("small");
+      const hash = diagramHash(stage);
+      if (!hash) return;
+      history.replaceState(history.state, "", location.pathname + location.search + hash);
+      note.textContent = await copyText(location.href) ? "Copied" : "Could not copy, the address bar has it";
+      setTimeout(() => {
+        menu.hidden = true;
+        note.textContent = choice.dataset.note;
+      }, 900);
+      return;
+    }
+    menu.hidden = true;
+    if (choice.dataset.kind === "png") savePicture().catch(() => {
+    });
+    else if (share.choose) share.choose(choice.dataset.kind);
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (!menu.hidden && !group.contains(event.target)) menu.hidden = true;
+  }, { signal: host.render?.signal });
+  group.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || menu.hidden) return;
+    event.stopPropagation();
+    event.preventDefault();
+    menu.hidden = true;
+    button.focus();
+  });
+  return share;
+}
+
+// js/diagram/speed.js
+var DIAGRAM_SPEEDS = [0.5, 0.75, 1, 1.5, 2];
+var DIAGRAM_PACE = 0.6;
+var diagramSpeed = DIAGRAM_SPEEDS.includes(Number(localStorage.getItem("aniflow-diagram-speed"))) ? Number(localStorage.getItem("aniflow-diagram-speed")) : 1;
+var diagramRate = () => diagramSpeed * DIAGRAM_PACE;
+function setDiagramSpeed(by) {
+  const at = DIAGRAM_SPEEDS.indexOf(diagramSpeed);
+  diagramSpeed = by ? DIAGRAM_SPEEDS[Math.max(0, Math.min(DIAGRAM_SPEEDS.length - 1, at + by))] : DIAGRAM_SPEEDS[(at + 1) % DIAGRAM_SPEEDS.length];
+  localStorage.setItem("aniflow-diagram-speed", String(diagramSpeed));
+  dispatchEvent(new Event("aniflow-diagram-speed"));
 }
 
 // js/diagram/warnings.js
@@ -3174,18 +2425,45 @@ function diagramColours(dark) {
 
 // js/diagram/draw.js
 var diagramCount = 0;
+function storyNumber(wanted, scenarios) {
+  if (!wanted) return 0;
+  if (/^\d+$/.test(wanted)) return Number(wanted);
+  const found = scenarios.findIndex((scenario) => scenario.title.toLowerCase() === wanted.trim().toLowerCase());
+  return found + 1;
+}
+function autoplay(stage) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const watcher = new IntersectionObserver((entries) => {
+    if (!entries.some((entry) => entry.isIntersecting)) return;
+    watcher.disconnect();
+    if (stage.isConnected && !stage.diagramPlay.playing() && !stage.diagramPlay.where().step) stage.diagramPlay.toggle();
+  }, { threshold: 0.6 });
+  watcher.observe(stage);
+  host.render?.signal.addEventListener("abort", () => watcher.disconnect(), { once: true });
+}
+function nearScreen(blocks) {
+  if (!host.lazy || !("IntersectionObserver" in window)) return Promise.resolve();
+  return new Promise((resolve) => {
+    const watcher = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      watcher.disconnect();
+      resolve();
+    }, { rootMargin: "600px 0px" });
+    for (const block of blocks) watcher.observe(block);
+  });
+}
 function drawDiagrams() {
-  const diagrams = [...host.article.querySelectorAll(".highlight-source-mermaid")];
-  if (!diagrams.length) return;
+  const diagrams2 = [...host.article.querySelectorAll(".highlight-source-mermaid")];
+  if (!diagrams2.length) return;
   const draw = async () => {
-    const dark = document.documentElement.dataset.mode === "dark";
+    const dark = host.dark ? Boolean(host.dark()) : document.documentElement.dataset.mode === "dark";
     let themeVariables = null;
     try {
       themeVariables = diagramColours(dark);
     } catch (error) {
     }
     mermaid.initialize(themeVariables ? { startOnLoad: false, securityLevel: "strict", theme: "base", themeVariables } : { startOnLoad: false, securityLevel: "strict", theme: dark ? "dark" : "default" });
-    for (const [position, block] of diagrams.entries()) {
+    for (const [position, block] of diagrams2.entries()) {
       if (!block.isConnected) continue;
       const id = "mermaid-" + diagramCount++;
       try {
@@ -3204,13 +2482,20 @@ function drawDiagrams() {
           holder.dataset.lineEnd = block.dataset.lineEnd;
         }
         holder.innerHTML = result.svg;
+        holder.diagramBlock = block;
         block.replaceWith(holder);
         if (block.classList.contains("slide-on")) holder.classList.add("slide-on");
         panZoom(holder, scenarios, edges, { source: block.textContent, line: block.dataset.line, lineEnd: block.dataset.lineEnd, index: position + 1 });
         const stage = holder.querySelector(":scope > .diagram-stage");
         if (stage) {
           stage.dataset.diagram = String(position + 1);
-          diagramFromHash(stage);
+          const story = storyNumber(block.dataset.story, scenarios);
+          if (stage.diagramPlay && story) stage.diagramPlay.restore(story, null);
+          const wanted = stage.diagramPlay && !block.diagramPlayed && (host.autoplay || "autoplay" in block.dataset);
+          if (!diagramFromHash(stage) && wanted) {
+            block.diagramPlayed = true;
+            autoplay(stage);
+          }
         }
         if (pictures.problems.length) holder.title += "\nPictures not shown: " + pictures.problems.join(", ");
         if (host.onDiagram) host.onDiagram();
@@ -3224,11 +2509,770 @@ function drawDiagrams() {
     draw();
     return;
   }
-  const script = document.createElement("script");
-  if (host.nonce) script.nonce = host.nonce;
-  script.src = host.mermaid;
-  script.onload = draw;
-  document.head.append(script);
+  nearScreen(diagrams2).then(() => {
+    if (window.mermaid) return draw();
+    const script = document.createElement("script");
+    if (host.nonce) script.nonce = host.nonce;
+    script.src = host.mermaid;
+    script.onload = draw;
+    document.head.append(script);
+  });
+}
+function redrawDiagrams() {
+  if (diagramDialog?.open) diagramDialog.close();
+  for (const holder of host.article.querySelectorAll(".mermaid-diagram")) {
+    if (holder.diagramBlock) holder.replaceWith(holder.diagramBlock);
+  }
+  drawDiagrams();
+}
+
+// js/reader/frontmatter.js
+var FRONT_KEY = /^([A-Za-z0-9_][\w .\/-]*?)[ \t]*:(?:[ \t]+(.*?))?[ \t]*$/;
+var FRONT_DATE = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+var FRONT_LIMIT = 200;
+function readFrontMatter(text) {
+  const lines = text.split("\n", FRONT_LIMIT + 2);
+  if (!/^---[ \t]*$/.test(lines[0])) return null;
+  let close = 1;
+  while (close < lines.length && close <= FRONT_LIMIT && !/^(?:---|\.\.\.)[ \t]*$/.test(lines[close])) close++;
+  if (close >= lines.length || close > FRONT_LIMIT) return null;
+  const inner = lines.slice(1, close);
+  const first = inner.find((line) => line.trim() && !/^\s*#/.test(line));
+  if (!first || /^\s/.test(first) || !FRONT_KEY.test(first)) return null;
+  return { lines: close + 1, yaml: inner.join("\n"), entries: frontEntries(inner) };
+}
+function frontEntries(lines) {
+  const entries = [];
+  for (const line of lines) {
+    const key = /^\s/.test(line) ? null : FRONT_KEY.exec(line);
+    if (key) entries.push({ key: key[1], inline: key[2] || "", rest: [] });
+    else if (!line.trim() || /^\s*#/.test(line)) entries.length && entries[entries.length - 1].rest.push(line);
+    else if (entries.length) entries[entries.length - 1].rest.push(line);
+    else return null;
+  }
+  return entries.map(frontValue);
+}
+function frontUnquote(text) {
+  text = text.trim();
+  if (/^"(?:[^"\\]|\\.)*"$/.test(text)) return text.slice(1, -1).replace(/\\(.)/g, (all, c) => c === "n" ? "\n" : c === "t" ? "	" : c);
+  if (/^'(?:[^']|'')*'$/.test(text)) return text.slice(1, -1).replace(/''/g, "'");
+  return text.replace(/\s+#.*$/, "");
+}
+function frontSplit(text) {
+  const items = [];
+  let current2 = "", quote = "";
+  for (const c of text) {
+    if (quote) {
+      if (c === quote) quote = "";
+      current2 += c;
+    } else if (c === '"' || c === "'") {
+      quote = c;
+      current2 += c;
+    } else if (c === ",") {
+      items.push(current2);
+      current2 = "";
+    } else current2 += c;
+  }
+  if (current2.trim() || items.length) items.push(current2);
+  return items.map(frontUnquote).filter((item) => item !== "");
+}
+function frontValue({ key, inline, rest }) {
+  const trimmed = inline.trim();
+  const quoted = /^("(?:[^"\\]|\\.)*"|'(?:[^']|'')*')(?:\s+#.*)?$/.exec(trimmed);
+  const value = quoted ? quoted[1] : trimmed.replace(/(?:^|\s+)#.*$/, "");
+  const body = rest.filter((line) => line.trim() && !/^\s*#/.test(line));
+  const indent = body.length ? Math.min(...body.map((line) => /^\s*/.exec(line)[0].length)) : 0;
+  const block = rest.map((line) => line.slice(indent)).join("\n").replace(/\s+$/, "");
+  const raw = () => ({ key, kind: "raw", value: [value, block].filter(Boolean).join("\n") });
+  if (/^[|>][+-]?\d*$/.test(value)) {
+    return { key, kind: "text", value: value[0] === ">" ? block.replace(/([^\n])\n(?=[^\n])/g, "$1 ") : block };
+  }
+  if (!value.trim()) {
+    if (!body.length) return { key, kind: "empty" };
+    if (body.every((line) => /^\s*-(?:\s+|$)/.test(line))) {
+      return { key, kind: "list", value: body.map((line) => frontUnquote(line.replace(/^\s*-\s*/, ""))).filter((item) => item !== "") };
+    }
+    return raw();
+  }
+  if (/^\[.*\]$/.test(value.trim()) && !body.length) return { key, kind: "list", value: frontSplit(value.trim().slice(1, -1)) };
+  if (/^[{&*!]/.test(value.trim())) return raw();
+  if (body.length) {
+    if (/^["']/.test(value.trim())) return raw();
+    return { key, kind: "scalar", value: [value, ...body].map((line) => line.trim()).join(" ") };
+  }
+  return { key, kind: "scalar", value: frontUnquote(value) };
+}
+var frontEscape = (text) => String(text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+function frontDate(text) {
+  const match = FRONT_DATE.exec(text);
+  if (!match) return null;
+  const [, year, month, day, hour, minute, second, zone] = match;
+  const date = hour === void 0 ? new Date(Number(year), Number(month) - 1, Number(day)) : zone ? new Date(text.replace(" ", "T")) : new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second || 0));
+  if (Number.isNaN(date.getTime()) || date.getMonth() !== Number(month) - 1) return null;
+  const style = hour === void 0 ? { dateStyle: "medium" } : { dateStyle: "medium", timeStyle: "short" };
+  return '<time datetime="' + frontEscape(text.replace(" ", "T")) + '" title="' + frontEscape(text) + '">' + frontEscape(new Intl.DateTimeFormat(void 0, style).format(date)) + "</time>";
+}
+function frontScalar(text) {
+  if (text === "" || /^(?:null|~)$/i.test(text)) return '<span class="frontmatter-empty">empty</span>';
+  if (/^(?:true|false)$/i.test(text)) return /^t/i.test(text) ? "Yes" : "No";
+  const date = frontDate(text);
+  if (date) return date;
+  if (/^https?:\/\/\S+$/i.test(text)) {
+    const label = text.replace(/^https?:\/\//i, "").replace(/\/$/, "");
+    return '<a href="' + frontEscape(text) + '" title="' + frontEscape(text) + '">' + frontEscape(label) + "</a>";
+  }
+  return frontEscape(text.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (all, target, alias) => alias || target));
+}
+function frontPanel(front, map) {
+  const where = map ? ' data-line="' + (map[0] + 1) + '" data-line-end="' + map[1] + '"' : "";
+  if (!front.entries || !front.entries.length) {
+    return '<div class="frontmatter frontmatter-raw"' + where + "><pre><code>" + frontEscape(front.yaml) + "</code></pre></div>\n";
+  }
+  let html = '<dl class="frontmatter"' + where + ">";
+  for (const entry of front.entries) {
+    const tags = /^tags?$/i.test(entry.key);
+    let items = entry.kind === "list" ? entry.value : null;
+    if (tags && entry.kind === "scalar") items = entry.value.split(/[\s,]+/).filter(Boolean);
+    let value;
+    if (items) {
+      value = items.length ? '<span class="frontmatter-list">' + items.map((item) => '<span class="frontmatter-pill' + (tags ? " frontmatter-tag" : "") + '">' + (tags ? frontEscape("#" + item.replace(/^#/, "")) : frontScalar(item)) + "</span>").join("") + "</span>" : '<span class="frontmatter-empty">empty</span>';
+    } else if (entry.kind === "text") value = '<span class="frontmatter-text">' + frontEscape(entry.value) + "</span>";
+    else if (entry.kind === "raw") value = '<code class="frontmatter-code">' + frontEscape(entry.value) + "</code>";
+    else if (entry.kind === "empty") value = '<span class="frontmatter-empty">empty</span>';
+    else value = frontScalar(entry.value);
+    html += "<dt>" + frontEscape(entry.key) + "</dt><dd>" + value + "</dd>";
+  }
+  return html + "</dl>\n";
+}
+function frontMatterPlugin(markdown2) {
+  markdown2.block.ruler.before("table", "aniflow_frontmatter", (state, startLine, endLine, silent) => {
+    if (startLine !== 0 || state.parentType !== "root" || state.sCount[0] !== 0) return false;
+    const front = readFrontMatter(state.src);
+    if (!front || front.lines > endLine) return false;
+    if (silent) return true;
+    const token = state.push("front_matter", "", 0);
+    token.block = true;
+    token.map = [0, front.lines];
+    token.meta = front;
+    state.line = front.lines;
+    return true;
+  });
+  markdown2.renderer.rules.front_matter = (tokens, index) => frontPanel(tokens[index].meta, tokens[index].map);
+}
+
+// js/reader/github.js
+var CALLOUTS = {
+  note: "note",
+  info: "note",
+  todo: "note",
+  abstract: "note",
+  summary: "note",
+  tldr: "note",
+  tip: "tip",
+  hint: "tip",
+  success: "tip",
+  check: "tip",
+  done: "tip",
+  important: "important",
+  question: "important",
+  help: "important",
+  faq: "important",
+  example: "important",
+  quote: "important",
+  cite: "important",
+  warning: "warning",
+  caution: "warning",
+  attention: "warning",
+  failure: "warning",
+  fail: "warning",
+  missing: "warning",
+  bug: "warning",
+  danger: "caution",
+  error: "caution"
+};
+var CALLOUT_MARK = /^\[!([\w-]+)\]([+-]?)[ \t]*([^\n]*)(?:\n|$)/;
+var ALERTS = {
+  note: ["Note", "info", "M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v2.75h.25a.75.75 0 0 1 0 1.5h-2a.75.75 0 0 1 0-1.5h.25v-2h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"],
+  tip: ["Tip", "light-bulb", "M8 1.5c-2.363 0-4 1.69-4 3.75 0 .984.424 1.625.984 2.304l.214.253c.223.264.47.556.673.848.284.411.537.896.621 1.49a.75.75 0 0 1-1.484.211c-.04-.282-.163-.547-.37-.847a8.456 8.456 0 0 0-.542-.68c-.084-.1-.173-.205-.268-.32C3.201 7.75 2.5 6.766 2.5 5.25 2.5 2.31 4.863 0 8 0s5.5 2.31 5.5 5.25c0 1.516-.701 2.5-1.328 3.259-.095.115-.184.22-.268.319-.207.245-.383.453-.541.681-.208.3-.33.565-.37.847a.751.751 0 0 1-1.485-.212c.084-.593.337-1.078.621-1.489.203-.292.45-.584.673-.848.075-.088.147-.173.213-.253.561-.679.985-1.32.985-2.304 0-2.06-1.637-3.75-4-3.75ZM5.75 12h4.5a.75.75 0 0 1 0 1.5h-4.5a.75.75 0 0 1 0-1.5ZM6 15.25a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1-.75-.75Z"],
+  important: ["Important", "report", "M0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v9.5A1.75 1.75 0 0 1 14.25 13H8.06l-2.573 2.573A1.458 1.458 0 0 1 3 14.543V13H1.75A1.75 1.75 0 0 1 0 11.25Zm1.75-.25a.25.25 0 0 0-.25.25v9.5c0 .138.112.25.25.25h2a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h6.5a.25.25 0 0 0 .25-.25v-9.5a.25.25 0 0 0-.25-.25Zm7 2.25v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 9a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"],
+  warning: ["Warning", "alert", "M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.575Zm1.763.707a.25.25 0 0 0-.44 0L1.698 13.132a.25.25 0 0 0 .22.368h12.164a.25.25 0 0 0 .22-.368Zm.53 3.996v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 11a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"],
+  caution: ["Caution", "stop", "M4.47.22A.749.749 0 0 1 5 0h6c.199 0 .389.079.53.22l4.25 4.25c.141.14.22.331.22.53v6a.749.749 0 0 1-.22.53l-4.25 4.25A.749.749 0 0 1 11 16H5a.749.749 0 0 1-.53-.22L.22 11.53A.749.749 0 0 1 0 11V5c0-.199.079-.389.22-.53Zm.84 1.28L1.5 5.31v5.38l3.81 3.81h5.38l3.81-3.81V5.31L10.69 1.5ZM8 4a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"]
+};
+var ALERT_MARK = /^\[!(note|tip|important|warning|caution)\][ \t]*(?:\n|$)/i;
+var TASK_MARK = /^\[([ xX])\][ \t]+/;
+function githubFlavour(markdown2) {
+  markdown2.core.ruler.push("aniflow_github", (state) => {
+    const tokens = state.tokens;
+    for (let index = 0; index < tokens.length; index++) {
+      const token = tokens[index];
+      if ((token.type === "th_open" || token.type === "td_open") && token.attrGet("style")) {
+        const align = /text-align:(left|right|center)/.exec(token.attrGet("style"));
+        token.attrs = token.attrs.filter((attr) => attr[0] !== "style");
+        if (align) token.attrSet("align", align[1]);
+      }
+      const inline = tokens[index + 2];
+      if (!inline || inline.type !== "inline" || tokens[index + 1].type !== "paragraph_open") continue;
+      const children = inline.children || [];
+      if (token.type === "blockquote_open") {
+        const match = (host.callouts ? CALLOUT_MARK : ALERT_MARK).exec(inline.content);
+        if (!match) continue;
+        const type = match[1].toLowerCase();
+        const kind = host.callouts ? CALLOUTS[type] || "note" : type;
+        const title = host.callouts ? match[3].trim() || type[0].toUpperCase() + type.slice(1) : ALERTS[kind][0];
+        const fold = host.callouts ? match[2] : "";
+        let depth = 0, close = index;
+        for (; close < tokens.length; close++) {
+          if (tokens[close].type === "blockquote_open") depth++;
+          else if (tokens[close].type === "blockquote_close" && --depth === 0) break;
+        }
+        token.meta = { alert: kind, title, fold };
+        tokens[close].meta = { alert: kind, fold };
+        const marker = match[0].trim();
+        let consumed = "";
+        while (children.length && children[0].type === "text" && consumed.length < marker.length) consumed += children.shift().content;
+        if (children.length && /^(soft|hard)break$/.test(children[0].type)) children.shift();
+        if (!children.length) tokens[index + 1].hidden = tokens[index + 3].hidden = true;
+      } else if (token.type === "list_item_open") {
+        const match = TASK_MARK.exec(inline.content);
+        if (!match || !children.length || children[0].type !== "text" || !children[0].content.startsWith(match[0])) continue;
+        children[0].content = children[0].content.slice(match[0].length);
+        const box = new state.Token("html_inline", "", 0);
+        box.content = '<input type="checkbox" class="task-list-item-checkbox" disabled' + (match[1] === " " ? "" : " checked") + "> ";
+        children.unshift(box);
+        token.attrJoin("class", "task-list-item");
+        for (let back = index - 1; back >= 0; back--) {
+          const list = tokens[back];
+          if (list.level === token.level - 1 && /^(bullet|ordered)_list_open$/.test(list.type)) {
+            if (!(list.attrGet("class") || "").includes("contains-task-list")) list.attrJoin("class", "contains-task-list");
+            break;
+          }
+        }
+      }
+    }
+  });
+  markdown2.core.ruler.push("aniflow_lines", (state) => {
+    const tokens = state.tokens;
+    for (let index = 0; index < tokens.length; index++) {
+      const token = tokens[index];
+      if (!token.map || !/^(paragraph_open|heading_open|tr_open|hr)$/.test(token.type)) continue;
+      const target = token.hidden ? tokens[index - 1] : token;
+      if (!target || token.hidden && target.type !== "list_item_open") continue;
+      target.attrSet("data-line", String(token.map[0] + 1));
+      target.attrSet("data-line-end", String(Math.max(token.map[1], token.map[0] + 1)));
+    }
+  });
+  const lines = (token, first) => token.map ? ' data-line="' + (token.map[0] + 1) + '" data-line-end="' + token.map[1] + '" data-code="' + first + '"' : "";
+  const rules = markdown2.renderer.rules;
+  rules.code_block = (tokens, index) => {
+    const token = tokens[index];
+    return "<pre" + lines(token, token.map ? token.map[0] + 1 : 0) + "><code>" + markdown2.utils.escapeHtml(token.content.replace(/\n$/, "")) + "</code></pre>\n";
+  };
+  rules.blockquote_open = (tokens, index, options, env, self) => {
+    const meta = tokens[index].meta;
+    if (!meta || !meta.alert) return self.renderToken(tokens, index, options);
+    const [, icon, path] = ALERTS[meta.alert];
+    const svg = '<svg class="octicon octicon-' + icon + ' mr-2" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="' + path + '"></path></svg>';
+    const title = markdown2.utils.escapeHtml(meta.title);
+    const classes = "markdown-alert markdown-alert-" + meta.alert;
+    if (meta.fold) return '<details class="' + classes + '"' + (meta.fold === "+" ? " open" : "") + '><summary class="markdown-alert-title">' + svg + title + "</summary>\n";
+    return '<div class="' + classes + '"><p class="markdown-alert-title">' + svg + title + "</p>\n";
+  };
+  rules.blockquote_close = (tokens, index, options, env, self) => {
+    const meta = tokens[index].meta;
+    if (!meta || !meta.alert) return self.renderToken(tokens, index, options);
+    return meta.fold ? "</details>\n" : "</div>\n";
+  };
+  rules.fence = (tokens, index) => {
+    const token = tokens[index];
+    const text = token.content.replace(/\n$/, "");
+    const language = (token.info.trim().split(/\s+/)[0] || "").toLowerCase().replace(/[^a-z0-9_+#.-]/g, "");
+    const where = lines(token, token.map ? token.map[0] + 2 : 0);
+    if (!language) return '<pre class="notranslate"' + where + "><code>" + markdown2.utils.escapeHtml(text) + "</code></pre>\n";
+    const body = language !== "mermaid" && window.hljs && hljs.getLanguage(language) ? hljs.highlight(text, { language, ignoreIllegals: true }).value : markdown2.utils.escapeHtml(text);
+    return '<div class="highlight highlight-source-' + language + '"' + where + '><pre class="notranslate">' + body + "</pre></div>\n";
+  };
+  if (rules.footnote_ref) {
+    rules.footnote_caption = (tokens, index) => String(tokens[index].meta.id + 1);
+    const footnoteRef = rules.footnote_ref;
+    rules.footnote_ref = (...args) => footnoteRef(...args).replace("<a ", '<a data-footnote-ref aria-describedby="footnote-label" ');
+    rules.footnote_block_open = () => '<section class="footnotes" data-footnotes>\n<h2 id="footnote-label" class="sr-only">Footnotes</h2>\n<ol>\n';
+    rules.footnote_block_close = () => "</ol>\n</section>\n";
+  }
+}
+function sanitize(markup) {
+  return DOMPurify.sanitize(markup, {
+    RETURN_DOM_FRAGMENT: true,
+    FORBID_TAGS: ["style", "form", "button", "textarea", "select"],
+    FORBID_ATTR: ["style"]
+  });
+}
+
+// js/reader/render.js
+var markdown = null;
+function renderLocal() {
+  try {
+    if (!markdown) {
+      markdown = window.markdownit({ html: true, linkify: true, breaks: host.breaks });
+      markdown.linkify.set({ fuzzyLink: false });
+      if (window.markdownitFootnote) markdown.use(window.markdownitFootnote);
+      if (window.markdownitEmoji) markdown.use(window.markdownitEmoji);
+      frontMatterPlugin(markdown);
+      githubFlavour(markdown);
+      for (const plugin of host.plugins) plugin(markdown);
+    }
+    return sanitize(markdown.render(host.preprocess(host.source)));
+  } catch (error) {
+    console.error("markdown rendering failed", error);
+    const pre = document.createElement("pre");
+    pre.textContent = host.source;
+    const fragment = document.createDocumentFragment();
+    fragment.append(pre);
+    return fragment;
+  }
+}
+function directoryUrl(value, root) {
+  if (!value || value.includes("\\") || /^(?:[a-z][a-z0-9+.-]*:|#|\/\/)/i.test(value)) return null;
+  if (value.startsWith("/icons/")) return value;
+  const rooted = value.startsWith("/") && !value.startsWith(root) ? root + value.slice(1) : value;
+  const url = new URL(rooted, location.href);
+  return url.origin === location.origin && url.pathname.startsWith(root) ? url.href : null;
+}
+
+// js/reader/review.js
+function initReview() {
+  if (host.commentsUrl && host.reviewToggle && host.dock) {
+    let make = function(tag, className, text) {
+      const element2 = document.createElement(tag);
+      if (className) element2.className = className;
+      if (text !== void 0) element2.textContent = text;
+      if (tag === "button") element2.type = "button";
+      return element2;
+    }, ago = function(date) {
+      const seconds = (date.getTime() - Date.now()) / 1e3;
+      const format = new Intl.RelativeTimeFormat(void 0, { numeric: "auto" });
+      for (const [unit, size] of [["day", 86400], ["hour", 3600], ["minute", 60]]) {
+        if (Math.abs(seconds) >= size) return format.format(Math.round(seconds / size), unit);
+      }
+      return "just now";
+    }, notify = function(text) {
+      message = text;
+      clearTimeout(messageTimer);
+      messageTimer = setTimeout(() => {
+        message = "";
+        updateDock();
+      }, 3e3);
+      updateDock();
+    }, redraw = function() {
+      const count = view.comments.length;
+      badge.textContent = String(count);
+      badge.hidden = !count;
+      const label = count ? reviewName + ", " + plural(count) : reviewName;
+      host.reviewToggle.setAttribute("aria-label", label);
+      host.reviewToggle.title = label;
+      if (!reviewing) return;
+      buildMarks();
+      drawThreads();
+      paint();
+    }, collect = function() {
+      const found = [];
+      for (const element2 of host.article.querySelectorAll("[data-line]")) {
+        if (element2.closest(".code-body, .review-thread, .review-composer")) continue;
+        const start = Number(element2.dataset.line);
+        if (start) found.push({ element: element2, start, end: Number(element2.dataset.lineEnd) || start, code: false });
+      }
+      for (const box of host.article.querySelectorAll(".code-body [data-code]")) {
+        const first = Number(box.dataset.code);
+        const pre = box.matches("pre") ? box : box.querySelector("pre");
+        if (!first || !pre) continue;
+        const count = pre.textContent.replace(/\n$/, "").split("\n").length;
+        const last = Math.min(first + count - 1, Number(box.dataset.lineEnd) || Infinity);
+        for (let line = first; line <= last; line++) {
+          found.push({ element: box, start: line, end: line, code: true, body: box.closest(".code-body") });
+        }
+      }
+      return found.sort((a, b) => a.start - b.start || a.end - b.end);
+    }, buildMarks = function() {
+      gutter.replaceChildren();
+      for (const old of host.article.querySelectorAll(".code-gutter")) old.remove();
+      const commented = view.comments.filter((comment) => !comment.outdated);
+      marks = collect();
+      const columns = /* @__PURE__ */ new Map();
+      for (const mark of marks) {
+        const button = make("button", "review-line", String(mark.start));
+        button.dataset.start = mark.start;
+        button.dataset.end = mark.end;
+        button.setAttribute("aria-label", range(mark.start, mark.end));
+        if (mark.end > mark.start) button.title = range(mark.start, mark.end);
+        if (commented.some((comment) => comment.start <= mark.end && comment.end >= mark.start)) button.classList.add("commented");
+        mark.button = button;
+        if (mark.code) {
+          let column = columns.get(mark.body);
+          if (!column) {
+            column = make("div", "code-gutter");
+            mark.body.prepend(column);
+            columns.set(mark.body, column);
+          }
+          column.append(button);
+        } else {
+          gutter.append(button);
+        }
+      }
+      host.article.append(gutter);
+      place();
+    }, place = function() {
+      if (!reviewing) return;
+      const top = host.article.getBoundingClientRect().top;
+      for (const mark of marks) {
+        if (mark.code) continue;
+        const box = mark.element.getBoundingClientRect();
+        mark.button.hidden = !box.height;
+        if (!box.height) continue;
+        const row = mark.element.tagName === "TR";
+        const style = getComputedStyle(row ? mark.element.cells[0] || mark.element : mark.element);
+        const line = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.5;
+        const offset = mark.element.tagName === "HR" ? box.height / 2 - 12 : (parseFloat(style.paddingTop) || 0) + (parseFloat(style.borderTopWidth) || 0) + (line - 24) / 2;
+        mark.button.style.top = box.top - top + offset + "px";
+      }
+      drawBands();
+    }, drawBands = function() {
+      for (const band of host.article.querySelectorAll(".code-band")) band.remove();
+      const spans = /* @__PURE__ */ new Map();
+      for (const mark of marks) {
+        if (!mark.code || !inside(mark)) continue;
+        const span = spans.get(mark.body) || [mark.button, mark.button];
+        span[1] = mark.button;
+        spans.set(mark.body, span);
+      }
+      for (const [body, [first, last]] of spans) {
+        const band = make("div", "code-band");
+        band.style.top = first.offsetTop + "px";
+        band.style.height = last.offsetTop + last.offsetHeight - first.offsetTop + "px";
+        body.append(band);
+      }
+    }, paint = function() {
+      for (const element2 of host.article.querySelectorAll(".review-selected")) element2.classList.remove("review-selected");
+      for (const mark of marks) {
+        const on = inside(mark);
+        mark.button.classList.toggle("selected", on);
+        mark.button.setAttribute("aria-pressed", String(on));
+        if (on && !mark.code) mark.element.classList.add("review-selected");
+      }
+      drawBands();
+      updateDock();
+    }, remember = function() {
+      const hash = selection ? "#L" + selection.start + (selection.end > selection.start ? "-L" + selection.end : "") : "";
+      if (hash || /^#L\d/.test(location.hash)) history.replaceState(null, "", location.pathname + location.search + hash);
+    }, choose = function(start, end, extend) {
+      if (extend && selection) {
+        const anchor = selection.anchor;
+        selection = { start: Math.min(anchor.start, start), end: Math.max(anchor.end, end), anchor };
+      } else {
+        selection = { start, end, anchor: { start, end } };
+      }
+      remember();
+      paint();
+    }, clear = function() {
+      selection = null;
+      remember();
+      paint();
+    }, updateDock = function() {
+      const count = view.comments.length;
+      host.dock.classList.toggle("error", message.startsWith("!"));
+      if (message) dockText.textContent = message.replace(/^!/, "");
+      else if (selection) dockText.textContent = range(selection.start, selection.end) + " selected";
+      else if (count) dockText.textContent = plural(count);
+      else dockText.textContent = coarse.matches ? "Tap a line number" : "Click a line number, shift-click for a range";
+      commentButton.hidden = !selection || Boolean(composer);
+      clearButton.hidden = !selection;
+      copyButton.hidden = Boolean(selection) || !count;
+    }, spot = function(line) {
+      let best = null;
+      for (const mark of marks) if (mark.start <= line) best = mark;
+      return best || marks[0] || null;
+    }, slot = function(mark, start) {
+      const element2 = mark.element;
+      if (mark.code) return [element2.closest(".code-block"), "after"];
+      if (element2.tagName === "TR") return [element2.closest("table"), "after"];
+      const own = element2.tagName === "LI" ? element2 : element2.parentElement?.tagName === "LI" ? element2.parentElement : null;
+      if (!own) return [element2, "after"];
+      let item = own;
+      let list = null;
+      while (item && start < lineOf(item) && lineOf(item.parentElement.firstElementChild) >= start) {
+        list = item.parentElement;
+        item = list.parentElement?.tagName === "LI" ? list.parentElement : null;
+      }
+      if (list) return [list, "after"];
+      if (element2 !== own) return [element2, "after"];
+      const nested = own.querySelector(":scope > ul, :scope > ol");
+      return nested ? [nested, "before"] : [own, "append"];
+    }, insertAt = function([node, how], content) {
+      if (how === "before") node.before(content);
+      else if (how === "append") node.append(content);
+      else node.after(content);
+    }, editor = function(text, label, action, save, cancel) {
+      const form = make("form", "review-form");
+      const area = make("textarea");
+      area.value = text;
+      area.rows = 4;
+      area.maxLength = commentMax;
+      area.placeholder = "Leave a comment";
+      area.setAttribute("aria-label", label);
+      const row = make("div", "review-actions");
+      const hint = make("span", "review-hint", /Mac|iP/.test(navigator.platform) ? "\u2318 Enter to save" : "Ctrl+Enter to save");
+      const cancelButton = make("button", "", "Cancel");
+      const submit = make("button", "primary", action);
+      submit.type = "submit";
+      row.append(hint, cancelButton, submit);
+      form.append(area, row);
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!area.value.trim()) {
+          area.focus();
+          return;
+        }
+        submit.disabled = true;
+        try {
+          await save(area.value);
+        } catch (error) {
+          submit.disabled = false;
+          notify("!Saving failed: " + (error.message || error));
+        }
+      });
+      area.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+          event.preventDefault();
+          form.requestSubmit();
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          cancel();
+        }
+      });
+      cancelButton.addEventListener("click", cancel);
+      return { form, area };
+    }, closeComposer = function() {
+      if (composer) composer.remove();
+      composer = null;
+      updateDock();
+    }, compose = function() {
+      if (!selection) return;
+      closeComposer();
+      const target = { start: selection.start, end: selection.end };
+      const mark = spot(target.end);
+      if (!mark) return;
+      const holder = make("div", "review-composer");
+      holder.append(make("p", "review-composer-title", "Comment on " + range(target.start, target.end).toLowerCase()));
+      const { form, area } = editor("", "Comment on " + range(target.start, target.end).toLowerCase(), "Comment", async (text) => {
+        await post("add", "", { start: target.start, end: target.end, body: text });
+        closeComposer();
+        clear();
+        notify("Comment added");
+      }, closeComposer);
+      holder.append(form);
+      insertAt(slot(mark, target.start), holder);
+      composer = holder;
+      updateDock();
+      area.focus({ preventScroll: true });
+      holder.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }, card = function(comment) {
+      const item = make("section", "review-comment" + (comment.outdated ? " outdated" : ""));
+      const head = make("header");
+      const about = comment.target ? comment.target.label ? ", " + comment.target.label : ", diagram" : "";
+      const where = make("button", "review-where", range(comment.start, comment.end) + about);
+      where.setAttribute("aria-label", "Select " + range(comment.start, comment.end).toLowerCase());
+      where.addEventListener("click", () => choose(comment.start, comment.end, false));
+      const stamp = new Date((comment.updated || comment.created) * 1e3);
+      const when = make("time", "", ago(stamp) + (comment.updated > comment.created + 1 ? ", edited" : ""));
+      when.dateTime = stamp.toISOString();
+      when.title = stamp.toLocaleString();
+      const tools = make("span", "review-tools");
+      const edit = make("button", "", "Edit");
+      const remove = make("button", "", "Delete");
+      tools.append(edit, remove);
+      head.append(where, when, tools);
+      item.append(head);
+      if (comment.outdated) {
+        item.append(make("p", "review-note", "These lines changed after the comment. It was written on:"));
+        item.append(make("pre", "review-quote", comment.quote.join("\n")));
+      }
+      const body = make("p", "review-body", comment.body);
+      item.append(body);
+      edit.addEventListener("click", () => {
+        if (item.querySelector("form")) return;
+        const done = () => {
+          form.remove();
+          body.hidden = false;
+          edit.disabled = false;
+        };
+        const { form, area } = editor(comment.body, "Edit the comment on " + range(comment.start, comment.end).toLowerCase(), "Save", async (text) => {
+          await post("edit", "?id=" + encodeURIComponent(comment.id), { body: text });
+          notify("Comment saved");
+        }, done);
+        body.hidden = true;
+        edit.disabled = true;
+        body.after(form);
+        area.focus();
+      });
+      let armed = 0;
+      remove.addEventListener("click", async () => {
+        if (!armed) {
+          remove.textContent = "Confirm delete";
+          remove.classList.add("danger");
+          armed = setTimeout(() => {
+            armed = 0;
+            remove.textContent = "Delete";
+            remove.classList.remove("danger");
+          }, 3e3);
+          return;
+        }
+        clearTimeout(armed);
+        remove.disabled = true;
+        try {
+          await post("delete", "?id=" + encodeURIComponent(comment.id));
+          notify("Comment deleted");
+        } catch (error) {
+          remove.disabled = false;
+          notify("!Deleting failed: " + (error.message || error));
+        }
+      });
+      return item;
+    }, drawThreads = function() {
+      for (const old of host.article.querySelectorAll(".review-thread")) old.remove();
+      const groups = [];
+      for (const comment of view.comments) {
+        const mark = spot(comment.end);
+        if (!mark) continue;
+        const where = slot(mark, comment.start);
+        let group = groups.find((other) => other.where[0] === where[0] && other.where[1] === where[1]);
+        if (!group) groups.push(group = { where, end: 0, comments: [] });
+        group.end = Math.max(group.end, comment.end);
+        group.comments.push(comment);
+      }
+      for (const group of groups.sort((a, b) => b.end - a.end)) {
+        const thread = make("div", "review-thread");
+        for (const comment of group.comments) thread.append(card(comment));
+        insertAt(group.where, thread);
+      }
+    }, enter = function() {
+      reviewing = true;
+      host.article.classList.add("reviewing");
+      document.body.classList.add("reviewing");
+      host.dock.hidden = false;
+      host.reviewToggle.setAttribute("aria-pressed", "true");
+      buildMarks();
+      drawThreads();
+      paint();
+    }, leave = function() {
+      reviewing = false;
+      closeComposer();
+      selection = null;
+      remember();
+      gutter.remove();
+      for (const element2 of host.article.querySelectorAll(".code-gutter, .code-band, .review-thread")) element2.remove();
+      for (const element2 of host.article.querySelectorAll(".review-selected")) element2.classList.remove("review-selected");
+      marks = [];
+      host.article.classList.remove("reviewing");
+      document.body.classList.remove("reviewing");
+      host.dock.hidden = true;
+      host.reviewToggle.setAttribute("aria-pressed", "false");
+    }, follow = function() {
+      const wanted = /^#L(\d+)(?:-L(\d+))?$/.exec(location.hash);
+      if (!wanted) return;
+      if (!reviewing) enter();
+      const start = Math.max(1, Math.min(Number(wanted[1]), view.lines || 1));
+      choose(start, Math.max(start, Math.min(Number(wanted[2] || start), view.lines || start)), false);
+      const first = marks.find(inside);
+      if (first) (first.code ? first.button : first.element).scrollIntoView({ block: "center" });
+    };
+    const reviewName = host.reviewName;
+    if (reviewName === "Comments") {
+      const label = document.createElement("span");
+      label.textContent = "Comments";
+      host.reviewToggle.insertBefore(label, host.reviewToggle.querySelector(".count"));
+    }
+    const coarse = matchMedia("(pointer: coarse)");
+    const commentMax = host.commentMax;
+    const badge = host.reviewToggle.querySelector(".count");
+    const dockText = host.dock.querySelector(".review-dock-text");
+    const commentButton = host.dock.querySelector('[data-review="comment"]');
+    const clearButton = host.dock.querySelector('[data-review="clear"]');
+    const copyButton = host.dock.querySelector('[data-review="copy"]');
+    const gutter = document.createElement("div");
+    gutter.className = "review-gutter";
+    let reviewing = false;
+    let view = { lines: 0, comments: [] };
+    let promptText = "";
+    let selection = null;
+    let marks = [];
+    let composer = null;
+    let message = "";
+    let messageTimer = 0;
+    const range = (start, end) => start === end ? "Line " + start : "Lines " + start + "\u2013" + end;
+    const plural = (count) => count + (count === 1 ? " comment" : " comments");
+    addBusyCheck(() => Boolean(composer) || Boolean(host.article.querySelector(".review-comment form")));
+    async function call(url, options) {
+      const response = await fetch(url, Object.assign({ cache: "no-store" }, options));
+      const answer = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(answer.error || response.statusText);
+      return answer;
+    }
+    async function loadPrompt() {
+      const response = await fetch(host.commentsUrl + "?format=prompt", { cache: "no-store" });
+      promptText = response.ok ? await response.text() : "";
+    }
+    async function refresh() {
+      view = await call(host.commentsUrl);
+      await loadPrompt();
+      redraw();
+    }
+    async function post(action, query, body) {
+      view = await call(host.commentsUrl.replace("/comments/", "/comments/" + action + "/") + query, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: body === void 0 ? "" : JSON.stringify(body)
+      });
+      await loadPrompt();
+      redraw();
+    }
+    const inside = (mark) => Boolean(selection) && mark.start <= selection.end && mark.end >= selection.start;
+    const lineOf = (element2) => Number(element2?.dataset.line || element2?.querySelector("[data-line]")?.dataset.line || 0);
+    host.onShow = () => {
+      if (reviewing) leave();
+    };
+    host.onDiagram = () => {
+      if (!reviewing) return;
+      buildMarks();
+      paint();
+    };
+    host.reviewToggle.hidden = false;
+    host.reviewToggle.addEventListener("click", () => reviewing ? leave() : enter());
+    host.article.addEventListener("mousedown", (event) => {
+      if (event.shiftKey && event.target.closest(".review-line")) event.preventDefault();
+    });
+    host.article.addEventListener("click", (event) => {
+      const button = event.target.closest(".review-line");
+      if (!button || !reviewing) return;
+      const start = Number(button.dataset.start), end = Number(button.dataset.end);
+      const touch = coarse.matches && Boolean(selection);
+      if (touch && start >= selection.start && end <= selection.end) clear();
+      else choose(start, end, event.shiftKey || touch);
+    });
+    commentButton.addEventListener("click", compose);
+    clearButton.addEventListener("click", clear);
+    host.dock.querySelector('[data-review="done"]').addEventListener("click", leave);
+    copyButton.addEventListener("click", async () => {
+      const done = promptText ? await copyText(promptText) : false;
+      notify(done ? "Copied " + plural(view.comments.length) + " as a prompt" : "!Copy failed");
+    });
+    document.addEventListener("keydown", (event) => {
+      if (reviewing && event.key === "Escape" && selection && !composer && !event.target.closest("textarea")) clear();
+    });
+    new ResizeObserver(() => {
+      if (reviewing) requestAnimationFrame(place);
+    }).observe(host.article);
+    addEventListener("hashchange", follow);
+    addEventListener("aniflow-comments", () => refresh().catch((error) => console.error("comments", error)));
+    refresh().catch((error) => console.error("comments", error)).then(follow);
+  }
 }
 
 // js/reader/show.js
@@ -3392,9 +3436,9 @@ function present(at, direction) {
   }
   for (const element2 of host.article.querySelectorAll(":scope > .slide-on")) element2.classList.remove("slide-on");
   for (const element2 of groups[at]) element2.classList.add("slide-on");
-  const diagrams = groups[at].filter((element2) => element2.matches(".mermaid-diagram, .highlight-source-mermaid"));
-  const words = groups[at].filter((element2) => !diagrams.includes(element2) && !isHeading(element2)).reduce((sum, element2) => sum + element2.textContent.trim().length, 0);
-  document.body.classList.toggle("slide-solo", diagrams.length === 1 && words < 240);
+  const diagrams2 = groups[at].filter((element2) => element2.matches(".mermaid-diagram, .highlight-source-mermaid"));
+  const words = groups[at].filter((element2) => !diagrams2.includes(element2) && !isHeading(element2)).reduce((sum, element2) => sum + element2.textContent.trim().length, 0);
+  document.body.classList.toggle("slide-solo", diagrams2.length === 1 && words < 240);
   host.article.classList.remove("slide-enter");
   if (direction && slideAt >= 0) {
     host.article.style.setProperty("--slide-from", (direction > 0 ? 18 : -18) + "px");
@@ -3564,6 +3608,39 @@ function reader(options = {}) {
     }
   };
 }
+function diagrams(options = {}) {
+  const root = element(options.root || document.body);
+  if (!root) throw new Error("aniflow: no root element");
+  Object.assign(host, {
+    article: root,
+    nonce: options.nonce || "",
+    resolveImage: options.resolveImage || none,
+    mermaid: options.mermaid || "mermaid.min.js",
+    dark: options.dark || null,
+    lazy: options.lazy !== false,
+    autoplay: Boolean(options.autoplay),
+    commentsUrl: "",
+    save: options.save || ((name, blob) => saveBlob(blob, name)),
+    onShow: null,
+    onDiagram: null
+  });
+  const fresh = () => {
+    host.render?.abort();
+    host.render = new AbortController();
+  };
+  fresh();
+  drawDiagrams();
+  addEventListener("hashchange", () => {
+    for (const stage of root.querySelectorAll(".diagram-stage[data-diagram]")) if (diagramFromHash(stage)) break;
+  });
+  return {
+    // Draws every diagram again, after the page switched between light and dark.
+    redraw() {
+      fresh();
+      redrawDiagrams();
+    }
+  };
+}
 var directoryResolver = (root) => (value) => directoryUrl(value, root);
 async function diagramExport(stage, kind) {
   const element2 = stage instanceof Element ? stage : document.querySelector(stage);
@@ -3585,6 +3662,7 @@ export {
   isBusy as busy,
   diagramExport,
   diagramLines,
+  diagrams,
   directoryResolver,
   flowchartLines,
   playScript as parse,

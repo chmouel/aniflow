@@ -418,7 +418,22 @@ def main() -> None:
         type=int,
         help="with --export, only the Nth diagram of the document",
     )
+    parser.add_argument(
+        "--check",
+        metavar="FILE",
+        nargs="+",
+        help="draw the diagrams of each FILE (or - for stdin) in headless Chrome, "
+        "print every step that cannot play, diagram that does not render and "
+        "picture that does not load as FILE:LINE, and exit 1 when there is any",
+    )
     args = parser.parse_args()
+    if args.check:
+        if export.chrome() is None:
+            parser.error(
+                "--check needs Chrome or Chromium: install one, or set "
+                "ANIFLOW_CHROME to its path"
+            )
+        raise SystemExit(export.check(args.check))
     if args.spec:
         sys.stdout.write(SPEC.read_text("utf-8"))
         return

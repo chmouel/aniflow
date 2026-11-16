@@ -1,5 +1,6 @@
 import { host } from './host.js';
 import { addBusyCheck, isBusy } from './diagram/busy.js';
+import { drawDiagrams, redrawDiagrams } from './diagram/draw.js';
 import { diagramFromHash } from './diagram/hash.js';
 import { diagramLines, flowchartLines, playScript } from './diagram/parse.js';
 import { saveBlob } from './diagram/share.js';
@@ -61,6 +62,43 @@ export function reader(options = {}) {
       host.source = source ?? '';
       show(renderLocal());
       if (host.presentButton) host.presentButton.hidden = slideGroups().length < 2;
+    },
+  };
+}
+
+// Draws the Mermaid blocks already on a page, for a site that renders its own Markdown. A block
+// is a .highlight-source-mermaid element holding the diagram source as text; data-story and
+// data-autoplay on it choose the story shown first and play it once it is on screen.
+export function diagrams(options = {}) {
+  const root = element(options.root || document.body);
+  if (!root) throw new Error('aniflow: no root element');
+  Object.assign(host, {
+    article: root,
+    nonce: options.nonce || '',
+    resolveImage: options.resolveImage || none,
+    mermaid: options.mermaid || 'mermaid.min.js',
+    dark: options.dark || null,
+    lazy: options.lazy !== false,
+    autoplay: Boolean(options.autoplay),
+    commentsUrl: '',
+    save: options.save || ((name, blob) => saveBlob(blob, name)),
+    onShow: null,
+    onDiagram: null,
+  });
+  const fresh = () => {
+    host.render?.abort();
+    host.render = new AbortController();
+  };
+  fresh();
+  drawDiagrams();
+  addEventListener('hashchange', () => {
+    for (const stage of root.querySelectorAll('.diagram-stage[data-diagram]')) if (diagramFromHash(stage)) break;
+  });
+  return {
+    // Draws every diagram again, after the page switched between light and dark.
+    redraw() {
+      fresh();
+      redrawDiagrams();
     },
   };
 }

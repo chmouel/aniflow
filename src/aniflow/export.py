@@ -102,7 +102,31 @@ EXPORT_JS = r"""
     if (!found.length) throw new Error('this document has no diagrams to export' + why());
     return found;
   }
+  // --check: what would not draw or play, by document line, and no files.
+  const problems = () => [...document.querySelectorAll('.diagram-problems li')].map((item) => ({
+    line: Number(item.dataset.line) || 0,
+    story: (item.querySelector('small')?.textContent || '').replace(/ · line \d+$/, ''),
+    reason: item.querySelector('span')?.textContent || '',
+    text: item.querySelector('code')?.textContent || '',
+  }));
+  const pictures = () => [...document.querySelectorAll('.mermaid-diagram[title*="Pictures not shown: "]')].map((holder) => ({
+    line: Number(holder.dataset.line) || 0,
+    message: holder.title.split('Pictures not shown: ')[1],
+  }));
+  const lines = (rows) => {
+    const blocks = [...document.querySelectorAll('.mermaid-diagram, .highlight-source-mermaid')];
+    return rows.map((row) => Object.assign({ line: Number(blocks[row.diagram - 1]?.dataset.line) || 0 }, row));
+  };
+  async function check() {
+    const deadline = Date.now() + job.timeout;
+    while (document.querySelectorAll('.highlight-source-mermaid:not([title])').length) {
+      if (Date.now() > deadline) throw new Error('the diagrams did not finish rendering' + why());
+      await next();
+    }
+    await tell(job.done, { failures: lines(failed()), problems: problems(), pictures: pictures() });
+  }
   async function run() {
+    if (job.kind === 'check') return check();
     const all = await drawn();
     const wanted = job.diagrams && job.diagrams.length ? job.diagrams : all.map(indexOf);
     const missing = wanted.filter((index) => !all.some((stage) => indexOf(stage) === index));
@@ -246,6 +270,8 @@ class ExportServer(ThreadingHTTPServer):
         self.skipped: list[str] = []
         self.failures: list[dict[str, object]] = []
         self.warnings: list[str] = []
+        self.problems: list[dict[str, object]] = []
+        self.pictures: list[dict[str, object]] = []
         self.error = ""
         self.stop = threading.Event()
         self.doc_path = f"/doc/{self.token}/{quote(name)}"
@@ -370,11 +396,16 @@ class ExportHandler(web.Handler):
                     server.failures.append(
                         {
                             "diagram": row.get("diagram", "?"),
+                            "line": row.get("line") or 0,
                             "message": str(row.get("message") or "it did not render"),
                         }
                     )
             for item in payload.get("warnings") or []:
                 server.warnings.append(str(item))
+            for key in ("problems", "pictures"):
+                for row in payload.get(key) or []:
+                    if isinstance(row, dict):
+                        getattr(server, key).append(row)
         server.stop.set()
         self.send_json({"ok": True})
 
@@ -491,6 +522,97 @@ def finish(process, server, thread, profile) -> None:
                 break
 
 
+def render(
+    text: str,
+    folder: Path,
+    name: str,
+    outdir: Path | None,
+    kind: str,
+    diagrams: list[int],
+) -> tuple[ExportServer | None, int]:
+    """Serves the document to headless Chrome until its page reports back. The server
+    holds what it said; None with an exit code when the run could not start."""
+    browser = chrome()
+    if browser is None:
+        print(
+            "aniflow: this needs Chrome or Chromium: install one, or set "
+            "ANIFLOW_CHROME to its path",
+            file=sys.stderr,
+        )
+        return None, 1
+    server = thread = profile = process = None
+    code = 0
+    with tempfile.TemporaryFile() as log:
+        try:
+            try:
+                server = ExportServer(text, folder, name, outdir, kind, diagrams)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                profile = Path(tempfile.mkdtemp(prefix="aniflow-export-"))
+            except OSError as error:
+                print(
+                    f"aniflow: cannot start the browser run: {error}", file=sys.stderr
+                )
+                return None, 1
+            url = f"http://127.0.0.1:{server.server_address[1]}{server.doc_path}"
+            try:
+                process = subprocess.Popen(
+                    command(browser, url, profile),
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=log,
+                    start_new_session=True,
+                )
+            except OSError as error:
+                print(f"aniflow: cannot start {browser}: {error}", file=sys.stderr)
+                return None, 1
+            wait_for(server, process, log)
+        except KeyboardInterrupt:
+            print("aniflow: cancelled", file=sys.stderr)
+            code = 130
+        finally:
+            finish(process, server, thread, profile)
+    return server, code
+
+
+def check(targets: list[str]) -> int:
+    """Draws each document's diagrams in headless Chrome and prints every walkthrough step
+    that cannot play, diagram that does not render and picture that does not load as
+    file:line: message. Returns 1 when it found any."""
+    found = 0
+    for target in targets:
+        try:
+            text, folder, name = document(target)
+        except (OSError, UnicodeDecodeError) as error:
+            print(f"aniflow: cannot read {target}: {error}", file=sys.stderr)
+            found += 1
+            continue
+        if "```mermaid" not in text:
+            continue
+        server, code = render(text, folder, name, None, "check", [])
+        if server is None or code:
+            return code or 1
+        where = "<stdin>" if target == "-" else target
+        if server.error:
+            print(f"{where}: {server.error}")
+            found += 1
+        for failure in server.failures:
+            print(
+                f"{where}:{failure['line']}: diagram does not render: {failure['message']}"
+            )
+        for row in server.problems:
+            print(
+                f"{where}:{row.get('line', 0)}: {row.get('story', '')}: "
+                f"{row.get('reason', '')} ({row.get('text', '')})"
+            )
+        for row in server.pictures:
+            print(
+                f"{where}:{row.get('line', 0)}: pictures not shown: {row.get('message', '')}"
+            )
+        found += len(server.failures) + len(server.problems) + len(server.pictures)
+    return 1 if found else 0
+
+
 def run(
     target: str | Path,
     kind: str,
@@ -505,51 +627,14 @@ def run(
         print(f"aniflow: cannot read {target}: {error}", file=sys.stderr)
         return 1
     outdir = Path(out) if out else folder
-    browser = chrome()
-    if browser is None:
-        print(
-            "aniflow: --export needs Chrome or Chromium: install one, or set "
-            "ANIFLOW_CHROME to its path",
-            file=sys.stderr,
-        )
-        return 1
     try:
         outdir.mkdir(parents=True, exist_ok=True)
     except OSError as error:
         print(f"aniflow: cannot write into {outdir}: {error}", file=sys.stderr)
         return 1
-    server = thread = profile = process = None
-    code = 0
-    with tempfile.TemporaryFile() as log:
-        try:
-            try:
-                server = ExportServer(
-                    text, folder, name, outdir, kind, [only] if only else []
-                )
-                thread = threading.Thread(target=server.serve_forever, daemon=True)
-                thread.start()
-                profile = Path(tempfile.mkdtemp(prefix="aniflow-export-"))
-            except OSError as error:
-                print(f"aniflow: cannot start the export: {error}", file=sys.stderr)
-                return 1
-            url = f"http://127.0.0.1:{server.server_address[1]}{server.doc_path}"
-            try:
-                process = subprocess.Popen(
-                    command(browser, url, profile),
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    stderr=log,
-                    start_new_session=True,
-                )
-            except OSError as error:
-                print(f"aniflow: cannot start {browser}: {error}", file=sys.stderr)
-                return 1
-            wait_for(server, process, log)
-        except KeyboardInterrupt:
-            print("aniflow: cancelled", file=sys.stderr)
-            code = 130
-        finally:
-            finish(process, server, thread, profile)
+    server, code = render(text, folder, name, outdir, kind, [only] if only else [])
+    if server is None:
+        return code
     for index in server.skipped:
         print(
             f"aniflow: diagram {index} has no %% play: story, skipped for {kind}",

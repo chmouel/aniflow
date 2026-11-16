@@ -110,11 +110,24 @@ other container in disguise. `-o/--out DIR` picks another folder and
 It needs Google Chrome or Chromium installed; set `ANIFLOW_CHROME` to the
 binary's path when it is somewhere unusual.
 
+## Check walkthroughs
+
+`aniflow --check FILE...` draws every diagram in headless Chrome and prints
+each problem as `file:line: message`: a diagram Mermaid cannot draw, a story
+step that does not play and why, and pictures that did not load. It exits 1
+when it finds anything, so it fits a pre-commit hook or a docs linter. Files
+without a Mermaid fence are skipped.
+
+```sh
+aniflow --check docs/*.md
+```
+
 ## Use the library
 
 The built files live in `src/aniflow/static/`: `aniflow.min.js` (a script
 that defines the `Aniflow` global), `aniflow.esm.js` (an ES module),
-`aniflow.css` (the reader and diagrams) and `page.css` (the page around
+`aniflow.css` (the reader and diagrams), `aniflow-diagrams.css` (the
+diagrams alone) and `page.css` (the page around
 them). They expect markdown-it with its footnote and emoji plugins,
 DOMPurify and github-markdown.css on the page; highlight.js is optional, and
 Mermaid is loaded on demand from the `mermaid` URL.
@@ -154,6 +167,48 @@ Call `Aniflow.reader()` once per page: the markdown-it setup and the event
 handlers it installs stay for the life of the page. It returns
 `{ update(source) }`, which renders new Markdown into the same article, as
 an editor with a live preview needs.
+
+### Diagrams in a page you already render
+
+A static site generator renders the Markdown itself and only needs the
+diagrams brought to life. `Aniflow.diagrams()` animates the Mermaid blocks
+already on the page and needs neither markdown-it, DOMPurify nor
+github-markdown.css. Load `aniflow-diagrams.css` instead of `aniflow.css`.
+A block is any element with the `highlight-source-mermaid` class whose text
+is the Mermaid source, as GitHub's own HTML has it:
+
+```html
+<div class="highlight highlight-source-mermaid" data-story="Red build">
+  <pre>flowchart LR ...</pre>
+</div>
+<script src="/aniflow/aniflow.min.js"></script>
+<script>
+  const diagrams = Aniflow.diagrams({
+    root: 'main',
+    mermaid: '/aniflow/mermaid.min.js',
+    dark: () => document.documentElement.classList.contains('dark'),
+  });
+</script>
+```
+
+`Aniflow.diagrams()` takes:
+
+- `root`: the element or selector holding the blocks, `document.body` by
+  default
+- `mermaid`, `nonce`, `resolveImage`, `save`: as for `reader()`; use
+  `resolveImage` to serve the built-in `/icons/` from another path
+- `dark`: a function that says whether to draw the dark palette, read at
+  every draw
+- `lazy`: load Mermaid and draw a diagram only when it nears the screen,
+  on by default
+- `autoplay`: play every diagram once when it comes into view, unless the
+  reader asked for reduced motion
+
+`data-story` on a block picks the story shown first, by number or title,
+and `data-autoplay` turns autoplay on for that block alone. Diagram colours
+come from the Primer variables (`--bgColor-default`, `--fgColor-accent`...)
+set on the root, so map the site's palette onto them. The call returns
+`{ redraw() }`; call it when the theme changes.
 
 The Python package also exposes the server pieces (`aniflow.web`,
 `aniflow.page`, `aniflow.comments`, `aniflow.themes`) for apps that serve the reader themselves.
