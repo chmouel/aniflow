@@ -73,6 +73,7 @@
   .diagram-stage.recording :is(g.node, g.image-shape).play-active { animation:none; filter:drop-shadow(0 0 6px color-mix(in srgb, var(--fgColor-accent) 65%, transparent)); }
   .mermaid-diagram:has(.diagram-play.playing, .diagram-export:not([hidden]), .diagram-problems:not([hidden]), .play-warn, .play-record.busy) .diagram-tools { opacity:1; }
   .diagram-stage :is(g.node, g.image-shape) { transition:opacity .25s; }
+  .diagram-stage g.image-shape :is(rect, .labelBkg, .labelBkg p) { fill:none; background:none !important; }
   .diagram-stage :is(g.node .label-container, g.node .label-container > *, g.image-shape > g:first-child > path) { transition:fill .25s, stroke .25s; }
   .diagram-stage g.node.play-active :is(.label-container, .label-container > *), .diagram-stage g.image-shape.play-active > g:first-child > path:first-child { fill:color-mix(in srgb, var(--fgColor-accent) 26%, var(--bgColor-default)) !important; }
   .diagram-stage g.node.play-active :is(.label-container, .label-container > *), .diagram-stage g.image-shape.play-active > g:first-child > path:last-child { stroke:var(--fgColor-accent) !important; stroke-width:2px !important; }
