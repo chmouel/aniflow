@@ -30,9 +30,12 @@ the wheel, so `uvx --from git+...` works without Node.
   `directoryUrl()`), `frontmatter.js`, `github.js` (task lists, alerts,
   callouts, `sanitize()` through DOMPurify), `code.js` (copy buttons),
   `show.js` (TOC rail, progress line), `review.js` (line review and
-  comments).
+  comments), `deck.js` (slide directives, deck front matter, code steps,
+  layout picking and the allow lists).
 - `js/diagram/`: the walkthrough engine, see below.
-- `js/slides.js`: presentation mode.
+- `js/slides.js`: presentation mode. `js/slides/tools.js`: the overview,
+  presenter window, laser, `showSlide()` and `deckCheck()` for export and
+  `--check`.
 - `js/css/`: `page.css` (the page around the reader: bar, layout, notice),
   `markdown.css`, `diagram.css` and `reader.css` (the document, diagrams,
   slides). The
@@ -51,8 +54,12 @@ the wheel, so `uvx --from git+...` works without Node.
   it, warns on stderr about pictures the site cannot load
   (`offline_pictures()`) and links over `SHARE_LONG`, and exits; `--open`
   also opens it. `aniflow --check FILE...` draws each file in headless
-  Chrome (`export.check()`) and prints failed diagrams, dropped steps and
-  missing pictures as `file:line:`, exiting 1 on any.
+  Chrome (`export.check()`) and prints failed diagrams, dropped steps,
+  missing pictures and deck problems (overflow, word count, unknown
+  directives, missing backgrounds) as `file:line:`, exiting 1 on any.
+  `aniflow --slides pdf|png FILE` drives Chrome over
+  `--remote-debugging-pipe` (`export.DevTools`) and writes the deck as one
+  PDF of JPEG pages or one PNG per slide.
 - `src/aniflow/web.py`: `Handler`, a `BaseHTTPRequestHandler` with the
   request checks (`request_allowed()`, `host_allowed()`,
   `origin_allowed()`; `allowed_hosts()` and `allowed_origins()` are for a
@@ -190,7 +197,8 @@ steps are dropped with a reason and listed by `diagramWarnings()` in a
 `.play-warn` badge. Picture nodes render as `g.image-shape`. Before
 rendering, `diagramImages()` rewrites each `img:` value through
 `host.resolveImage`, keeps https, same-origin paths and `data:image/`, and
-turns anything else into `DIAGRAM_IMAGE_MISSING`. Each picture is preloaded
+turns anything else into `DIAGRAM_IMAGE_MISSING`, adding `constraint: "on"`
+when the shape lacks it so the picture keeps its ratio. Each picture is preloaded
 with a timeout, since one failed load makes mermaid reject the diagram.
 
 `focusDiagram()` makes boxes clickable and sets `focus-on`/`focus-near`.
@@ -227,6 +235,22 @@ fires `aniflow-theme` on window after each change; `reader()` redraws the
 diagrams on it when the effective theme changed) and only exists where
 `window.aniflowTheme` does. `reader_page(theme=True)` adds `theme_select()`
 to the bar.
+
+Deck settings come from front matter and `<!-- slide: ... -->`,
+`<!-- column -->`, `<!-- reveal -->` and `<!-- notes: ... -->` comments,
+which the `aniflow_slide` core rule (`deck.js`) turns into `data-slide-*`
+attributes checked against allow lists before DOMPurify runs. Each slide
+is drawn on a fixed canvas (1600×900, 1600×1200 for 4:3, 900 wide on a
+narrow portrait screen) scaled through
+`--slide-scale` (`scaleCanvas()`); `fitSlide()` shrinks overflowing text
+and flags what still overflows. `slideLayout()` picks a layout when none is
+given, `dressCanvas()` adds the backgrounds, footer and numbers. The
+arrows walk reveal items, then code steps (```` ```js {1|2-3|all} ````),
+then the diagram story, and `#slide=N&step=K` keeps the place. `morph`
+uses `document.startViewTransition`. `s` opens the presenter popup, which
+the opener paints with `slideThumb()` clones; `o` opens the overview. For
+export, the page script in `export.py` sets `window.aniflowSlides`, and
+Python steps through `Aniflow.showSlide(i)`, which adds `body.slide-export`.
 
 ## Security rules
 
