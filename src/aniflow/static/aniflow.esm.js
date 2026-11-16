@@ -2453,7 +2453,7 @@ function nearScreen(blocks) {
       watcher.disconnect();
       resolve();
     }, { rootMargin: "600px 0px" });
-    for (const block of blocks) watcher.observe(block);
+    for (const block of blocks) watcher.observe(block.closest(".aniflow-figure") || block);
   });
 }
 function drawDiagrams() {
@@ -2470,16 +2470,19 @@ function drawDiagrams() {
     for (const [position, block] of diagrams2.entries()) {
       if (!block.isConnected) continue;
       const id = "mermaid-" + diagramCount++;
+      let holder;
+      const fallback = block.closest(".aniflow-figure")?.querySelector(".aniflow-fallback");
+      const source = block.textContent;
       try {
-        const scenarios = playScript(block.textContent, Number(block.dataset.line) || 0);
-        const pictures2 = await diagramImages(block.textContent);
+        const scenarios = playScript(source, Number(block.dataset.line) || 0);
+        const pictures2 = await diagramImages(source);
         const edges = await diagramEdges(pictures2.source);
         const result = await mermaid.render(id, pictures2.source);
         if (!block.isConnected) {
           document.getElementById("d" + id)?.remove();
           continue;
         }
-        const holder = document.createElement("div");
+        holder = document.createElement("div");
         holder.className = "mermaid-diagram";
         if (block.dataset.line) {
           holder.dataset.line = block.dataset.line;
@@ -2487,10 +2490,12 @@ function drawDiagrams() {
         }
         holder.innerHTML = result.svg;
         holder.diagramBlock = block;
-        block.replaceWith(holder);
+        block.before(holder);
+        holder.style.visibility = "hidden";
         if (block.classList.contains("slide-on")) holder.classList.add("slide-on");
-        panZoom(holder, scenarios, edges, { source: block.textContent, line: block.dataset.line, lineEnd: block.dataset.lineEnd, index: position + 1 });
+        panZoom(holder, scenarios, edges, { source, line: block.dataset.line, lineEnd: block.dataset.lineEnd, index: position + 1 });
         const stage = holder.querySelector(":scope > .diagram-stage");
+        if (fallback && !stage) throw new Error("Diagram stage did not initialize");
         if (stage) {
           stage.dataset.diagram = String(position + 1);
           const story = storyNumber(block.dataset.story, scenarios);
@@ -2504,28 +2509,38 @@ function drawDiagrams() {
         if (stage && holder.classList.contains("slide-on")) host.onSlideDiagram?.();
         if (pictures2.problems.length) holder.title += "\nPictures not shown: " + pictures2.problems.join(", ");
         if (host.onDiagram) host.onDiagram();
+        holder.style.visibility = "";
+        block.remove();
+        if (fallback) fallback.hidden = true;
       } catch (error) {
         document.getElementById("d" + id)?.remove();
+        holder?.remove();
+        if (fallback) fallback.hidden = false;
         block.title = "Mermaid: " + (error.message || error);
       }
     }
   };
   if (window.mermaid) {
-    draw();
+    draw().catch(console.error);
     return;
   }
   nearScreen(diagrams2).then(() => {
-    if (window.mermaid) return draw();
+    if (window.mermaid) return draw().catch(console.error);
     const script = document.createElement("script");
     if (host.nonce) script.nonce = host.nonce;
     script.src = host.mermaid;
-    script.onload = draw;
+    script.onload = () => draw().catch(console.error);
+    script.onerror = () => {
+      script.remove();
+    };
     document.head.append(script);
   });
 }
 function redrawDiagrams() {
   if (diagramDialog?.open) diagramDialog.close();
   for (const holder of host.article.querySelectorAll(".mermaid-diagram")) {
+    const fallback = holder.closest(".aniflow-figure")?.querySelector(".aniflow-fallback");
+    if (fallback) fallback.hidden = false;
     if (holder.diagramBlock) holder.replaceWith(holder.diagramBlock);
   }
   drawDiagrams();

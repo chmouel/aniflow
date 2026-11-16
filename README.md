@@ -191,6 +191,20 @@ is the Mermaid source, as GitHub's own HTML has it:
 </script>
 ```
 
+For a static fallback, wrap the source and visible fallback together:
+
+```html
+<div class="aniflow-figure">
+  <div class="aniflow-fallback"><img src="diagram.png" alt="Build flow"></div>
+  <div class="highlight-source-mermaid" hidden><pre>flowchart LR
+    A --&gt; B</pre></div>
+</div>
+```
+
+Escape the Mermaid source as HTML. The fallback remains visible until the
+interactive diagram initializes, and reappears while it redraws or if it
+fails. The wrapper is observed for lazy loading.
+
 `Aniflow.diagrams()` takes:
 
 - `root`: the element or selector holding the blocks, `document.body` by
