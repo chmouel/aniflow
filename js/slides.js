@@ -27,16 +27,33 @@ export function buildDock() {
   slideDock = document.createElement('div');
   slideDock.className = 'slide-dock';
   slideDock.innerHTML = '<div class="slide-rail"></div><div class="slide-controls">'
-    + '<button type="button" data-slide="-1" aria-label="Previous slide" title="Previous slide">' + diagramIcon('left') + '</button>'
+    + '<button type="button" data-slide="-1" aria-label="Previous slide" title="Previous slide (B)">' + diagramIcon('left') + '</button>'
     + '<span class="slide-count" aria-live="polite"></span>'
-    + '<button type="button" data-slide="1" aria-label="Next slide" title="Next slide">' + diagramIcon('right') + '</button>'
+    + '<button type="button" data-slide="1" aria-label="Next slide" title="Next slide (N)">' + diagramIcon('right') + '</button>'
+    + (window.aniflowTheme ? '<button type="button" class="slide-theme">' + diagramIcon('theme') + '</button>' : '')
     + '<button type="button" data-slide="0" aria-label="Leave presentation" title="Leave (Esc)">' + diagramIcon('close') + '</button></div>';
   for (const button of slideDock.querySelectorAll('[data-slide]')) {
     button.addEventListener('pointerdown', (event) => event.preventDefault());
     button.addEventListener('click', () => {
       const direction = Number(button.dataset.slide);
-      direction ? slideMove(direction) : stopPresenting();
+      direction ? present(slideAt + direction, direction) : stopPresenting();
     });
+  }
+  const theme = slideDock.querySelector('.slide-theme');
+  if (theme) {
+    const paint = () => {
+      const choice = document.documentElement.dataset.choice;
+      const label = 'Theme: ' + (window.aniflowThemes?.[choice]?.[2] || 'Auto');
+      theme.title = label;
+      theme.setAttribute('aria-label', label + ', change');
+    };
+    theme.addEventListener('pointerdown', (event) => event.preventDefault());
+    theme.addEventListener('click', () => {
+      const names = ['auto', ...Object.keys(window.aniflowThemes || {})];
+      window.aniflowTheme(names[(names.indexOf(document.documentElement.dataset.choice) + 1) % names.length]);
+    });
+    addEventListener('aniflow-theme', paint);
+    paint();
   }
   document.body.append(slideDock);
 }
@@ -70,6 +87,8 @@ export function present(at, direction) {
     if (!slideDock) buildDock();
     host.presentButton?.setAttribute('aria-pressed', 'true');
   }
+  const leaving = slideStory();
+  if (leaving?.playing()) leaving.toggle();
   for (const element of host.article.querySelectorAll(':scope > .slide-on')) element.classList.remove('slide-on');
   for (const element of groups[at]) element.classList.add('slide-on');
   // A diagram with little else on its slide takes the whole screen.
@@ -158,7 +177,10 @@ export function initSlides() {
       }
       if ((event.key === ' ' || event.key === 'Enter') && event.target.closest?.('button')) return;
       const key = event.key;
-      if (key === ' ' && !event.shiftKey && slideStory()) slideStory().toggle();
+      // n, b and Shift+PageDown/PageUp leave the slide even while its diagram story has steps left.
+      if (key === 'n' || (key === 'PageDown' && event.shiftKey)) present(slideAt + 1, 1);
+      else if (key === 'b' || (key === 'PageUp' && event.shiftKey)) present(slideAt - 1, -1);
+      else if (key === ' ' && !event.shiftKey && slideStory()) slideStory().toggle();
       else if ((key === 'ArrowRight' && !event.shiftKey) || key === 'PageDown' || key === 'j' || (key === ' ' && !event.shiftKey)) slideMove(1);
       else if ((key === 'ArrowLeft' && !event.shiftKey) || key === 'PageUp' || key === 'k' || (key === ' ' && event.shiftKey)) slideMove(-1);
       else if ((key === '<' || key === '>') && slideStory()) setDiagramSpeed(key === '>' ? 1 : -1);

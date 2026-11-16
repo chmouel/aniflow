@@ -6,7 +6,7 @@ import html
 import json
 
 from aniflow.comments import COMMENT_MAX_CHARS
-from aniflow.themes import THEME_READER_CSS, theme_script
+from aniflow.themes import THEME_READER_CSS, theme_script, theme_select
 
 # Loaded in this order before the reader; highlight.js is left out for very large files.
 MARKDOWN_SCRIPTS = (
@@ -92,11 +92,13 @@ def reader_page(
     favicon: str = "data:,",
     theme_default: str = "auto",
     theme_key: str = "aniflow-theme",
+    theme: bool = False,
     before: str = "",
     after: str = "",
 ) -> bytes:
     """The whole document. actions and tools go in the bar after the back link, top above
-    the contents, before and after are scripts around the one that renders."""
+    the contents, before and after are scripts around the one that renders. theme adds a
+    theme picker to the bar; slides always offer one in their dock."""
     review = (REVIEW_BUTTON, REVIEW_DOCK) if options.get("comments") else ("", "")
     highlight = len(text.encode("utf-8")) <= HIGHLIGHT_MAX_BYTES
     scripts = "".join(
@@ -114,7 +116,7 @@ def reader_page(
 <link rel="stylesheet" href="/static/page.css">
 <link rel="stylesheet" href="/static/aniflow.css">
 <style>{THEME_READER_CSS}{style}</style></head><body{body_attribute}>
-<header class="bar progress"><a href="{html.escape(back[1])}">← {html.escape(back[0])}</a><span class="name">{html.escape(title)}</span><nav>{actions}{PRESENT_BUTTON}{review[0]}{tools}</nav></header>
+<header class="bar progress"><a href="{html.escape(back[1])}">← {html.escape(back[0])}</a><span class="name">{html.escape(title)}</span><nav>{actions}{PRESENT_BUTTON}{review[0]}{tools}{theme_select(nonce) if theme else ""}</nav></header>
 <main class="page reader">{top}
 <details class="toc" id="toc" hidden><summary>Contents</summary><ol></ol></details>
 <article class="markdown-body"><noscript><pre>{html.escape(text)}</pre></noscript></article></main>

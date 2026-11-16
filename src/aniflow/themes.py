@@ -302,7 +302,9 @@ THEME_JS = """
     root.dataset.mode = themes[theme][0];
     const meta = document.querySelector('meta[name=theme-color]');
     if (meta) meta.content = themes[theme][1];
+    dispatchEvent(new Event('aniflow-theme'));
   }
+  window.aniflowThemes = themes;
   window.aniflowTheme = (name) => {
     try { localStorage.setItem(key, name); } catch (error) {}
     apply();
@@ -316,7 +318,9 @@ THEME_JS = """
 
 def theme_script(nonce: str = "", key: str = "aniflow-theme") -> str:
     """Sets the page's theme before it paints, from the choice saved under key in localStorage."""
-    themes = {name: [mode, values[0]] for name, (_, mode, values) in THEMES.items()}
+    themes = {
+        name: [mode, values[0], label] for name, (label, mode, values) in THEMES.items()
+    }
     attribute = f' nonce="{nonce}"' if nonce else ""
     script = THEME_JS % (json.dumps(key), json.dumps(themes))
     return f"<script{attribute}>{script}</script>"
@@ -328,11 +332,16 @@ def theme_select(nonce: str) -> str:
         for name, (label, _, _) in THEMES.items()
     )
     return (
-        f'<select id="theme-select" aria-label="Theme">{options}</select>'
+        '<label class="theme-pick renderer" title="Theme">'
+        '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">'
+        '<path fill-rule="evenodd" d="M8 1a7 7 0 1 1 0 14A7 7 0 0 1 8 1Zm0 1.5a5.5 5.5 0 1 0 0 11a5.5 5.5 0 0 0 0-11Z"/>'
+        '<path d="M8 2.5a5.5 5.5 0 0 1 0 11Z"/></svg>'
+        f'<select id="theme-select" aria-label="Theme">{options}</select></label>'
         f'<script nonce="{nonce}">'
         "const themeSelect = document.getElementById('theme-select');"
         "themeSelect.value = document.documentElement.dataset.choice;"
         "themeSelect.addEventListener('change', () => window.aniflowTheme(themeSelect.value));"
+        "addEventListener('aniflow-theme', () => { themeSelect.value = document.documentElement.dataset.choice; });"
         "</script>"
     )
 

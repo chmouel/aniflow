@@ -241,6 +241,7 @@ var DIAGRAM_ICONS = {
   pen: '<path d="M10.5 2.8l2.7 2.7-7.4 7.4-3.3.6.6-3.3z"/><path d="M9 4.3l2.7 2.7"/>',
   follow: '<path d="M2.5 5.5h2.2l1.1-1.7h4.4l1.1 1.7h2.2v7h-11z"/><circle cx="8" cy="9" r="2.1"/>',
   warn: '<path d="M8 2.2l6 10.6H2z"/><path d="M8 6.6v2.8M8 11.1v.1"/>',
+  theme: '<circle cx="8" cy="8" r="5.5"/><path d="M8 2.5v11a5.5 5.5 0 0 0 0-11z" fill="currentColor"/>',
   comment: '<path d="M2.5 3.5h11v7.2H8.2l-3.2 2.6v-2.6H2.5z"/><path d="M5 6.3h6M5 8.3h4"/>'
 };
 var diagramIcon = (name) => '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">' + DIAGRAM_ICONS[name] + "</svg>";
@@ -3394,13 +3395,29 @@ var slideStory = () => [...host.article.querySelectorAll(".slide-on .diagram-sta
 function buildDock() {
   slideDock = document.createElement("div");
   slideDock.className = "slide-dock";
-  slideDock.innerHTML = '<div class="slide-rail"></div><div class="slide-controls"><button type="button" data-slide="-1" aria-label="Previous slide" title="Previous slide">' + diagramIcon("left") + '</button><span class="slide-count" aria-live="polite"></span><button type="button" data-slide="1" aria-label="Next slide" title="Next slide">' + diagramIcon("right") + '</button><button type="button" data-slide="0" aria-label="Leave presentation" title="Leave (Esc)">' + diagramIcon("close") + "</button></div>";
+  slideDock.innerHTML = '<div class="slide-rail"></div><div class="slide-controls"><button type="button" data-slide="-1" aria-label="Previous slide" title="Previous slide (B)">' + diagramIcon("left") + '</button><span class="slide-count" aria-live="polite"></span><button type="button" data-slide="1" aria-label="Next slide" title="Next slide (N)">' + diagramIcon("right") + "</button>" + (window.aniflowTheme ? '<button type="button" class="slide-theme">' + diagramIcon("theme") + "</button>" : "") + '<button type="button" data-slide="0" aria-label="Leave presentation" title="Leave (Esc)">' + diagramIcon("close") + "</button></div>";
   for (const button of slideDock.querySelectorAll("[data-slide]")) {
     button.addEventListener("pointerdown", (event) => event.preventDefault());
     button.addEventListener("click", () => {
       const direction = Number(button.dataset.slide);
-      direction ? slideMove(direction) : stopPresenting();
+      direction ? present(slideAt + direction, direction) : stopPresenting();
     });
+  }
+  const theme = slideDock.querySelector(".slide-theme");
+  if (theme) {
+    const paint = () => {
+      const choice = document.documentElement.dataset.choice;
+      const label = "Theme: " + (window.aniflowThemes?.[choice]?.[2] || "Auto");
+      theme.title = label;
+      theme.setAttribute("aria-label", label + ", change");
+    };
+    theme.addEventListener("pointerdown", (event) => event.preventDefault());
+    theme.addEventListener("click", () => {
+      const names = ["auto", ...Object.keys(window.aniflowThemes || {})];
+      window.aniflowTheme(names[(names.indexOf(document.documentElement.dataset.choice) + 1) % names.length]);
+    });
+    addEventListener("aniflow-theme", paint);
+    paint();
   }
   document.body.append(slideDock);
 }
@@ -3434,6 +3451,8 @@ function present(at, direction) {
     if (!slideDock) buildDock();
     host.presentButton?.setAttribute("aria-pressed", "true");
   }
+  const leaving = slideStory();
+  if (leaving?.playing()) leaving.toggle();
   for (const element2 of host.article.querySelectorAll(":scope > .slide-on")) element2.classList.remove("slide-on");
   for (const element2 of groups[at]) element2.classList.add("slide-on");
   const diagrams2 = groups[at].filter((element2) => element2.matches(".mermaid-diagram, .highlight-source-mermaid"));
@@ -3524,7 +3543,9 @@ function initSlides() {
       }
       if ((event.key === " " || event.key === "Enter") && event.target.closest?.("button")) return;
       const key = event.key;
-      if (key === " " && !event.shiftKey && slideStory()) slideStory().toggle();
+      if (key === "n" || key === "PageDown" && event.shiftKey) present(slideAt + 1, 1);
+      else if (key === "b" || key === "PageUp" && event.shiftKey) present(slideAt - 1, -1);
+      else if (key === " " && !event.shiftKey && slideStory()) slideStory().toggle();
       else if (key === "ArrowRight" && !event.shiftKey || key === "PageDown" || key === "j" || key === " " && !event.shiftKey) slideMove(1);
       else if (key === "ArrowLeft" && !event.shiftKey || key === "PageUp" || key === "k" || key === " " && event.shiftKey) slideMove(-1);
       else if ((key === "<" || key === ">") && slideStory()) setDiagramSpeed(key === ">" ? 1 : -1);
@@ -3587,6 +3608,14 @@ function reader(options = {}) {
   show(renderLocal());
   initSlides();
   initReview();
+  let drawnTheme = document.documentElement.dataset.theme;
+  addEventListener("aniflow-theme", () => {
+    if (document.documentElement.dataset.theme === drawnTheme) return;
+    drawnTheme = document.documentElement.dataset.theme;
+    host.render?.abort();
+    host.render = new AbortController();
+    redrawDiagrams();
+  });
   if (location.hash && !/^#L\d/.test(location.hash)) {
     let target = null;
     try {

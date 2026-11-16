@@ -441,14 +441,17 @@ button stays hidden when there would be fewer than two slides.
 A slide that holds one diagram and little else gives the diagram the whole
 screen. The right arrow, `j` and Page Down play the slide's story one step
 at a time and move to the next slide once it has finished; the left arrow,
-`k` and Page Up go back the same way. On a slide with a story, Space plays
-or pauses it, and elsewhere Space moves on. Home and End jump to the first
-and last slide, and a swipe changes slide on a phone.
+`k` and Page Up go back the same way. To leave a slide before its story is
+over, press `n` or Shift+Page Down for the next slide, `b` or Shift+Page Up
+for the previous one. On a slide with a story, Space plays or pauses it, and
+elsewhere Space moves on. Home and End jump to the first and last slide, and
+a swipe changes slide on a phone.
 
 A rail along the bottom edge has one segment per slide, with the heading as
-its tooltip; click a segment to jump there. The previous, next and close
-buttons sit in the corner and fade with the pointer after a few seconds
-still. The address carries `#slide=3`, so a link opens the talk on that
+its tooltip; click a segment to jump there. The previous and next buttons in
+the corner always change slide, whatever the story has left, and the theme
+button next to them switches to the next colour theme. They fade with the
+pointer after a few seconds still. The address carries `#slide=3`, so a link opens the talk on that
 slide. Escape clears a drawing or spotlight first, then leaves, and so does
 leaving full screen; the page scrolls to the slide you were on.
 

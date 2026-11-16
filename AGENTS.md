@@ -215,7 +215,14 @@ draws or shows a dialog; an app that reloads itself checks it first
 
 Slides (`slides.js`) split the article's direct children on H2, or H1 when
 there are several, keep `#slide=N`, and let a diagram's story steps run
-before the slide changes.
+before the slide changes (`slideMove`). The dock buttons, rail ticks, `n`/`b`
+and Shift+PageDown/PageUp call `present()` directly and skip the story;
+`present()` pauses a story still playing on the slide it leaves. The dock's
+theme button cycles `window.aniflowThemes` (set by `theme_script`, which
+fires `aniflow-theme` on window after each change; `reader()` redraws the
+diagrams on it when the effective theme changed) and only exists where
+`window.aniflowTheme` does. `reader_page(theme=True)` adds `theme_select()`
+to the bar.
 
 ## Security rules
 

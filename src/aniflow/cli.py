@@ -234,7 +234,7 @@ def reader_page(
             comments=comments, review_name="Comments", root=root_url
         ),
         actions=actions,
-        tools=theme_select(nonce),
+        theme=True,
         top=BRAND + trail,
         style=BRAND_CSS + UI_CSS,
         body_class="aniflow-local",

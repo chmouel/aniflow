@@ -47,6 +47,15 @@ export function reader(options = {}) {
   show(renderLocal());
   initSlides();
   initReview();
+  // Mermaid takes its colours from the page when it draws, so a theme change draws the diagrams again.
+  let drawnTheme = document.documentElement.dataset.theme;
+  addEventListener('aniflow-theme', () => {
+    if (document.documentElement.dataset.theme === drawnTheme) return;
+    drawnTheme = document.documentElement.dataset.theme;
+    host.render?.abort();
+    host.render = new AbortController();
+    redrawDiagrams();
+  });
   if (location.hash && !/^#L\d/.test(location.hash)) {
     let target = null;
     try { target = document.getElementById(decodeURIComponent(location.hash.slice(1))); } catch (error) { /* bad hash */ }
