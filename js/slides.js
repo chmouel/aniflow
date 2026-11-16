@@ -134,7 +134,7 @@ export function dressCanvas(canvas, group, index) {
     // "**Label**: text" puts the label on its own line, so the separator after it goes.
     for (const label of group.flatMap((element) => [...element.querySelectorAll(':scope > li > strong:first-child, :scope > li > p:first-child > strong:first-child')])) {
       const next = label.nextSibling;
-      const separator = next?.nodeType === Node.TEXT_NODE && /^\s*[:\u2013\u2014-]\s*/.exec(next.data);
+      const separator = next?.nodeType === Node.TEXT_NODE && /^\s*[:,;\u2013\u2014-]\s*/.exec(next.data);
       if (!separator) continue;
       next.splitText(separator[0].length);
       const span = document.createElement('span');
