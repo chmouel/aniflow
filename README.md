@@ -87,6 +87,29 @@ like) can use [`skills/aniflow-diagrams`](skills/aniflow-diagrams/SKILL.md):
 copy or link that folder into the agent's skills directory and it will draw
 walkthroughs that look good.
 
+## Export a diagram to GIF or MP4
+
+`aniflow --export` renders a document's walkthroughs in headless Chrome and
+writes one file per diagram next to it, printing the paths it wrote.
+
+```sh
+aniflow --export gif walkthrough.md            # 01-walkthrough-ship-a-fix.gif
+aniflow --export mp4 walkthrough.md -o clips   # 01-walkthrough-ship-a-fix.mp4
+aniflow --export png walkthrough.md --diagram 2
+```
+
+The formats are `gif`, `mp4`, `webm`, and `png` for a still of each diagram.
+GIF draws the story frame by frame offline and returns as fast as it encodes,
+while video records it in real time, so it takes as long as the story plays. A
+diagram with no `%% play:` story is skipped for both while PNG still saves it,
+and a `mp4` or `webm` the browser cannot record is an error rather than the
+other container in disguise. `-o/--out DIR` picks another folder and
+`--diagram N` only the Nth diagram. `-` reads the document from stdin, and a
+`.mmd`/`.mermaid` file, or a bare Mermaid diagram, is fenced before rendering.
+
+It needs Google Chrome or Chromium installed; set `ANIFLOW_CHROME` to the
+binary's path when it is somewhere unusual.
+
 ## Use the library
 
 The built files live in `src/aniflow/static/`: `aniflow.min.js` (a script

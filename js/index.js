@@ -2,6 +2,7 @@ import { host } from './host.js';
 import { addBusyCheck, isBusy } from './diagram/busy.js';
 import { diagramFromHash } from './diagram/hash.js';
 import { diagramLines, flowchartLines, playScript } from './diagram/parse.js';
+import { saveBlob } from './diagram/share.js';
 import { setDiagramSpeed } from './diagram/speed.js';
 import { readFrontMatter } from './reader/frontmatter.js';
 import { directoryUrl, renderLocal } from './reader/render.js';
@@ -34,6 +35,7 @@ export function reader(options = {}) {
     commentsUrl: comments.url || '',
     commentMax: comments.max || 4000,
     reviewName: comments.name || 'Review',
+    save: options.save || ((name, blob) => saveBlob(blob, name)),
     reviewToggle: element(options.reviewButton),
     dock: element(options.reviewDock),
     presentButton: element(options.presentButton),
@@ -65,6 +67,24 @@ export function reader(options = {}) {
 
 // Keeps links and pictures that point inside the served directory root, for resolveLink/resolveImage.
 export const directoryResolver = (root) => (value) => directoryUrl(value, root);
+
+// Saves one diagram as a file: kind is gif, mp4, webm, or png for a still of the view it is
+// showing. It resolves to {name, blob} and rejects when the diagram could not be drawn or saved.
+export async function diagramExport(stage, kind) {
+  const element = stage instanceof Element ? stage : document.querySelector(stage);
+  if (!element) throw new Error('aniflow: no diagram to export');
+  if (!['gif', 'mp4', 'webm', 'png'].includes(kind)) throw new Error('aniflow: ' + kind + ' is not an export kind');
+  let result = null;
+  if (kind === 'png') {
+    if (!element.diagramPicture) throw new Error('aniflow: that diagram is not drawn yet');
+    result = await element.diagramPicture();
+  } else {
+    if (!element.diagramExport) throw new Error('aniflow: that diagram has no walkthrough to save');
+    result = await element.diagramExport(kind);
+  }
+  if (!result) throw new Error('aniflow: the ' + kind + ' was cancelled');
+  return result;
+}
 
 export {
   addBusyCheck,

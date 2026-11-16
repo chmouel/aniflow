@@ -4,7 +4,7 @@ import { gifWriter } from './gif.js';
 import { SVG_NS, diagramLinks, diagramNodes } from './graph.js';
 import { diagramIcon } from './icons.js';
 import { diagramCanvas } from './picture.js';
-import { diagramExportName, diagramVideoType, saveBlob } from './share.js';
+import { diagramExportName, diagramVideoType } from './share.js';
 import { DIAGRAM_PACE, diagramRate, diagramSpeed, setDiagramSpeed } from './speed.js';
 import { diagramWarnings } from './warnings.js';
 
@@ -185,8 +185,12 @@ export function playDiagram(stage, svg, tools, scripts, home, share, edges) {
   share.label();
   share.link.dataset.note = share.link.querySelector('small').textContent = 'To this story, step and spotlight';
   share.choice('gif', 'GIF', 'Loops, plays anywhere');
-  const videoType = diagramVideoType();
+  // The menu offers one video choice and lets the browser pick the container; an export asks
+  // for a container by name and must get it.
+  const videoType = diagramVideoType('video');
   if (videoType) share.choice('video', 'Video', videoType.startsWith('video/mp4') ? 'MP4, smaller and smoother' : 'WebM, smaller and smoother');
+  const mimeFor = (kind) => kind === 'gif' ? '' : kind === 'video' ? videoType : diagramVideoType(kind);
+  const exportLabel = (kind) => kind === 'gif' ? 'GIF' : kind === 'mp4' ? 'MP4' : kind === 'webm' ? 'WebM' : 'video';
   tools.prepend(controls);
   const caption = document.createElement('div');
   caption.className = 'diagram-caption';
@@ -590,11 +594,14 @@ export function playDiagram(stage, svg, tools, scripts, home, share, edges) {
     recordButton.innerHTML = diagramIcon('share');
     for (const element of [backButton, playButton, nextButton, stopButton, speedButton]) element.disabled = false;
     if (picker) picker.disabled = false;
-    share.label(error ? 'Could not save the ' + (kind === 'gif' ? 'GIF' : 'video') + ': ' + (error.message || error) : '');
+    share.label(error ? 'Could not save the ' + exportLabel(kind) + ': ' + (error.message || error) : '');
     sync();
   }
+  // Saves the story as a GIF or a video and returns {name, blob}: null when it was cancelled,
+  // and the failure is thrown once the button says what went wrong.
   async function exportScenario(kind) {
-    if (exporting) return;
+    if (exporting) return null;
+    const mime = mimeFor(kind);
     exporting = { kind: kind, cancelled: false };
     const job = exporting;
     pause();
@@ -605,8 +612,11 @@ export function playDiagram(stage, svg, tools, scripts, home, share, edges) {
     recordButton.textContent = '0%';
     recordButton.title = 'Cancel';
     recordButton.setAttribute('aria-label', 'Cancel saving');
-    const name = diagramExportName(scenario().title, kind === 'gif' ? 'gif' : videoType.startsWith('video/mp4') ? 'mp4' : 'webm');
+    let saved = null;
+    let name = '';
     try {
+      if (kind !== 'gif' && !mime) throw new Error('this browser cannot record ' + exportLabel(kind) + ' video');
+      name = diagramExportName(scenario().title, kind === 'gif' ? 'gif' : mime.startsWith('video/mp4') ? 'mp4' : 'webm');
       const captioned = scenario().steps.some((step) => step.caption);
       const canvas = await diagramCanvas(svg, home, kind === 'gif' ? 960 : 1920, captioned);
       if (kind === 'gif') {
@@ -627,12 +637,12 @@ export function playDiagram(stage, svg, tools, scripts, home, share, edges) {
         if (job.cancelled) stop();
         else {
           finished = true;
-          saveBlob(gif.finish(), name);
+          saved = gif.finish();
         }
       } else {
         await canvas.draw(caption.textContent);
         const stream = canvas.element.captureStream(30);
-        const recorder = new MediaRecorder(stream, { mimeType: videoType, videoBitsPerSecond: 6000000 });
+        const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6000000 });
         const chunks = [];
         recorder.addEventListener('dataavailable', (event) => { if (event.data.size) chunks.push(event.data); });
         const stopped = new Promise((resolve) => recorder.addEventListener('stop', resolve, { once: true }));
@@ -654,12 +664,15 @@ export function playDiagram(stage, svg, tools, scripts, home, share, edges) {
         await stopped;
         for (const track of stream.getTracks()) track.stop();
         if (job.cancelled) stop();
-        else saveBlob(new Blob(chunks, { type: recorder.mimeType || videoType }), name);
+        else saved = new Blob(chunks, { type: recorder.mimeType || mime });
       }
+      if (saved) await host.save(name, saved);
       exportEnd();
     } catch (error) {
       exportEnd(error);
+      throw error;
     }
+    return saved ? { name: name, blob: saved } : null;
   }
 
   function where() {
@@ -695,7 +708,10 @@ export function playDiagram(stage, svg, tools, scripts, home, share, edges) {
   nextButton.addEventListener('click', stepNext);
   stopButton.addEventListener('click', stop);
   share.name = () => scenario().title;
-  share.choose = exportScenario;
+  share.choose = (kind) => {
+    exportScenario(kind).catch(() => {});
+  };
+  stage.diagramExport = (kind) => exportScenario(kind);
   share.cancel = () => {
     if (!exporting) return false;
     exporting.cancelled = true;

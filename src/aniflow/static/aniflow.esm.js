@@ -1,7 +1,7 @@
 /* aniflow, Apache-2.0, https://github.com/chmouel/aniflow */
 
 // js/host.js
-var host = {};
+var host = { save: null };
 
 // js/diagram/busy.js
 var checks = [];
@@ -121,6 +121,384 @@ function playScript(source, base) {
   });
   if (current2 && hold) current2.tail = hold;
   return scenarios.filter((scenario) => scenario.steps.length);
+}
+
+// js/diagram/icons.js
+var DIAGRAM_ICONS = {
+  out: '<path d="M3 8h10"/>',
+  in: '<path d="M3 8h10M8 3v10"/>',
+  fit: '<path d="M13 8a5 5 0 1 1-1.46-3.54M13.5 2v3h-3"/>',
+  full: '<path d="M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4"/>',
+  close: '<path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/>',
+  play: '<path d="M5 3.2v9.6L12.6 8z"/>',
+  pause: '<path d="M5.5 3.5v9M10.5 3.5v9"/>',
+  stop: '<rect x="4" y="4" width="8" height="8" rx="1.2"/>',
+  share: '<path d="M8 2.5v7.5M5 5.2l3-2.7 3 2.7M4.5 8H3.5v5.5h9V8h-1"/>',
+  back: '<path d="M10.5 3.5L6 8l4.5 4.5M4 3.5v9"/>',
+  next: '<path d="M5.5 3.5L10 8l-4.5 4.5M12 3.5v9"/>',
+  left: '<path d="M10 3.5L5.5 8l4.5 4.5"/>',
+  right: '<path d="M6 3.5L10.5 8 6 12.5"/>',
+  pen: '<path d="M10.5 2.8l2.7 2.7-7.4 7.4-3.3.6.6-3.3z"/><path d="M9 4.3l2.7 2.7"/>',
+  follow: '<path d="M2.5 5.5h2.2l1.1-1.7h4.4l1.1 1.7h2.2v7h-11z"/><circle cx="8" cy="9" r="2.1"/>',
+  warn: '<path d="M8 2.2l6 10.6H2z"/><path d="M8 6.6v2.8M8 11.1v.1"/>',
+  comment: '<path d="M2.5 3.5h11v7.2H8.2l-3.2 2.6v-2.6H2.5z"/><path d="M5 6.3h6M5 8.3h4"/>'
+};
+var diagramIcon = (name) => '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">' + DIAGRAM_ICONS[name] + "</svg>";
+
+// js/diagram/images.js
+var DIAGRAM_IMAGE = /(\bimg\s*:\s*)(?:(["'])(.*?)\2|([^\s,}"']+))/g;
+var DIAGRAM_IMAGE_SAFE = /^(?:https:\/\/|\/(?![\/\\])|data:image\/(?:png|jpe?g|gif|webp|svg\+xml)[;,])/i;
+var DIAGRAM_IMAGE_MISSING = "data:image/svg+xml;base64," + btoa('<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="#888" stroke-width="2" stroke-linejoin="round"><rect x="5" y="9" width="38" height="30" rx="4" stroke-dasharray="4 3"/><path d="M11 33l9-10 7 7 4-4 6 7"/><circle cx="31" cy="18" r="3"/></svg>');
+function diagramImageUrl(value) {
+  const url = host.resolveImage(value);
+  if (url) return url;
+  return DIAGRAM_IMAGE_SAFE.test(value) && !/["'{}\s]/.test(value) ? value : null;
+}
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const timer = setTimeout(() => reject(new Error("timed out")), 8e3);
+    image.onload = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    image.onerror = () => {
+      clearTimeout(timer);
+      reject(new Error("did not load"));
+    };
+    image.src = url;
+  });
+}
+async function diagramImages(source) {
+  const shapes = /@\{[^}]*\}/g;
+  if (!flowchartLines(source)) return { source, problems: [] };
+  const wanted = /* @__PURE__ */ new Map();
+  for (const shape of source.matchAll(shapes)) {
+    for (const match of shape[0].matchAll(DIAGRAM_IMAGE)) {
+      const value = match[3] ?? match[4];
+      if (!wanted.has(value)) wanted.set(value, diagramImageUrl(value));
+    }
+  }
+  if (!wanted.size) return { source, problems: [] };
+  const problems = [];
+  await Promise.all([...wanted].map(async ([value, url]) => {
+    if (!url) {
+      problems.push(value + " (not allowed)");
+      wanted.set(value, DIAGRAM_IMAGE_MISSING);
+      return;
+    }
+    try {
+      await loadImage(url);
+    } catch (error) {
+      problems.push(value + " (" + error.message + ")");
+      wanted.set(value, DIAGRAM_IMAGE_MISSING);
+    }
+  }));
+  const rewritten = source.replace(shapes, (shape) => shape.replace(
+    DIAGRAM_IMAGE,
+    (match, key, quote, quoted, bare) => key + '"' + wanted.get(quoted ?? bare) + '"'
+  ));
+  return { source: rewritten, problems };
+}
+
+// js/diagram/picture.js
+var XLINK_NS = "http://www.w3.org/1999/xlink";
+var PICTURE_SHAPE = ["fill", "fill-opacity", "stroke", "stroke-width", "stroke-opacity", "stroke-dasharray", "opacity", "filter", "visibility"];
+var PICTURE_TEXT = ["font-family", "font-size", "font-weight", "font-style", "line-height", "letter-spacing", "color", "margin-top", "margin-bottom"];
+async function diagramImageData(svg) {
+  const found = /* @__PURE__ */ new Map();
+  for (const image of svg.querySelectorAll("image")) {
+    const href = image.getAttribute("href") || image.getAttributeNS(XLINK_NS, "href");
+    if (!href || found.has(href)) continue;
+    if (href.startsWith("data:")) {
+      found.set(href, href);
+      continue;
+    }
+    try {
+      const url = new URL(href, location.href);
+      if (url.origin !== location.origin) throw new Error("other site");
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(response.status);
+      const blob = await response.blob();
+      found.set(href, await new Promise((resolve, reject) => {
+        const reader2 = new FileReader();
+        reader2.onload = () => resolve(reader2.result);
+        reader2.onerror = reject;
+        reader2.readAsDataURL(blob);
+      }));
+    } catch (error) {
+      found.set(href, DIAGRAM_IMAGE_MISSING);
+    }
+  }
+  return found;
+}
+function diagramPicture(svg, home, size, images, still) {
+  const copy = svg.cloneNode(true);
+  const from = svg.querySelectorAll("*");
+  const to = copy.querySelectorAll("*");
+  for (let at = 0; at < from.length; at++) {
+    const element2 = from[at];
+    let names = null;
+    if (element2 instanceof SVGTextContentElement) names = PICTURE_SHAPE.concat(PICTURE_TEXT);
+    else if (element2 instanceof SVGGraphicsElement) names = PICTURE_SHAPE;
+    else if (element2 instanceof HTMLElement) names = PICTURE_TEXT;
+    if (!names) continue;
+    const computed = getComputedStyle(element2);
+    for (const name of names) to[at].style.setProperty(name, computed.getPropertyValue(name), "important");
+  }
+  copy.setAttribute("viewBox", [home.x, home.y, home.w, home.h].join(" "));
+  copy.setAttribute("width", String(size.w));
+  copy.setAttribute("height", String(size.h));
+  copy.removeAttribute("style");
+  for (const ink of copy.querySelectorAll(still ? ".diagram-ink :is(.ink-laser, circle)" : ".diagram-ink")) ink.remove();
+  copy.querySelector(".diagram-pins")?.remove();
+  for (const image of copy.querySelectorAll("image")) {
+    const href = image.getAttribute("href") || image.getAttributeNS(XLINK_NS, "href");
+    image.removeAttributeNS(XLINK_NS, "href");
+    image.setAttribute("href", images.get(href) || DIAGRAM_IMAGE_MISSING);
+  }
+  const picture = new Image();
+  picture.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(copy));
+  return picture.decode().then(() => picture);
+}
+async function diagramCanvas(svg, home, limit, captioned, still) {
+  const PAD = 24;
+  const scale = Math.min(still ? Infinity : 2, (limit - 2 * PAD) / Math.max(home.w, home.h), Math.sqrt((still ? 8e6 : 19e5) / (home.w * home.h)));
+  const size = { w: home.w * scale, h: home.h * scale };
+  const even = (value) => Math.max(2, Math.round(value / 2) * 2);
+  const element2 = document.createElement("canvas");
+  element2.width = even(size.w + 2 * PAD);
+  const fontSize = Math.round(Math.max(15, Math.min(30, element2.width / 40)));
+  const band = captioned ? Math.round(fontSize * 2 * 1.35 + PAD) : 0;
+  element2.height = even(size.h + 2 * PAD + band);
+  const context = element2.getContext("2d", { willReadFrequently: true });
+  const style = getComputedStyle(host.article);
+  const colour = (name, fallback) => style.getPropertyValue(name).trim() || fallback;
+  const background = colour("--bgColor-default", getComputedStyle(document.body).backgroundColor);
+  const ink = colour("--fgColor-default", getComputedStyle(document.body).color);
+  const rule = colour("--borderColor-muted", ink);
+  const font = "500 " + fontSize + "px system-ui, -apple-system, sans-serif";
+  const images = await diagramImageData(svg);
+  function lines(text) {
+    const room = element2.width - 2 * PAD;
+    const result = [""];
+    for (const word of text.split(/\s+/)) {
+      const last = result.length - 1;
+      const joined = result[last] ? result[last] + " " + word : word;
+      if (!result[last] || context.measureText(joined).width <= room) result[last] = joined;
+      else result.push(word);
+    }
+    if (result.length > 2) {
+      let second = result[1];
+      while (second && context.measureText(second + "\u2026").width > room) second = second.slice(0, -1);
+      result.splice(1, result.length, second.trimEnd() + "\u2026");
+    }
+    return result;
+  }
+  return {
+    element: element2,
+    width: element2.width,
+    height: element2.height,
+    async draw(text) {
+      const picture = await diagramPicture(svg, home, size, images, still);
+      context.fillStyle = background;
+      context.fillRect(0, 0, element2.width, element2.height);
+      context.drawImage(picture, (element2.width - size.w) / 2, (element2.height - band - size.h) / 2, size.w, size.h);
+      if (!band || !text) return;
+      const top = element2.height - band;
+      context.fillStyle = rule;
+      context.fillRect(PAD, top, element2.width - 2 * PAD, 1);
+      context.font = font;
+      context.fillStyle = ink;
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      const rows = lines(text);
+      const height = fontSize * 1.35;
+      const first = top + band / 2 - (rows.length - 1) * height / 2;
+      rows.forEach((row, at) => context.fillText(row, element2.width / 2, first + at * height));
+    },
+    pixels: () => context.getImageData(0, 0, element2.width, element2.height).data
+  };
+}
+
+// js/reader/code.js
+var COPY_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"></path><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path></svg>';
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (error) {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.append(area);
+    area.select();
+    const done = document.execCommand("copy");
+    area.remove();
+    return done;
+  }
+}
+function frameCode() {
+  for (const pre of host.article.querySelectorAll("pre")) {
+    if (pre.closest(".code-block, .mermaid-diagram")) continue;
+    const box = pre.closest(".highlight, .snippet-clipboard-content") || pre;
+    if (box.classList.contains("highlight-source-mermaid")) continue;
+    const kind = [...box.classList].map((name) => /^highlight-(?:source|text)-(.+)$/.exec(name)).find(Boolean);
+    const figure = document.createElement("figure");
+    figure.className = "code-block";
+    const head = document.createElement("div");
+    head.className = "code-block-head";
+    const label = document.createElement("span");
+    label.textContent = kind ? kind[1] : "text";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("aria-label", "Copy code");
+    button.innerHTML = COPY_ICON + "<span>Copy</span>";
+    let reset = 0;
+    button.addEventListener("click", async () => {
+      const done = await copyText(pre.textContent);
+      button.classList.toggle("copied", done);
+      button.lastChild.textContent = done ? "Copied" : "Copy failed";
+      clearTimeout(reset);
+      reset = setTimeout(() => {
+        button.classList.remove("copied");
+        button.lastChild.textContent = "Copy";
+      }, 1600);
+    });
+    head.append(label, button);
+    const body = document.createElement("div");
+    body.className = "code-body";
+    box.replaceWith(figure);
+    body.append(box);
+    figure.append(head, body);
+  }
+}
+
+// js/diagram/share.js
+var VIDEO_TYPES = {
+  mp4: ["video/mp4;codecs=avc1.640028", "video/mp4"],
+  webm: ["video/webm;codecs=vp9", "video/webm"]
+};
+function diagramVideoType(kind) {
+  if (typeof MediaRecorder === "undefined" || !HTMLCanvasElement.prototype.captureStream) return "";
+  const types = kind === "mp4" ? VIDEO_TYPES.mp4 : kind === "webm" ? VIDEO_TYPES.webm : [...VIDEO_TYPES.mp4, ...VIDEO_TYPES.webm];
+  return types.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+}
+function diagramExportName(title, extension) {
+  const slug = (text) => text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  let page = location.pathname.split("/").pop() || "";
+  try {
+    page = decodeURIComponent(page);
+  } catch (error) {
+  }
+  page = page.replace(/\.(md|markdown)$/i, "");
+  return ([slug(page), slug(title || "")].filter(Boolean).join("-").slice(0, 120) || "diagram") + "." + extension;
+}
+function saveBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.hidden = true;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 6e4);
+}
+function diagramShare(stage, svg, tools) {
+  const group = document.createElement("div");
+  group.className = "diagram-share";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "play-record";
+  button.innerHTML = diagramIcon("share");
+  const menu = document.createElement("div");
+  menu.className = "diagram-export";
+  menu.hidden = true;
+  group.append(button, menu);
+  tools.prepend(group);
+  const share = {
+    button,
+    title: "Share or save this diagram",
+    name: () => "",
+    choose: null,
+    cancel: () => false,
+    label(text) {
+      button.title = text || share.title;
+      button.setAttribute("aria-label", button.title);
+    },
+    choice(kind, text, note) {
+      const element2 = document.createElement("button");
+      element2.type = "button";
+      element2.dataset.kind = kind;
+      element2.dataset.note = note;
+      element2.textContent = text;
+      const small = document.createElement("small");
+      small.textContent = note;
+      element2.append(small);
+      menu.append(element2);
+      return element2;
+    }
+  };
+  share.link = share.choice("link", "Copy link", "To this diagram and spotlight");
+  share.choice("png", "PNG", "What you see right now");
+  share.label();
+  async function savePicture() {
+    const box = svg.viewBox.baseVal;
+    const caption = stage.querySelector(":scope > .diagram-caption");
+    const text = caption && !caption.hidden ? caption.textContent : "";
+    const name = diagramExportName(share.name(), "png");
+    try {
+      const canvas = await diagramCanvas(svg, { x: box.x, y: box.y, w: box.width, h: box.height }, 2400, Boolean(text), true);
+      await canvas.draw(text);
+      const blob = await new Promise((resolve) => canvas.element.toBlob(resolve, "image/png"));
+      if (!blob) throw new Error("the browser made no picture");
+      await host.save(name, blob);
+      share.label();
+      return { name, blob };
+    } catch (error) {
+      share.label("Could not save the PNG: " + (error.message || error));
+      throw error;
+    }
+  }
+  stage.diagramPicture = savePicture;
+  button.addEventListener("click", () => {
+    if (share.cancel()) return;
+    menu.hidden = !menu.hidden;
+  });
+  menu.addEventListener("click", async (event) => {
+    const choice = event.target.closest("button[data-kind]");
+    if (!choice) return;
+    if (choice.dataset.kind === "link") {
+      const note = choice.querySelector("small");
+      const hash = diagramHash(stage);
+      if (!hash) return;
+      history.replaceState(history.state, "", location.pathname + location.search + hash);
+      note.textContent = await copyText(location.href) ? "Copied" : "Could not copy, the address bar has it";
+      setTimeout(() => {
+        menu.hidden = true;
+        note.textContent = choice.dataset.note;
+      }, 900);
+      return;
+    }
+    menu.hidden = true;
+    if (choice.dataset.kind === "png") savePicture().catch(() => {
+    });
+    else if (share.choose) share.choose(choice.dataset.kind);
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (!menu.hidden && !group.contains(event.target)) menu.hidden = true;
+  }, { signal: host.render?.signal });
+  group.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || menu.hidden) return;
+    event.stopPropagation();
+    event.preventDefault();
+    menu.hidden = true;
+    button.focus();
+  });
+  return share;
 }
 
 // js/diagram/speed.js
@@ -445,61 +823,6 @@ function directoryUrl(value, root) {
   const rooted = value.startsWith("/") && !value.startsWith(root) ? root + value.slice(1) : value;
   const url = new URL(rooted, location.href);
   return url.origin === location.origin && url.pathname.startsWith(root) ? url.href : null;
-}
-
-// js/reader/code.js
-var COPY_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"></path><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path></svg>';
-async function copyText(text) {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch (error) {
-    const area = document.createElement("textarea");
-    area.value = text;
-    area.setAttribute("readonly", "");
-    area.style.position = "fixed";
-    area.style.opacity = "0";
-    document.body.append(area);
-    area.select();
-    const done = document.execCommand("copy");
-    area.remove();
-    return done;
-  }
-}
-function frameCode() {
-  for (const pre of host.article.querySelectorAll("pre")) {
-    if (pre.closest(".code-block, .mermaid-diagram")) continue;
-    const box = pre.closest(".highlight, .snippet-clipboard-content") || pre;
-    if (box.classList.contains("highlight-source-mermaid")) continue;
-    const kind = [...box.classList].map((name) => /^highlight-(?:source|text)-(.+)$/.exec(name)).find(Boolean);
-    const figure = document.createElement("figure");
-    figure.className = "code-block";
-    const head = document.createElement("div");
-    head.className = "code-block-head";
-    const label = document.createElement("span");
-    label.textContent = kind ? kind[1] : "text";
-    const button = document.createElement("button");
-    button.type = "button";
-    button.setAttribute("aria-label", "Copy code");
-    button.innerHTML = COPY_ICON + "<span>Copy</span>";
-    let reset = 0;
-    button.addEventListener("click", async () => {
-      const done = await copyText(pre.textContent);
-      button.classList.toggle("copied", done);
-      button.lastChild.textContent = done ? "Copied" : "Copy failed";
-      clearTimeout(reset);
-      reset = setTimeout(() => {
-        button.classList.remove("copied");
-        button.lastChild.textContent = "Copy";
-      }, 1600);
-    });
-    head.append(label, button);
-    const body = document.createElement("div");
-    body.className = "code-body";
-    box.replaceWith(figure);
-    body.append(box);
-    figure.append(head, body);
-  }
 }
 
 // js/reader/review.js
@@ -982,84 +1305,6 @@ function diagramLinks(svg, nodes, edges) {
   }
   return links;
 }
-
-// js/diagram/images.js
-var DIAGRAM_IMAGE = /(\bimg\s*:\s*)(?:(["'])(.*?)\2|([^\s,}"']+))/g;
-var DIAGRAM_IMAGE_SAFE = /^(?:https:\/\/|\/(?![\/\\])|data:image\/(?:png|jpe?g|gif|webp|svg\+xml)[;,])/i;
-var DIAGRAM_IMAGE_MISSING = "data:image/svg+xml;base64," + btoa('<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="#888" stroke-width="2" stroke-linejoin="round"><rect x="5" y="9" width="38" height="30" rx="4" stroke-dasharray="4 3"/><path d="M11 33l9-10 7 7 4-4 6 7"/><circle cx="31" cy="18" r="3"/></svg>');
-function diagramImageUrl(value) {
-  const url = host.resolveImage(value);
-  if (url) return url;
-  return DIAGRAM_IMAGE_SAFE.test(value) && !/["'{}\s]/.test(value) ? value : null;
-}
-function loadImage(url) {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    const timer = setTimeout(() => reject(new Error("timed out")), 8e3);
-    image.onload = () => {
-      clearTimeout(timer);
-      resolve();
-    };
-    image.onerror = () => {
-      clearTimeout(timer);
-      reject(new Error("did not load"));
-    };
-    image.src = url;
-  });
-}
-async function diagramImages(source) {
-  const shapes = /@\{[^}]*\}/g;
-  if (!flowchartLines(source)) return { source, problems: [] };
-  const wanted = /* @__PURE__ */ new Map();
-  for (const shape of source.matchAll(shapes)) {
-    for (const match of shape[0].matchAll(DIAGRAM_IMAGE)) {
-      const value = match[3] ?? match[4];
-      if (!wanted.has(value)) wanted.set(value, diagramImageUrl(value));
-    }
-  }
-  if (!wanted.size) return { source, problems: [] };
-  const problems = [];
-  await Promise.all([...wanted].map(async ([value, url]) => {
-    if (!url) {
-      problems.push(value + " (not allowed)");
-      wanted.set(value, DIAGRAM_IMAGE_MISSING);
-      return;
-    }
-    try {
-      await loadImage(url);
-    } catch (error) {
-      problems.push(value + " (" + error.message + ")");
-      wanted.set(value, DIAGRAM_IMAGE_MISSING);
-    }
-  }));
-  const rewritten = source.replace(shapes, (shape) => shape.replace(
-    DIAGRAM_IMAGE,
-    (match, key, quote, quoted, bare) => key + '"' + wanted.get(quoted ?? bare) + '"'
-  ));
-  return { source: rewritten, problems };
-}
-
-// js/diagram/icons.js
-var DIAGRAM_ICONS = {
-  out: '<path d="M3 8h10"/>',
-  in: '<path d="M3 8h10M8 3v10"/>',
-  fit: '<path d="M13 8a5 5 0 1 1-1.46-3.54M13.5 2v3h-3"/>',
-  full: '<path d="M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4"/>',
-  close: '<path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/>',
-  play: '<path d="M5 3.2v9.6L12.6 8z"/>',
-  pause: '<path d="M5.5 3.5v9M10.5 3.5v9"/>',
-  stop: '<rect x="4" y="4" width="8" height="8" rx="1.2"/>',
-  share: '<path d="M8 2.5v7.5M5 5.2l3-2.7 3 2.7M4.5 8H3.5v5.5h9V8h-1"/>',
-  back: '<path d="M10.5 3.5L6 8l4.5 4.5M4 3.5v9"/>',
-  next: '<path d="M5.5 3.5L10 8l-4.5 4.5M12 3.5v9"/>',
-  left: '<path d="M10 3.5L5.5 8l4.5 4.5"/>',
-  right: '<path d="M6 3.5L10.5 8 6 12.5"/>',
-  pen: '<path d="M10.5 2.8l2.7 2.7-7.4 7.4-3.3.6.6-3.3z"/><path d="M9 4.3l2.7 2.7"/>',
-  follow: '<path d="M2.5 5.5h2.2l1.1-1.7h4.4l1.1 1.7h2.2v7h-11z"/><circle cx="8" cy="9" r="2.1"/>',
-  warn: '<path d="M8 2.2l6 10.6H2z"/><path d="M8 6.6v2.8M8 11.1v.1"/>',
-  comment: '<path d="M2.5 3.5h11v7.2H8.2l-3.2 2.6v-2.6H2.5z"/><path d="M5 6.3h6M5 8.3h4"/>'
-};
-var diagramIcon = (name) => '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">' + DIAGRAM_ICONS[name] + "</svg>";
 
 // js/diagram/comments.js
 var NOTE_KINDS = { node: "Box", edge: "Arrow", diagram: "Diagram" };
@@ -1791,242 +2036,6 @@ function gifWriter(width, height) {
   };
 }
 
-// js/diagram/picture.js
-var XLINK_NS = "http://www.w3.org/1999/xlink";
-var PICTURE_SHAPE = ["fill", "fill-opacity", "stroke", "stroke-width", "stroke-opacity", "stroke-dasharray", "opacity", "filter", "visibility"];
-var PICTURE_TEXT = ["font-family", "font-size", "font-weight", "font-style", "line-height", "letter-spacing", "color", "margin-top", "margin-bottom"];
-async function diagramImageData(svg) {
-  const found = /* @__PURE__ */ new Map();
-  for (const image of svg.querySelectorAll("image")) {
-    const href = image.getAttribute("href") || image.getAttributeNS(XLINK_NS, "href");
-    if (!href || found.has(href)) continue;
-    if (href.startsWith("data:")) {
-      found.set(href, href);
-      continue;
-    }
-    try {
-      const url = new URL(href, location.href);
-      if (url.origin !== location.origin) throw new Error("other site");
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(response.status);
-      const blob = await response.blob();
-      found.set(href, await new Promise((resolve, reject) => {
-        const reader2 = new FileReader();
-        reader2.onload = () => resolve(reader2.result);
-        reader2.onerror = reject;
-        reader2.readAsDataURL(blob);
-      }));
-    } catch (error) {
-      found.set(href, DIAGRAM_IMAGE_MISSING);
-    }
-  }
-  return found;
-}
-function diagramPicture(svg, home, size, images, still) {
-  const copy = svg.cloneNode(true);
-  const from = svg.querySelectorAll("*");
-  const to = copy.querySelectorAll("*");
-  for (let at = 0; at < from.length; at++) {
-    const element2 = from[at];
-    let names = null;
-    if (element2 instanceof SVGTextContentElement) names = PICTURE_SHAPE.concat(PICTURE_TEXT);
-    else if (element2 instanceof SVGGraphicsElement) names = PICTURE_SHAPE;
-    else if (element2 instanceof HTMLElement) names = PICTURE_TEXT;
-    if (!names) continue;
-    const computed = getComputedStyle(element2);
-    for (const name of names) to[at].style.setProperty(name, computed.getPropertyValue(name), "important");
-  }
-  copy.setAttribute("viewBox", [home.x, home.y, home.w, home.h].join(" "));
-  copy.setAttribute("width", String(size.w));
-  copy.setAttribute("height", String(size.h));
-  copy.removeAttribute("style");
-  for (const ink of copy.querySelectorAll(still ? ".diagram-ink :is(.ink-laser, circle)" : ".diagram-ink")) ink.remove();
-  copy.querySelector(".diagram-pins")?.remove();
-  for (const image of copy.querySelectorAll("image")) {
-    const href = image.getAttribute("href") || image.getAttributeNS(XLINK_NS, "href");
-    image.removeAttributeNS(XLINK_NS, "href");
-    image.setAttribute("href", images.get(href) || DIAGRAM_IMAGE_MISSING);
-  }
-  const picture = new Image();
-  picture.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(copy));
-  return picture.decode().then(() => picture);
-}
-async function diagramCanvas(svg, home, limit, captioned, still) {
-  const PAD = 24;
-  const scale = Math.min(still ? Infinity : 2, (limit - 2 * PAD) / Math.max(home.w, home.h), Math.sqrt((still ? 8e6 : 19e5) / (home.w * home.h)));
-  const size = { w: home.w * scale, h: home.h * scale };
-  const even = (value) => Math.max(2, Math.round(value / 2) * 2);
-  const element2 = document.createElement("canvas");
-  element2.width = even(size.w + 2 * PAD);
-  const fontSize = Math.round(Math.max(15, Math.min(30, element2.width / 40)));
-  const band = captioned ? Math.round(fontSize * 2 * 1.35 + PAD) : 0;
-  element2.height = even(size.h + 2 * PAD + band);
-  const context = element2.getContext("2d", { willReadFrequently: true });
-  const style = getComputedStyle(host.article);
-  const colour = (name, fallback) => style.getPropertyValue(name).trim() || fallback;
-  const background = colour("--bgColor-default", getComputedStyle(document.body).backgroundColor);
-  const ink = colour("--fgColor-default", getComputedStyle(document.body).color);
-  const rule = colour("--borderColor-muted", ink);
-  const font = "500 " + fontSize + "px system-ui, -apple-system, sans-serif";
-  const images = await diagramImageData(svg);
-  function lines(text) {
-    const room = element2.width - 2 * PAD;
-    const result = [""];
-    for (const word of text.split(/\s+/)) {
-      const last = result.length - 1;
-      const joined = result[last] ? result[last] + " " + word : word;
-      if (!result[last] || context.measureText(joined).width <= room) result[last] = joined;
-      else result.push(word);
-    }
-    if (result.length > 2) {
-      let second = result[1];
-      while (second && context.measureText(second + "\u2026").width > room) second = second.slice(0, -1);
-      result.splice(1, result.length, second.trimEnd() + "\u2026");
-    }
-    return result;
-  }
-  return {
-    element: element2,
-    width: element2.width,
-    height: element2.height,
-    async draw(text) {
-      const picture = await diagramPicture(svg, home, size, images, still);
-      context.fillStyle = background;
-      context.fillRect(0, 0, element2.width, element2.height);
-      context.drawImage(picture, (element2.width - size.w) / 2, (element2.height - band - size.h) / 2, size.w, size.h);
-      if (!band || !text) return;
-      const top = element2.height - band;
-      context.fillStyle = rule;
-      context.fillRect(PAD, top, element2.width - 2 * PAD, 1);
-      context.font = font;
-      context.fillStyle = ink;
-      context.textAlign = "center";
-      context.textBaseline = "middle";
-      const rows = lines(text);
-      const height = fontSize * 1.35;
-      const first = top + band / 2 - (rows.length - 1) * height / 2;
-      rows.forEach((row, at) => context.fillText(row, element2.width / 2, first + at * height));
-    },
-    pixels: () => context.getImageData(0, 0, element2.width, element2.height).data
-  };
-}
-
-// js/diagram/share.js
-function diagramVideoType() {
-  if (typeof MediaRecorder === "undefined" || !HTMLCanvasElement.prototype.captureStream) return "";
-  const types = ["video/mp4;codecs=avc1.640028", "video/mp4", "video/webm;codecs=vp9", "video/webm"];
-  return types.find((type) => MediaRecorder.isTypeSupported(type)) || "";
-}
-function diagramExportName(title, extension) {
-  const slug = (text) => text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  let page = location.pathname.split("/").pop() || "";
-  try {
-    page = decodeURIComponent(page);
-  } catch (error) {
-  }
-  page = page.replace(/\.(md|markdown)$/i, "");
-  return ([slug(page), slug(title || "")].filter(Boolean).join("-").slice(0, 120) || "diagram") + "." + extension;
-}
-function saveBlob(blob, name) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = name;
-  link.hidden = true;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 6e4);
-}
-function diagramShare(stage, svg, tools) {
-  const group = document.createElement("div");
-  group.className = "diagram-share";
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "play-record";
-  button.innerHTML = diagramIcon("share");
-  const menu = document.createElement("div");
-  menu.className = "diagram-export";
-  menu.hidden = true;
-  group.append(button, menu);
-  tools.prepend(group);
-  const share = {
-    button,
-    title: "Share or save this diagram",
-    name: () => "",
-    choose: null,
-    cancel: () => false,
-    label(text) {
-      button.title = text || share.title;
-      button.setAttribute("aria-label", button.title);
-    },
-    choice(kind, text, note) {
-      const element2 = document.createElement("button");
-      element2.type = "button";
-      element2.dataset.kind = kind;
-      element2.dataset.note = note;
-      element2.textContent = text;
-      const small = document.createElement("small");
-      small.textContent = note;
-      element2.append(small);
-      menu.append(element2);
-      return element2;
-    }
-  };
-  share.link = share.choice("link", "Copy link", "To this diagram and spotlight");
-  share.choice("png", "PNG", "What you see right now");
-  share.label();
-  async function savePicture() {
-    const box = svg.viewBox.baseVal;
-    const caption = stage.querySelector(":scope > .diagram-caption");
-    const text = caption && !caption.hidden ? caption.textContent : "";
-    try {
-      const canvas = await diagramCanvas(svg, { x: box.x, y: box.y, w: box.width, h: box.height }, 2400, Boolean(text), true);
-      await canvas.draw(text);
-      const blob = await new Promise((resolve) => canvas.element.toBlob(resolve, "image/png"));
-      if (!blob) throw new Error("the browser made no picture");
-      saveBlob(blob, diagramExportName(share.name(), "png"));
-      share.label();
-    } catch (error) {
-      share.label("Could not save the PNG: " + (error.message || error));
-    }
-  }
-  button.addEventListener("click", () => {
-    if (share.cancel()) return;
-    menu.hidden = !menu.hidden;
-  });
-  menu.addEventListener("click", async (event) => {
-    const choice = event.target.closest("button[data-kind]");
-    if (!choice) return;
-    if (choice.dataset.kind === "link") {
-      const note = choice.querySelector("small");
-      const hash = diagramHash(stage);
-      if (!hash) return;
-      history.replaceState(history.state, "", location.pathname + location.search + hash);
-      note.textContent = await copyText(location.href) ? "Copied" : "Could not copy, the address bar has it";
-      setTimeout(() => {
-        menu.hidden = true;
-        note.textContent = choice.dataset.note;
-      }, 900);
-      return;
-    }
-    menu.hidden = true;
-    if (choice.dataset.kind === "png") savePicture();
-    else if (share.choose) share.choose(choice.dataset.kind);
-  });
-  document.addEventListener("pointerdown", (event) => {
-    if (!menu.hidden && !group.contains(event.target)) menu.hidden = true;
-  }, { signal: host.render?.signal });
-  group.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape" || menu.hidden) return;
-    event.stopPropagation();
-    event.preventDefault();
-    menu.hidden = true;
-    button.focus();
-  });
-  return share;
-}
-
 // js/diagram/warnings.js
 function diagramWarnings(stage, tools, scenarios) {
   const rows = scenarios.flatMap((scenario) => scenario.problems.map((problem) => Object.assign({ story: scenario.title }, problem)));
@@ -2249,8 +2258,10 @@ function playDiagram(stage, svg, tools, scripts, home, share, edges) {
   share.label();
   share.link.dataset.note = share.link.querySelector("small").textContent = "To this story, step and spotlight";
   share.choice("gif", "GIF", "Loops, plays anywhere");
-  const videoType = diagramVideoType();
+  const videoType = diagramVideoType("video");
   if (videoType) share.choice("video", "Video", videoType.startsWith("video/mp4") ? "MP4, smaller and smoother" : "WebM, smaller and smoother");
+  const mimeFor = (kind) => kind === "gif" ? "" : kind === "video" ? videoType : diagramVideoType(kind);
+  const exportLabel = (kind) => kind === "gif" ? "GIF" : kind === "mp4" ? "MP4" : kind === "webm" ? "WebM" : "video";
   tools.prepend(controls);
   const caption = document.createElement("div");
   caption.className = "diagram-caption";
@@ -2635,11 +2646,12 @@ function playDiagram(stage, svg, tools, scripts, home, share, edges) {
     recordButton.innerHTML = diagramIcon("share");
     for (const element2 of [backButton, playButton, nextButton, stopButton, speedButton]) element2.disabled = false;
     if (picker) picker.disabled = false;
-    share.label(error ? "Could not save the " + (kind === "gif" ? "GIF" : "video") + ": " + (error.message || error) : "");
+    share.label(error ? "Could not save the " + exportLabel(kind) + ": " + (error.message || error) : "");
     sync();
   }
   async function exportScenario(kind) {
-    if (exporting) return;
+    if (exporting) return null;
+    const mime = mimeFor(kind);
     exporting = { kind, cancelled: false };
     const job = exporting;
     pause();
@@ -2650,8 +2662,11 @@ function playDiagram(stage, svg, tools, scripts, home, share, edges) {
     recordButton.textContent = "0%";
     recordButton.title = "Cancel";
     recordButton.setAttribute("aria-label", "Cancel saving");
-    const name = diagramExportName(scenario().title, kind === "gif" ? "gif" : videoType.startsWith("video/mp4") ? "mp4" : "webm");
+    let saved = null;
+    let name = "";
     try {
+      if (kind !== "gif" && !mime) throw new Error("this browser cannot record " + exportLabel(kind) + " video");
+      name = diagramExportName(scenario().title, kind === "gif" ? "gif" : mime.startsWith("video/mp4") ? "mp4" : "webm");
       const captioned = scenario().steps.some((step) => step.caption);
       const canvas = await diagramCanvas(svg, home, kind === "gif" ? 960 : 1920, captioned);
       if (kind === "gif") {
@@ -2672,12 +2687,12 @@ function playDiagram(stage, svg, tools, scripts, home, share, edges) {
         if (job.cancelled) stop();
         else {
           finished = true;
-          saveBlob(gif.finish(), name);
+          saved = gif.finish();
         }
       } else {
         await canvas.draw(caption.textContent);
         const stream = canvas.element.captureStream(30);
-        const recorder = new MediaRecorder(stream, { mimeType: videoType, videoBitsPerSecond: 6e6 });
+        const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6e6 });
         const chunks = [];
         recorder.addEventListener("dataavailable", (event) => {
           if (event.data.size) chunks.push(event.data);
@@ -2701,12 +2716,15 @@ function playDiagram(stage, svg, tools, scripts, home, share, edges) {
         await stopped;
         for (const track2 of stream.getTracks()) track2.stop();
         if (job.cancelled) stop();
-        else saveBlob(new Blob(chunks, { type: recorder.mimeType || videoType }), name);
+        else saved = new Blob(chunks, { type: recorder.mimeType || mime });
       }
+      if (saved) await host.save(name, saved);
       exportEnd();
     } catch (error) {
       exportEnd(error);
+      throw error;
     }
+    return saved ? { name, blob: saved } : null;
   }
   function where() {
     const total = scenario().steps.length;
@@ -2738,7 +2756,11 @@ function playDiagram(stage, svg, tools, scripts, home, share, edges) {
   nextButton.addEventListener("click", stepNext);
   stopButton.addEventListener("click", stop);
   share.name = () => scenario().title;
-  share.choose = exportScenario;
+  share.choose = (kind) => {
+    exportScenario(kind).catch(() => {
+    });
+  };
+  stage.diagramExport = (kind) => exportScenario(kind);
   share.cancel = () => {
     if (!exporting) return false;
     exporting.cancelled = true;
@@ -3510,6 +3532,7 @@ function reader(options = {}) {
     commentsUrl: comments.url || "",
     commentMax: comments.max || 4e3,
     reviewName: comments.name || "Review",
+    save: options.save || ((name, blob) => saveBlob(blob, name)),
     reviewToggle: element(options.reviewButton),
     dock: element(options.reviewDock),
     presentButton: element(options.presentButton),
@@ -3542,9 +3565,25 @@ function reader(options = {}) {
   };
 }
 var directoryResolver = (root) => (value) => directoryUrl(value, root);
+async function diagramExport(stage, kind) {
+  const element2 = stage instanceof Element ? stage : document.querySelector(stage);
+  if (!element2) throw new Error("aniflow: no diagram to export");
+  if (!["gif", "mp4", "webm", "png"].includes(kind)) throw new Error("aniflow: " + kind + " is not an export kind");
+  let result = null;
+  if (kind === "png") {
+    if (!element2.diagramPicture) throw new Error("aniflow: that diagram is not drawn yet");
+    result = await element2.diagramPicture();
+  } else {
+    if (!element2.diagramExport) throw new Error("aniflow: that diagram has no walkthrough to save");
+    result = await element2.diagramExport(kind);
+  }
+  if (!result) throw new Error("aniflow: the " + kind + " was cancelled");
+  return result;
+}
 export {
   addBusyCheck,
   isBusy as busy,
+  diagramExport,
   diagramLines,
   directoryResolver,
   flowchartLines,

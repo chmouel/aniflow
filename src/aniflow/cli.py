@@ -16,7 +16,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
-from aniflow import page, web
+from aniflow import export, page, web
 from aniflow.brand import BRAND, BRAND_CSS
 from aniflow.themes import THEME_READER_CSS, theme_script, theme_select
 from aniflow.ui import (
@@ -399,6 +399,25 @@ def main() -> None:
         action="store_true",
         help="with --share, also open the link in the default browser",
     )
+    parser.add_argument(
+        "--export",
+        metavar="{" + ",".join(export.KINDS) + "}",
+        choices=export.KINDS,
+        help="render FILE's (or - for stdin) walkthrough diagrams in headless "
+        "Chrome, write one file per diagram and exit",
+    )
+    parser.add_argument(
+        "-o",
+        "--out",
+        metavar="DIR",
+        help="with --export, write the files into DIR (default: next to FILE)",
+    )
+    parser.add_argument(
+        "--diagram",
+        metavar="N",
+        type=int,
+        help="with --export, only the Nth diagram of the document",
+    )
     args = parser.parse_args()
     if args.spec:
         sys.stdout.write(SPEC.read_text("utf-8"))
@@ -431,6 +450,24 @@ def main() -> None:
         return
     if args.open:
         parser.error("--open goes with --share")
+    if args.export:
+        target = str(args.directory)
+        if target != "-" and Path(target).is_dir():
+            parser.error(f"--export needs a Markdown file, not a directory: {target}")
+        if target != "-" and not Path(target).is_file():
+            parser.error(f"not a file: {target}")
+        if args.diagram is not None and args.diagram < 1:
+            parser.error("--diagram counts from 1")
+        if export.chrome() is None:
+            parser.error(
+                "--export needs Chrome or Chromium: install one, or set "
+                "ANIFLOW_CHROME to its path"
+            )
+        raise SystemExit(export.run(target, args.export, args.out, args.diagram))
+    if args.out:
+        parser.error("--out goes with --export")
+    if args.diagram is not None:
+        parser.error("--diagram goes with --export")
     if not args.directory.is_dir():
         parser.error(f"not a directory: {args.directory}")
     try:

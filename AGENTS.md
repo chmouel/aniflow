@@ -17,11 +17,13 @@ the wheel, so `uvx --from git+...` works without Node.
 - `js/index.js`: the public API. `reader(options)` copies the options into
   the shared `host` object (`js/host.js`), renders, then wires slides,
   review and diagram deep links. Also exports `directoryResolver(root)`,
+  `diagramExport(stage, kind)` for a gif, mp4, webm or png of one diagram,
   `addBusyCheck`, `busy`, `parse` (`playScript`), `diagramLines`,
   `flowchartLines`, `readFrontMatter` and `setSpeed`.
 - `js/host.js`: page settings every module reads (`host.article`,
   `host.nonce`, `host.mermaid`, `host.resolveImage`, `host.commentsUrl`...).
-  Only `reader()` writes it.
+  Only `reader()` writes it; `host.save(name, blob)` hands a finished diagram
+  file to the page behind the reader's `save` option.
 - `js/reader/`: `render.js` (the markdown-it pipeline and
   `directoryUrl()`), `frontmatter.js`, `github.js` (task lists, alerts,
   callouts, `sanitize()` through DOMPurify), `code.js` (copy buttons),
@@ -60,6 +62,10 @@ the wheel, so `uvx --from git+...` works without Node.
 - `src/aniflow/comments.py`: the review comments model: `view()`,
   `change()`, `anchor()`, `prompt()`, `in_lines()`, `target_valid()` and the
   limits. Storage is a JSON file the caller chooses.
+- `src/aniflow/export.py`: `aniflow --export`, which serves a document to
+  headless Chrome from a one-shot server on 127.0.0.1 and writes one gif, mp4,
+  webm or png per diagram: `chrome()`, `command()`, `ExportServer` and the
+  page script that posts the files back.
 - `src/aniflow/themes.py`: `THEMES`, `READER_THEMES`, the theme CSS and
   `theme_script(nonce, key)`, which applies the choice kept in localStorage
   under `key` (`aniflow-theme` here; an embedding app passes its own).
@@ -247,7 +253,8 @@ uv run ruff format . && uv run ruff check .
 ```
 
 After changing `js/`, run `npm run build` and commit the files it writes.
-CI runs all of the above, pytest on Python 3.12 to 3.14.
+CI runs all of the above, pytest on Python 3.12 to 3.14. The end-to-end GIF
+export test runs only with `ANIFLOW_EXPORT_E2E=1` and Chrome installed.
 `.pre-commit-config.yaml` runs the same at the pre-push stage
 (`uvx pre-commit install --hook-type pre-push`).
 

@@ -4,9 +4,16 @@ import { diagramIcon } from './icons.js';
 import { diagramCanvas } from './picture.js';
 import { copyText } from '../reader/code.js';
 
-export function diagramVideoType() {
+const VIDEO_TYPES = {
+  mp4: ['video/mp4;codecs=avc1.640028', 'video/mp4'],
+  webm: ['video/webm;codecs=vp9', 'video/webm'],
+};
+
+// The mime a recording would use: mp4 and webm must be that container, while video takes
+// whichever one the browser records.
+export function diagramVideoType(kind) {
   if (typeof MediaRecorder === 'undefined' || !HTMLCanvasElement.prototype.captureStream) return '';
-  const types = ['video/mp4;codecs=avc1.640028', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'];
+  const types = kind === 'mp4' ? VIDEO_TYPES.mp4 : kind === 'webm' ? VIDEO_TYPES.webm : [...VIDEO_TYPES.mp4, ...VIDEO_TYPES.webm];
   return types.find((type) => MediaRecorder.isTypeSupported(type)) || '';
 }
 
@@ -72,21 +79,26 @@ export function diagramShare(stage, svg, tools) {
   share.label();
 
   // A still keeps the current zoom, spotlight, dot and caption, so it draws the live viewBox.
+  // It resolves to {name, blob} and throws once the button says what went wrong.
   async function savePicture() {
     const box = svg.viewBox.baseVal;
     const caption = stage.querySelector(':scope > .diagram-caption');
     const text = caption && !caption.hidden ? caption.textContent : '';
+    const name = diagramExportName(share.name(), 'png');
     try {
       const canvas = await diagramCanvas(svg, { x: box.x, y: box.y, w: box.width, h: box.height }, 2400, Boolean(text), true);
       await canvas.draw(text);
       const blob = await new Promise((resolve) => canvas.element.toBlob(resolve, 'image/png'));
       if (!blob) throw new Error('the browser made no picture');
-      saveBlob(blob, diagramExportName(share.name(), 'png'));
+      await host.save(name, blob);
       share.label();
+      return { name: name, blob: blob };
     } catch (error) {
       share.label('Could not save the PNG: ' + (error.message || error));
+      throw error;
     }
   }
+  stage.diagramPicture = savePicture;
 
   button.addEventListener('click', () => {
     if (share.cancel()) return;
@@ -108,7 +120,7 @@ export function diagramShare(stage, svg, tools) {
       return;
     }
     menu.hidden = true;
-    if (choice.dataset.kind === 'png') savePicture();
+    if (choice.dataset.kind === 'png') savePicture().catch(() => {});
     else if (share.choose) share.choose(choice.dataset.kind);
   });
   document.addEventListener('pointerdown', (event) => {
