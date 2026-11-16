@@ -475,7 +475,8 @@
   .reader .slide-canvas[data-bg="accent"] { background:var(--slide-accent); color:var(--bgColor-default); --slide-accent-ink:var(--bgColor-default); }
   .reader .slide-canvas[data-bg="inverse"] { background:var(--fgColor-default); color:var(--bgColor-default); }
   .reader .slide-canvas:is([data-bg="accent"], [data-bg="inverse"]) :is(h1, h2, h3, h4, p, li, strong, a, blockquote, .slide-cover-byline) { color:inherit !important; }
-  .reader .slide-canvas:is([data-bg="accent"], [data-bg="inverse"]) :is(h1, h2, h3, blockquote, .slide-cover-title)::before, .reader .slide-canvas:is([data-bg="accent"], [data-bg="inverse"]) :is(h1, h2, .slide-cover-title)::after { background:currentColor; color:inherit; opacity:.8; }
+  .reader .slide-canvas:is([data-bg="accent"], [data-bg="inverse"]) :is(h1, h2, h3, .slide-cover-title)::before, .reader .slide-canvas:is([data-bg="accent"], [data-bg="inverse"]) :is(h1, h2, .slide-cover-title)::after { background:currentColor; color:inherit; opacity:.8; }
+  .reader .slide-canvas:is([data-bg="accent"], [data-bg="inverse"]) blockquote::before { color:inherit; opacity:.8; }
   .reader .slide-canvas:is([data-bg="accent"], [data-bg="inverse"]) li::marker { color:inherit; }
   .reader .slide-canvas[data-bg="image"] { background-position:center; background-size:cover; }
   .reader .slide-canvas[data-bg="image"][data-dim] { --slide-scrim:color-mix(in srgb, var(--bgColor-default) 86%, transparent); }
