@@ -407,10 +407,18 @@ def main() -> None:
         "Chrome, write one file per diagram and exit",
     )
     parser.add_argument(
+        "--slides",
+        metavar="{" + ",".join(export.SLIDE_KINDS) + "}",
+        choices=export.SLIDE_KINDS,
+        help="render FILE's (or - for stdin) slides in headless Chrome, write one "
+        "PDF or one PNG per slide and exit",
+    )
+    parser.add_argument(
         "-o",
         "--out",
         metavar="DIR",
-        help="with --export, write the files into DIR (default: next to FILE)",
+        help="with --export or --slides, write the files into DIR "
+        "(default: next to FILE)",
     )
     parser.add_argument(
         "--diagram",
@@ -422,9 +430,10 @@ def main() -> None:
         "--check",
         metavar="FILE",
         nargs="+",
-        help="draw the diagrams of each FILE (or - for stdin) in headless Chrome, "
-        "print every step that cannot play, diagram that does not render and "
-        "picture that does not load as FILE:LINE, and exit 1 when there is any",
+        help="draw the diagrams and slides of each FILE (or - for stdin) in headless "
+        "Chrome, print every step that cannot play, diagram that does not render, "
+        "picture that does not load and slide that does not fit as FILE:LINE, and "
+        "exit 1 when there is any",
     )
     args = parser.parse_args()
     if args.check:
@@ -465,22 +474,29 @@ def main() -> None:
         return
     if args.open:
         parser.error("--open goes with --share")
-    if args.export:
+    if args.export and args.slides:
+        parser.error("--export and --slides go one at a time")
+    if args.export or args.slides:
+        flag = "--export" if args.export else "--slides"
         target = str(args.directory)
         if target != "-" and Path(target).is_dir():
-            parser.error(f"--export needs a Markdown file, not a directory: {target}")
+            parser.error(f"{flag} needs a Markdown file, not a directory: {target}")
         if target != "-" and not Path(target).is_file():
             parser.error(f"not a file: {target}")
+        if args.slides and args.diagram is not None:
+            parser.error("--diagram goes with --export")
         if args.diagram is not None and args.diagram < 1:
             parser.error("--diagram counts from 1")
         if export.chrome() is None:
             parser.error(
-                "--export needs Chrome or Chromium: install one, or set "
+                f"{flag} needs Chrome or Chromium: install one, or set "
                 "ANIFLOW_CHROME to its path"
             )
+        if args.slides:
+            raise SystemExit(export.slides(target, args.slides, args.out))
         raise SystemExit(export.run(target, args.export, args.out, args.diagram))
     if args.out:
-        parser.error("--out goes with --export")
+        parser.error("--out goes with --export or --slides")
     if args.diagram is not None:
         parser.error("--diagram goes with --export")
     if not args.directory.is_dir():
