@@ -93,6 +93,7 @@ export function diagrams(options = {}) {
     save: options.save || ((name, blob) => saveBlob(blob, name)),
     onShow: null,
     onDiagram: null,
+    onSlideDiagram: null,
   });
   const fresh = () => {
     host.render?.abort();

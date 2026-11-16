@@ -85,6 +85,7 @@ export function drawDiagrams() {
             autoplay(stage);
           }
         }
+        if (stage && holder.classList.contains('slide-on')) host.onSlideDiagram?.();
         if (pictures.problems.length) holder.title += '\nPictures not shown: ' + pictures.problems.join(', ');
         if (host.onDiagram) host.onDiagram();
       } catch (error) {

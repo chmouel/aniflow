@@ -439,7 +439,9 @@ note with no `##` but several `#` headings splits on those instead, and the
 button stays hidden when there would be fewer than two slides.
 
 A slide that holds one diagram and little else gives the diagram the whole
-screen. The right arrow, `j` and Page Down play the slide's story one step
+screen. A slide's story starts playing as soon as the slide opens (unless the
+system asks for reduced motion); put `autoplay: false` in the note's front
+matter to start each one yourself. The right arrow, `j` and Page Down play the slide's story one step
 at a time and move to the next slide once it has finished; the left arrow,
 `k` and Page Up go back the same way. To leave a slide before its story is
 over, press `n` or Shift+Page Down for the next slide, `b` or Shift+Page Up

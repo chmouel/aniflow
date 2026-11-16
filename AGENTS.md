@@ -217,7 +217,11 @@ Slides (`slides.js`) split the article's direct children on H2, or H1 when
 there are several, keep `#slide=N`, and let a diagram's story steps run
 before the slide changes (`slideMove`). The dock buttons, rail ticks, `n`/`b`
 and Shift+PageDown/PageUp call `present()` directly and skip the story;
-`present()` pauses a story still playing on the slide it leaves. The dock's
+`present()` pauses a story still playing on the slide it leaves and plays
+the new slide's story when it has not started or has finished
+(`slideAutoplay`, off with front matter `autoplay: false|no|off`, or under
+reduced motion); a diagram drawn later on the open slide calls it through
+`host.onSlideDiagram`. The dock's
 theme button cycles `window.aniflowThemes` (set by `theme_script`, which
 fires `aniflow-theme` on window after each change; `reader()` redraws the
 diagrams on it when the effective theme changed) and only exists where

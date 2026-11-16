@@ -2,6 +2,7 @@ import { host } from './host.js';
 import { diagramIcon } from './diagram/icons.js';
 import { setDiagramSpeed } from './diagram/speed.js';
 import { scheduleTrack } from './reader/show.js';
+import { readFrontMatter } from './reader/frontmatter.js';
 
 export let slideAt = -1;
 export let slideDock = null;
@@ -107,7 +108,16 @@ export function present(at, direction) {
   history.replaceState(null, '', '#slide=' + (at + 1));
   paintDock(groups);
   slideWake();
+  slideAutoplay();
   return true;
+}
+// A slide's story plays on its own when the slide opens, unless the front matter says autoplay: false.
+function slideAutoplay() {
+  if (slideAt < 0 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const setting = readFrontMatter(host.source || '')?.entries?.find((entry) => entry.key === 'autoplay');
+  if (setting && /^(?:false|no|off)$/i.test(String(setting.value ?? '').trim())) return;
+  const story = slideStory();
+  if (story && !story.playing() && (story.where().step === null || story.finished())) story.toggle();
 }
 export function slideMove(direction) {
   if (slideStory()?.walk(direction > 0)) return;
@@ -136,6 +146,7 @@ export function slideWake() {
 }
 
 export function initSlides() {
+  host.onSlideDiagram = slideAutoplay;
   if (host.presentButton) {
     host.presentButton.hidden = slideGroups().length < 2;
     host.presentButton.addEventListener('click', () => {

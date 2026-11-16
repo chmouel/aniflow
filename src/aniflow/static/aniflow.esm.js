@@ -2046,7 +2046,7 @@ function playDiagram(stage, svg, tools, scripts, home, share, edges) {
     return true;
   }
   sync();
-  return { where, restore, aim, walk, playing: () => playing, toggle: () => playing ? pause() : play() };
+  return { where, restore, aim, walk, playing: () => playing, finished: () => finished, toggle: () => playing ? pause() : play() };
 }
 
 // js/diagram/stage.js
@@ -2498,6 +2498,7 @@ function drawDiagrams() {
             autoplay(stage);
           }
         }
+        if (stage && holder.classList.contains("slide-on")) host.onSlideDiagram?.();
         if (pictures.problems.length) holder.title += "\nPictures not shown: " + pictures.problems.join(", ");
         if (host.onDiagram) host.onDiagram();
       } catch (error) {
@@ -3469,7 +3470,15 @@ function present(at, direction) {
   history.replaceState(null, "", "#slide=" + (at + 1));
   paintDock(groups);
   slideWake();
+  slideAutoplay();
   return true;
+}
+function slideAutoplay() {
+  if (slideAt < 0 || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const setting = readFrontMatter(host.source || "")?.entries?.find((entry) => entry.key === "autoplay");
+  if (setting && /^(?:false|no|off)$/i.test(String(setting.value ?? "").trim())) return;
+  const story = slideStory();
+  if (story && !story.playing() && (story.where().step === null || story.finished())) story.toggle();
 }
 function slideMove(direction) {
   if (slideStory()?.walk(direction > 0)) return;
@@ -3498,6 +3507,7 @@ function slideWake() {
   if (slideAt >= 0) slideIdle = setTimeout(() => document.body.classList.add("slide-idle"), 2500);
 }
 function initSlides() {
+  host.onSlideDiagram = slideAutoplay;
   if (host.presentButton) {
     host.presentButton.hidden = slideGroups().length < 2;
     host.presentButton.addEventListener("click", () => {
@@ -3651,7 +3661,8 @@ function diagrams(options = {}) {
     commentsUrl: "",
     save: options.save || ((name, blob) => saveBlob(blob, name)),
     onShow: null,
-    onDiagram: null
+    onDiagram: null,
+    onSlideDiagram: null
   });
   const fresh = () => {
     host.render?.abort();
