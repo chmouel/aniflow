@@ -880,7 +880,65 @@ pie title Readings collected
   "Missing" : 2
 ```
 
-## Step 16: Run it where you need it
+## Step 18: Present a deck
+
+Press Present in the header, or `p`, and any page becomes slides: one per
+`##` section, drawn on a fixed canvas that scales to your screen. A slide
+picks its own layout from what it holds. A heading alone is a section break,
+a blockquote becomes a quote slide, a paragraph that opens with a bold number
+becomes a big statistic, and a diagram fills the slide and plays its story as
+you press Right.
+
+Settings go in front matter and in HTML comments, which GitHub hides, so the
+file still reads as a normal document:
+
+````markdown
+---
+title: Shipping with bots
+author: Chmouel
+accent: violet
+footer: KubeCon 2026
+numbers: true
+---
+
+## Why bots?
+
+- Humans review the **design**
+- Bots handle the *chores*
+
+<!-- slide: layout=columns reveal -->
+## Two ways to ship
+
+By hand: open a PR, wait, fix the nits.
+
+<!-- column -->
+
+With a bot: open a PR, merge.
+
+<!-- notes:
+Ask who reviewed a pull request at midnight this week.
+-->
+
+## The numbers
+
+**42%** fewer review rounds after the bot joined.
+````
+
+| Key | Does |
+| --- | --- |
+| Right, Space, `j` | Next reveal, code step or diagram step, then the next slide |
+| `n`, `b` | Next or previous slide, skipping the steps |
+| `o` | Every slide as a grid; click one to go there |
+| `s` | Presenter window with notes, the next slide and a timer |
+| `l` | Laser pointer |
+| Escape | Leave the slides |
+
+`aniflow --check deck.md` reports slides that do not fit, have too many
+words or use an unknown setting. `aniflow deck.md --slides pdf` writes a PDF
+handout, and `--slides png` one picture per slide. Run `aniflow --spec` for
+every setting and layout.
+
+## Step 19: Run it where you need it
 
 | Command | Use |
 | --- | --- |
@@ -896,7 +954,7 @@ that server. Leave the host at its localhost default for personal reading.
 You can reach this guide from Help on folder and document pages. It ships
 with aniflow, so it also works when your folder is empty. [Browse your files](/files/).
 
-## Step 17: Leave a comment
+## Step 20: Leave a comment
 
 Press Comments in the header to show source line numbers. Pick a line, then
 press Comment. Shift-click another line to select a range; on a phone, tap

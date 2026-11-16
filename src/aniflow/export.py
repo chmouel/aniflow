@@ -7,10 +7,13 @@ same server, which writes it into the output directory.
 
 from __future__ import annotations
 
+import base64
+import fcntl
 import json
 import os
 import re
 import secrets
+import select
 import shutil
 import signal
 import subprocess
@@ -56,6 +59,13 @@ MERMAID_START = re.compile(
     r"|sankey-beta|xychart-beta|block-beta|packet-beta|architecture-beta|C4\w+)\b"
 )
 
+# A slide directive or deck front matter: the library decides whether it is a deck.
+DECK_HINT = re.compile(
+    r"<!--\s*(?:slide|notes|column|reveal)\b"
+    r"|^(?:accent|font|footer|logo|numbers|aspect|transition)\s*:",
+    re.MULTILINE,
+)
+
 # Runs after the reader has drawn the page: waits for the diagrams, exports each
 # selected one through the public library and posts the bytes back. Every message
 # it shows is set with textContent.
@@ -92,12 +102,15 @@ EXPORT_JS = r"""
   };
   const fail = (error) => tell(job.error, { message: String((error && error.message) || error) });
   const timer = setTimeout(() => fail('the export took longer than ' + Math.round(job.timeout / 1000) + ' seconds'), job.timeout);
-  async function drawn() {
+  async function rendered() {
     const deadline = Date.now() + job.timeout;
     while (document.querySelectorAll('.highlight-source-mermaid:not([title])').length) {
       if (Date.now() > deadline) throw new Error('the diagrams did not finish rendering' + why());
       await next();
     }
+  }
+  async function drawn() {
+    await rendered();
     const found = stages();
     if (!found.length) throw new Error('this document has no diagrams to export' + why());
     return found;
@@ -118,15 +131,27 @@ EXPORT_JS = r"""
     return rows.map((row) => Object.assign({ line: Number(blocks[row.diagram - 1]?.dataset.line) || 0 }, row));
   };
   async function check() {
-    const deadline = Date.now() + job.timeout;
-    while (document.querySelectorAll('.highlight-source-mermaid:not([title])').length) {
-      if (Date.now() > deadline) throw new Error('the diagrams did not finish rendering' + why());
-      await next();
-    }
-    await tell(job.done, { failures: lines(failed()), problems: problems(), pictures: pictures() });
+    await rendered();
+    const deck = await Aniflow.deckCheck();
+    await tell(job.done, { failures: lines(failed()), problems: problems(), pictures: pictures(), deck: deck });
+  }
+  // --slides: the page only gets ready; aniflow then shows each slide through DevTools and
+  // captures it. It resolves to the slide count and the canvas size in CSS pixels.
+  async function slides() {
+    await rendered();
+    const count = Aniflow.slideCount();
+    if (!count) throw new Error('this document has no slides: start each one with a ## heading');
+    await Aniflow.showSlide(0);
+    const style = document.body.style;
+    return { count: count, width: parseFloat(style.getPropertyValue('--slide-w')), height: parseFloat(style.getPropertyValue('--slide-h')) };
   }
   async function run() {
     if (job.kind === 'check') return check();
+    if (job.kind === 'slides') {
+      window.aniflowSlides = slides();
+      window.aniflowSlides.catch(() => {});
+      return;
+    }
     const all = await drawn();
     const wanted = job.diagrams && job.diagrams.length ? job.diagrams : all.map(indexOf);
     const missing = wanted.filter((index) => !all.some((stage) => indexOf(stage) === index));
@@ -272,6 +297,7 @@ class ExportServer(ThreadingHTTPServer):
         self.warnings: list[str] = []
         self.problems: list[dict[str, object]] = []
         self.pictures: list[dict[str, object]] = []
+        self.deck: list[dict[str, object]] = []
         self.error = ""
         self.stop = threading.Event()
         self.doc_path = f"/doc/{self.token}/{quote(name)}"
@@ -402,7 +428,7 @@ class ExportHandler(web.Handler):
                     )
             for item in payload.get("warnings") or []:
                 server.warnings.append(str(item))
-            for key in ("problems", "pictures"):
+            for key in ("problems", "pictures", "deck"):
                 for row in payload.get(key) or []:
                     if isinstance(row, dict):
                         getattr(server, key).append(row)
@@ -577,8 +603,9 @@ def render(
 
 def check(targets: list[str]) -> int:
     """Draws each document's diagrams in headless Chrome and prints every walkthrough step
-    that cannot play, diagram that does not render and picture that does not load as
-    file:line: message. Returns 1 when it found any."""
+    that cannot play, diagram that does not render, picture that does not load and slide
+    that does not fit or carries a bad directive as file:line: message. Returns 1 when it
+    found any."""
     found = 0
     for target in targets:
         try:
@@ -587,7 +614,7 @@ def check(targets: list[str]) -> int:
             print(f"aniflow: cannot read {target}: {error}", file=sys.stderr)
             found += 1
             continue
-        if "```mermaid" not in text:
+        if "```mermaid" not in text and not DECK_HINT.search(text):
             continue
         server, code = render(text, folder, name, None, "check", [])
         if server is None or code:
@@ -609,7 +636,14 @@ def check(targets: list[str]) -> int:
             print(
                 f"{where}:{row.get('line', 0)}: pictures not shown: {row.get('message', '')}"
             )
-        found += len(server.failures) + len(server.problems) + len(server.pictures)
+        for row in server.deck:
+            print(f"{where}:{row.get('line', 0)}: {row.get('message', '')}")
+        found += (
+            len(server.failures)
+            + len(server.problems)
+            + len(server.pictures)
+            + len(server.deck)
+        )
     return 1 if found else 0
 
 
@@ -670,3 +704,297 @@ def run(
         print(f"aniflow: nothing was exported for {kind}", file=sys.stderr)
         return 1
     return 0
+
+
+SLIDE_KINDS = ("pdf", "png")
+# Device pixels per canvas pixel: a 1600×900 slide becomes 3200×1800.
+SLIDE_SCALE = 2
+JPEG_QUALITY = 88
+# PDF points per canvas pixel, so a 16:9 page is 1200×675 points.
+PDF_POINTS = 0.75
+
+
+class DevToolsError(Exception):
+    """Chrome refused a DevTools command, or the page threw while running one."""
+
+
+class DevTools:
+    """Chrome's DevTools protocol over --remote-debugging-pipe: JSON messages ending in a
+    NUL byte, written to Chrome's fd 3 and read from its fd 4."""
+
+    def __init__(self, reader: int, writer: int):
+        self.reader = reader
+        self.writer = writer
+        self.buffer = bytearray()
+        self.last = 0
+        self.events: list[dict] = []
+
+    def receive(self, deadline: float) -> dict:
+        scanned = 0
+        while (end := self.buffer.find(b"\0", scanned)) < 0:
+            scanned = len(self.buffer)
+            left = deadline - time.monotonic()
+            if left <= 0:
+                raise DevToolsError("the browser stopped answering")
+            ready, _, _ = select.select([self.reader], [], [], left)
+            if not ready:
+                continue
+            chunk = os.read(self.reader, 1 << 20)
+            if not chunk:
+                raise DevToolsError("the browser closed its DevTools pipe")
+            self.buffer += chunk
+        message = bytes(self.buffer[:end])
+        del self.buffer[: end + 1]
+        return json.loads(message)
+
+    def send(
+        self, method: str, params: dict | None = None, session: str | None = None
+    ) -> dict:
+        self.last += 1
+        message = {"id": self.last, "method": method, "params": params or {}}
+        if session:
+            message["sessionId"] = session
+        data = json.dumps(message).encode() + b"\0"
+        while data:
+            data = data[os.write(self.writer, data) :]
+        deadline = time.monotonic() + TIMEOUT
+        while True:
+            reply = self.receive(deadline)
+            if reply.get("id") != self.last:
+                self.events.append(reply)
+                continue
+            if "error" in reply:
+                raise DevToolsError(f"{method}: {reply['error'].get('message')}")
+            return reply.get("result") or {}
+
+    def wait_event(self, method: str, session: str) -> dict:
+        deadline = time.monotonic() + TIMEOUT
+        while True:
+            for event in self.events:
+                if event.get("method") == method and event.get("sessionId") == session:
+                    self.events.remove(event)
+                    return event.get("params") or {}
+            self.events.append(self.receive(deadline))
+
+    def evaluate(self, session: str, expression: str) -> object:
+        """The value of a page expression, awaited; an exception becomes DevToolsError."""
+        result = self.send(
+            "Runtime.evaluate",
+            {"expression": expression, "awaitPromise": True, "returnByValue": True},
+            session,
+        )
+        details = result.get("exceptionDetails")
+        if details:
+            text = (details.get("exception") or {}).get("description") or details.get(
+                "text", "the page failed"
+            )
+            raise DevToolsError(text.splitlines()[0].removeprefix("Error: "))
+        return (result.get("result") or {}).get("value")
+
+
+def launch(
+    browser: str, url: str, profile: Path, log: object
+) -> tuple[subprocess.Popen, DevTools]:
+    """Starts Chrome with --remote-debugging-pipe. sh moves the pipe ends onto fds 3 and 4,
+    since a preexec_fn is unsafe next to the server's thread."""
+    to_chrome = os.pipe()
+    from_chrome = os.pipe()
+    reader = fcntl.fcntl(to_chrome[0], fcntl.F_DUPFD, 10)
+    writer = fcntl.fcntl(from_chrome[1], fcntl.F_DUPFD, 10)
+    os.close(to_chrome[0])
+    os.close(from_chrome[1])
+    args = command(browser, url, profile)
+    args.insert(-1, "--remote-debugging-pipe")
+    try:
+        process = subprocess.Popen(
+            ["/bin/sh", "-c", f'exec "$0" "$@" 3<&{reader} 4>&{writer}', *args],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=log,
+            start_new_session=True,
+            pass_fds=(reader, writer),
+        )
+    except OSError:
+        os.close(from_chrome[0])
+        os.close(to_chrome[1])
+        raise
+    finally:
+        os.close(reader)
+        os.close(writer)
+    return process, DevTools(from_chrome[0], to_chrome[1])
+
+
+def capture(
+    tools: DevTools, url: str, kind: str, outdir: Path, name: str
+) -> list[Path]:
+    """Loads the deck, shows each slide complete at its canvas size and writes them out."""
+    page_target = next(
+        target
+        for target in tools.send("Target.getTargets")["targetInfos"]
+        if target.get("type") == "page"
+    )
+    session = tools.send(
+        "Target.attachToTarget", {"targetId": page_target["targetId"], "flatten": True}
+    )["sessionId"]
+    tools.send("Page.enable", session=session)
+    navigated = tools.send("Page.navigate", {"url": url}, session)
+    if navigated.get("errorText"):
+        raise DevToolsError(f"cannot load the deck: {navigated['errorText']}")
+    tools.wait_event("Page.loadEventFired", session)
+    info = tools.evaluate(session, "window.aniflowSlides")
+    if not isinstance(info, dict) or not info.get("count"):
+        raise DevToolsError("the page did not start the slide export")
+    width, height = round(info["width"]), round(info["height"])
+    tools.send(
+        "Emulation.setDeviceMetricsOverride",
+        {
+            "width": width,
+            "height": height,
+            "deviceScaleFactor": SLIDE_SCALE,
+            "mobile": False,
+        },
+        session,
+    )
+    shot = {"format": "png"}
+    if kind == "pdf":
+        shot = {"format": "jpeg", "quality": JPEG_QUALITY}
+    titles, shots = [], []
+    for index in range(int(info["count"])):
+        shown = tools.evaluate(session, f"Aniflow.showSlide({index})")
+        titles.append(str((shown or {}).get("title") or ""))
+        data = tools.send("Page.captureScreenshot", shot, session)["data"]
+        shots.append(base64.b64decode(data))
+    stem = Path(name).stem
+    if kind == "png":
+        return [
+            write_unique(outdir, f"{stem}-{index:02d}.png", body)
+            for index, body in enumerate(shots, 1)
+        ]
+    pages = pdf(
+        shots,
+        round(width * PDF_POINTS),
+        round(height * PDF_POINTS),
+        titles[0] or stem,
+    )
+    return [write_unique(outdir, stem + ".pdf", pages)]
+
+
+def slides(target: str | Path, kind: str, out: str | Path | None = None) -> int:
+    """Writes the document's slides as one PDF, or one PNG each, into out or next to the
+    document, and returns the exit code."""
+    try:
+        text, folder, name = document(target)
+    except (OSError, UnicodeDecodeError) as error:
+        print(f"aniflow: cannot read {target}: {error}", file=sys.stderr)
+        return 1
+    outdir = Path(out) if out else folder
+    try:
+        outdir.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        print(f"aniflow: cannot write into {outdir}: {error}", file=sys.stderr)
+        return 1
+    browser = chrome()
+    if browser is None:
+        print(
+            "aniflow: this needs Chrome or Chromium: install one, or set "
+            "ANIFLOW_CHROME to its path",
+            file=sys.stderr,
+        )
+        return 1
+    server = thread = profile = process = tools = None
+    written: list[Path] = []
+    with tempfile.TemporaryFile() as log:
+        try:
+            try:
+                server = ExportServer(text, folder, name, outdir, "slides")
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                profile = Path(tempfile.mkdtemp(prefix="aniflow-export-"))
+                process, tools = launch(browser, "about:blank", profile, log)
+            except OSError as error:
+                print(f"aniflow: cannot start {browser}: {error}", file=sys.stderr)
+                return 1
+            url = f"http://127.0.0.1:{server.server_address[1]}{server.doc_path}"
+            try:
+                written = capture(tools, url, kind, outdir, name)
+            except (
+                DevToolsError,
+                OSError,
+                ValueError,
+                KeyError,
+                StopIteration,
+            ) as error:
+                message = str(error) or type(error).__name__
+                if process.poll() is not None:
+                    message = browser_exit(process, log)
+                print(f"aniflow: {server.error or message}", file=sys.stderr)
+                return 1
+        except KeyboardInterrupt:
+            print("aniflow: cancelled", file=sys.stderr)
+            return 130
+        finally:
+            finish(process, server, thread, profile)
+            if tools is not None:
+                os.close(tools.reader)
+                os.close(tools.writer)
+    for path in written:
+        print(path)
+    return 0
+
+
+def pdf(pages: list[bytes], width: int, height: int, title: str) -> bytes:
+    """A PDF with one JPEG per page, each filling a width×height point page."""
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids ["
+        + b" ".join(f"{3 + 3 * at} 0 R".encode() for at in range(len(pages)))
+        + f"] /Count {len(pages)} >>".encode(),
+    ]
+    for at, jpeg in enumerate(pages):
+        image, content = 4 + 3 * at, 5 + 3 * at
+        pixels = jpeg_size(jpeg)
+        draw = f"q {width} 0 0 {height} 0 0 cm /Slide Do Q".encode()
+        objects += [
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {width} {height}] "
+            f"/Resources << /XObject << /Slide {image} 0 R >> >> "
+            f"/Contents {content} 0 R >>".encode(),
+            f"<< /Type /XObject /Subtype /Image /Width {pixels[0]} /Height {pixels[1]} "
+            f"/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode "
+            f"/Length {len(jpeg)} >>\nstream\n".encode()
+            + jpeg
+            + b"\nendstream",
+            f"<< /Length {len(draw)} >>\nstream\n".encode() + draw + b"\nendstream",
+        ]
+    objects.append(
+        b"<< /Title <" + ("\ufeff" + title).encode("utf-16-be").hex().encode() + b"> >>"
+    )
+    out = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    offsets = []
+    for number, body in enumerate(objects, 1):
+        offsets.append(len(out))
+        out += f"{number} 0 obj\n".encode() + body + b"\nendobj\n"
+    xref = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
+    out += b"".join(f"{offset:010d} 00000 n \n".encode() for offset in offsets)
+    out += (
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R /Info {len(objects)} 0 R >>\n"
+        f"startxref\n{xref}\n%%EOF\n"
+    ).encode()
+    return bytes(out)
+
+
+def jpeg_size(jpeg: bytes) -> tuple[int, int]:
+    """Width and height from a JPEG's start-of-frame marker."""
+    at = 2
+    while at + 9 < len(jpeg):
+        if jpeg[at] != 0xFF:
+            break
+        marker = jpeg[at + 1]
+        length = int.from_bytes(jpeg[at + 2 : at + 4], "big")
+        if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+            return (
+                int.from_bytes(jpeg[at + 7 : at + 9], "big"),
+                int.from_bytes(jpeg[at + 5 : at + 7], "big"),
+            )
+        at += 2 + length
+    raise ValueError("not a JPEG with a frame header")

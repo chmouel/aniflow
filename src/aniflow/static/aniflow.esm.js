@@ -216,10 +216,10 @@ async function diagramImages(source) {
       wanted.set(value, DIAGRAM_IMAGE_MISSING);
     }
   }));
-  const rewritten = source.replace(shapes, (shape) => shape.replace(
-    DIAGRAM_IMAGE,
-    (match, key, quote, quoted, bare) => key + '"' + wanted.get(quoted ?? bare) + '"'
-  ));
+  const rewritten = source.replace(shapes, (shape) => {
+    const drawn = shape.replace(DIAGRAM_IMAGE, (match, key, quote, quoted, bare) => key + '"' + wanted.get(quoted ?? bare) + '"');
+    return shape.search(DIAGRAM_IMAGE) < 0 || /\bconstraint\s*:/.test(shape) ? drawn : drawn.replace(/\s*\}$/, ', constraint: "on" }');
+  });
   return { source: rewritten, problems };
 }
 
@@ -242,7 +242,10 @@ var DIAGRAM_ICONS = {
   follow: '<path d="M2.5 5.5h2.2l1.1-1.7h4.4l1.1 1.7h2.2v7h-11z"/><circle cx="8" cy="9" r="2.1"/>',
   warn: '<path d="M8 2.2l6 10.6H2z"/><path d="M8 6.6v2.8M8 11.1v.1"/>',
   theme: '<circle cx="8" cy="8" r="5.5"/><path d="M8 2.5v11a5.5 5.5 0 0 0 0-11z" fill="currentColor"/>',
-  comment: '<path d="M2.5 3.5h11v7.2H8.2l-3.2 2.6v-2.6H2.5z"/><path d="M5 6.3h6M5 8.3h4"/>'
+  comment: '<path d="M2.5 3.5h11v7.2H8.2l-3.2 2.6v-2.6H2.5z"/><path d="M5 6.3h6M5 8.3h4"/>',
+  grid: '<rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/>',
+  notes: '<rect x="1.8" y="3" width="8.4" height="6.2" rx="1"/><path d="M12.2 4.5h2v8.5H5.5v-2M6 9.2v2"/>',
+  laser: '<circle cx="8" cy="8" r="2"/><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2"/>'
 };
 var diagramIcon = (name) => '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">' + DIAGRAM_ICONS[name] + "</svg>";
 
@@ -721,7 +724,7 @@ function diagramComments(stage, svg, after, about) {
       pins?.querySelector(".lit")?.classList.remove("lit");
     }, 1600);
   }
-  function open() {
+  function open2() {
     if (active || !full()) return Promise.resolve();
     active = true;
     stage.diagramDraw?.(false);
@@ -754,7 +757,7 @@ function diagramComments(stage, svg, after, about) {
       say("!Copy failed: " + (error.message || error));
     }
   }
-  toggle.addEventListener("click", () => active ? close() : open());
+  toggle.addEventListener("click", () => active ? close() : open2());
   closeButton.addEventListener("click", close);
   copyOne.addEventListener("click", () => copyPrompt(url + "?format=prompt&lines=" + base + "-" + last));
   copyAll.addEventListener("click", () => copyPrompt(url + "?format=prompt"));
@@ -776,7 +779,7 @@ function diagramComments(stage, svg, after, about) {
     if (!target) return;
     if (target.pin) {
       const key = target.pin;
-      open().then(() => light(key));
+      open2().then(() => light(key));
     } else if (active) {
       compose(target);
     }
@@ -1322,9 +1325,9 @@ function diagramWarnings(stage, tools, scenarios) {
   }
   group.append(button, list);
   tools.prepend(group);
-  const show2 = (open) => {
-    list.hidden = !open;
-    button.setAttribute("aria-expanded", String(open));
+  const show2 = (open2) => {
+    list.hidden = !open2;
+    button.setAttribute("aria-expanded", String(open2));
   };
   button.addEventListener("click", () => show2(list.hidden));
   document.addEventListener("pointerdown", (event) => {
@@ -1390,7 +1393,7 @@ function playDiagram(stage, svg, tools, scripts, home, share, edges) {
   };
   const box = sequence ? "participant" : "box";
   const resolved = scripts.map((script) => {
-    const steps = [];
+    const steps2 = [];
     const problems = [];
     let cursor = 0;
     let hold = null;
@@ -1408,7 +1411,7 @@ function playDiagram(stage, svg, tools, scripts, home, share, edges) {
         const missing2 = step.skip.filter((name) => !nodes.has(name));
         if (missing2.length) problems.push({ line: step.line, text: step.text, reason: "no " + box + " named " + missing2.join(", ") });
         if (found.length) {
-          steps.push({ skip: found, caption: step.caption, hold: step.hold || hold });
+          steps2.push({ skip: found, caption: step.caption, hold: step.hold || hold });
           hold = null;
         } else hold = step.hold || hold;
         continue;
@@ -1456,10 +1459,10 @@ function playDiagram(stage, svg, tools, scripts, home, share, edges) {
         continue;
       }
       if (sequence) cursor = Math.max(...moves.map((move) => move.at)) + 1;
-      steps.push({ moves, label: step.label, caption: step.caption, hold: step.hold || hold });
+      steps2.push({ moves, label: step.label, caption: step.caption, hold: step.hold || hold });
       hold = null;
     }
-    return { title: script.title, steps, problems, tail: hold || script.tail };
+    return { title: script.title, steps: steps2, problems, tail: hold || script.tail };
   });
   diagramWarnings(stage, tools, resolved);
   const scenarios = resolved.filter((scenario2) => scenario2.steps.length);
@@ -1555,19 +1558,19 @@ function playDiagram(stage, svg, tools, scripts, home, share, edges) {
     drawRail();
   }
   function drawRail() {
-    const steps = scenario().steps;
-    if (rail.children.length !== steps.length || rail.dataset.story !== String(scenario().title)) {
+    const steps2 = scenario().steps;
+    if (rail.children.length !== steps2.length || rail.dataset.story !== String(scenario().title)) {
       rail.dataset.story = String(scenario().title);
-      rail.replaceChildren(...steps.map((step, at) => {
+      rail.replaceChildren(...steps2.map((step, at) => {
         const tick2 = document.createElement("span");
         tick2.title = "Step " + (at + 1) + (step.caption ? ": " + step.caption : step.label ? ": " + step.label : "");
         tick2.addEventListener("click", () => jump(at));
         return tick2;
       }));
     }
-    rail.hidden = steps.length < 2;
+    rail.hidden = steps2.length < 2;
     controls.classList.toggle("stepped", !rail.hidden);
-    const played = !timeline.length ? 0 : finished ? steps.length : reached;
+    const played = !timeline.length ? 0 : finished ? steps2.length : reached;
     [...rail.children].forEach((tick2, at) => {
       tick2.classList.toggle("done", at < played);
       tick2.classList.toggle("now", playing && !waiting && at === reached && !finished);
@@ -1672,9 +1675,9 @@ function playDiagram(stage, svg, tools, scripts, home, share, edges) {
     if (playing && !exporting) stage.diagramCamera?.look(stepArea(step));
   }
   function aim() {
-    const steps = scenario().steps;
+    const steps2 = scenario().steps;
     if (!timeline.length || finished || exporting) return;
-    stage.diagramCamera?.look(stepArea(steps[Math.min(reached, steps.length - 1)]));
+    stage.diagramCamera?.look(stepArea(steps2[Math.min(reached, steps2.length - 1)]));
   }
   const lit = (move) => [move.path, ...move.texts || []];
   function build(calm) {
@@ -2237,7 +2240,7 @@ function panZoom(holder, scenarios, edges, about) {
   const SVG_NS2 = "http://www.w3.org/2000/svg";
   let drawing = false;
   let ink = null;
-  let laser = [];
+  let laser2 = [];
   let laserFrame = 0;
   function inkLayer() {
     if (!ink || !ink.isConnected) {
@@ -2265,20 +2268,20 @@ function panZoom(holder, scenarios, edges, about) {
   function drawLaser() {
     laserFrame = 0;
     const now = performance.now();
-    laser = laser.filter((point) => now - point.t < 320);
+    laser2 = laser2.filter((point) => now - point.t < 320);
     let trail = ink && ink.querySelector(".ink-laser");
     let head = ink && ink.querySelector("circle");
-    if (!laser.length || !drawing) {
+    if (!laser2.length || !drawing) {
       trail?.remove();
       head?.remove();
-      laser = [];
+      laser2 = [];
       return;
     }
     if (!trail) trail = inkPath("ink-laser", 5);
     if (!head) head = inkLayer().appendChild(document.createElementNS(SVG_NS2, "circle"));
-    const last = laser[laser.length - 1];
+    const last = laser2[laser2.length - 1];
     const matrix = svg.getScreenCTM();
-    trail.setAttribute("d", pathData(laser));
+    trail.setAttribute("d", pathData(laser2));
     head.setAttribute("cx", last.x);
     head.setAttribute("cy", last.y);
     head.setAttribute("r", String(5 / (matrix && matrix.a ? matrix.a : 1)));
@@ -2287,7 +2290,7 @@ function panZoom(holder, scenarios, edges, about) {
   function clearInk() {
     cancelAnimationFrame(laserFrame);
     laserFrame = 0;
-    laser = [];
+    laser2 = [];
     ink?.remove();
     ink = null;
   }
@@ -2311,7 +2314,7 @@ function panZoom(holder, scenarios, edges, about) {
     if (!drawing || pointers.size > 1 || event.target.closest?.(".diagram-tools")) return;
     const point = toDiagram(event);
     if (!point) return;
-    laser.push({ x: point.x, y: point.y, t: performance.now() });
+    laser2.push({ x: point.x, y: point.y, t: performance.now() });
     if (!laserFrame) laserFrame = requestAnimationFrame(drawLaser);
   });
   document.addEventListener("keydown", (event) => {
@@ -2469,9 +2472,9 @@ function drawDiagrams() {
       const id = "mermaid-" + diagramCount++;
       try {
         const scenarios = playScript(block.textContent, Number(block.dataset.line) || 0);
-        const pictures = await diagramImages(block.textContent);
-        const edges = await diagramEdges(pictures.source);
-        const result = await mermaid.render(id, pictures.source);
+        const pictures2 = await diagramImages(block.textContent);
+        const edges = await diagramEdges(pictures2.source);
+        const result = await mermaid.render(id, pictures2.source);
         if (!block.isConnected) {
           document.getElementById("d" + id)?.remove();
           continue;
@@ -2499,7 +2502,7 @@ function drawDiagrams() {
           }
         }
         if (stage && holder.classList.contains("slide-on")) host.onSlideDiagram?.();
-        if (pictures.problems.length) holder.title += "\nPictures not shown: " + pictures.problems.join(", ");
+        if (pictures2.problems.length) holder.title += "\nPictures not shown: " + pictures2.problems.join(", ");
         if (host.onDiagram) host.onDiagram();
       } catch (error) {
         document.getElementById("d" + id)?.remove();
@@ -2662,6 +2665,224 @@ function frontMatterPlugin(markdown2) {
   markdown2.renderer.rules.front_matter = (tokens, index) => frontPanel(tokens[index].meta, tokens[index].map);
 }
 
+// js/reader/deck.js
+var LAYOUTS = ["title", "cover", "section", "center", "columns", "split", "quote", "stat", "full", "grid"];
+var BACKGROUNDS = ["accent", "muted", "inverse", "gradient", "none"];
+var TRANSITIONS = ["slide", "fade", "zoom", "morph", "none"];
+var ACCENTS = ["blue", "violet", "green", "amber", "red"];
+var FONTS = ["modern", "classic", "mono", "rounded"];
+var ASPECTS = ["16:9", "4:3"];
+var SLIDE_FLAGS = ["reveal", "dim", "flip"];
+var WORDS_MAX = 90;
+var DIRECTIVE = /^<!--[ \t]*(slide|column|reveal|notes)(?=[\s:]|-->)([\s\S]*?)-->\s*$/;
+var PICTURE = /^(?:\.{0,2}\/|[\w-][\w./-]*\.(?:png|jpe?g|gif|webp|svg|avif)$|https:\/\/)/i;
+function slideDirective(text) {
+  const match = DIRECTIVE.exec(String(text).trim());
+  if (!match) return null;
+  const kind = match[1];
+  let rest = match[2];
+  const problems = [];
+  if (kind === "notes") {
+    if (!/^\s*:|^[ \t]*\n/.test(rest)) return null;
+    return { kind, notes: rest.replace(/^\s*:/, "").replace(/^\s*\n|\s+$/g, "").replace(/^[ \t]+/, ""), problems };
+  }
+  rest = rest.replace(/^\s*:/, "").trim();
+  if (kind !== "slide") {
+    if (rest) problems.push(kind + " takes no options: " + rest);
+    return { kind, options: {}, problems };
+  }
+  const options = {};
+  for (const word of rest.match(/[\w-]+="[^"]*"|\S+/g) || []) {
+    const [key, ...parts] = word.split("=");
+    const value = parts.join("=").replace(/^"(.*)"$/, "$1");
+    if (!parts.length) {
+      if (SLIDE_FLAGS.includes(key)) options[key] = true;
+      else if (LAYOUTS.includes(key)) options.layout = key;
+      else problems.push("unknown slide option: " + key);
+    } else if (key === "layout") {
+      if (LAYOUTS.includes(value)) options.layout = value;
+      else problems.push("unknown layout: " + value + " (one of " + LAYOUTS.join(", ") + ")");
+    } else if (key === "bg") {
+      if (BACKGROUNDS.includes(value)) options.bg = value;
+      else if (PICTURE.test(value) && !/["'()\\\s]/.test(value)) options.image = value;
+      else problems.push("unknown background: " + value + " (one of " + BACKGROUNDS.join(", ") + " or a picture path)");
+    } else if (key === "transition") {
+      if (TRANSITIONS.includes(value)) options.transition = value;
+      else problems.push("unknown transition: " + value + " (one of " + TRANSITIONS.join(", ") + ")");
+    } else if (key === "story") {
+      if (/^[1-9]\d?$/.test(value)) options.story = Number(value);
+      else problems.push("story needs a story number: " + value);
+    } else problems.push("unknown slide option: " + key);
+  }
+  return { kind, options, problems };
+}
+var yes = (value) => /^(?:true|yes|on)$/i.test(String(value).trim());
+var no = (value) => /^(?:false|no|off)$/i.test(String(value).trim());
+function deckSettings(entries) {
+  const settings = { autoplay: true, numbers: false, aspect: "16:9" };
+  const problems = [];
+  for (const entry of entries || []) {
+    const value = entry.kind === "scalar" || entry.kind === "text" ? String(entry.value).trim() : "";
+    const pick = (key, allowed) => {
+      if (allowed.includes(value.toLowerCase())) settings[key] = value.toLowerCase();
+      else problems.push(key + ": " + (value || entry.kind) + " is not one of " + allowed.join(", "));
+    };
+    switch (entry.key) {
+      case "accent":
+        pick("accent", ACCENTS);
+        break;
+      case "font":
+        pick("font", FONTS);
+        break;
+      case "aspect":
+        pick("aspect", ASPECTS);
+        break;
+      case "transition":
+        pick("transition", TRANSITIONS);
+        break;
+      case "theme":
+        if (/^[\w-]{1,40}$/.test(value)) settings.theme = value;
+        break;
+      case "numbers":
+        settings.numbers = yes(value);
+        break;
+      case "autoplay":
+        settings.autoplay = !no(value);
+        break;
+      case "footer":
+        if (value) settings.footer = value.slice(0, 160);
+        break;
+      case "logo":
+        if (PICTURE.test(value) && !/["'()\\\s]/.test(value)) settings.logo = value;
+        else if (value) problems.push("logo: " + value + " is not a picture path");
+        break;
+      case "title":
+      case "author":
+      case "date":
+        if (value) settings[entry.key] = value.slice(0, 200);
+        break;
+      default:
+    }
+  }
+  return { settings, problems };
+}
+function codeSteps(text) {
+  const steps2 = [];
+  for (const part of String(text).split("|")) {
+    const step = part.trim();
+    if (step === "all" || step === "*") {
+      steps2.push(null);
+      continue;
+    }
+    const ranges = [];
+    for (const piece of step.split(",")) {
+      const range = /^\s*(\d{1,5})(?:\s*-\s*(\d{1,5}))?\s*$/.exec(piece);
+      if (!range) return null;
+      const first = Number(range[1]), last = Number(range[2] || range[1]);
+      if (!first || last < first) return null;
+      ranges.push([first, last]);
+    }
+    steps2.push(ranges);
+  }
+  return steps2.length ? steps2 : null;
+}
+function pickLayout(summary) {
+  const { kinds = [], heading = null, first = false, words = 0, stat = false, cards = 0, cover = false } = summary;
+  const only = (...wanted) => kinds.length > 0 && kinds.every((kind) => wanted.includes(kind));
+  const count = (kind) => kinds.filter((each) => each === kind).length;
+  if (cover) return "cover";
+  if (kinds.includes("columns")) return "columns";
+  if (first && heading === "h1" && words < 60 && only("p")) return "cover";
+  if (first && heading === "h1" && !kinds.length) return "cover";
+  if (!kinds.length) return heading ? "section" : "title";
+  if (only("quote") && count("quote") === 1) return "quote";
+  if (only("picture") && count("picture") === 1) return "full";
+  if (count("diagram") === 1 && only("diagram", "p") && words < 240) return "full";
+  if (count("picture") === 1 && only("picture", "p", "list") && words <= 80) return "split";
+  if (stat && only("p", "list") && words <= 60) return "stat";
+  if (cards >= 2 && cards <= 6 && only("list") && count("list") === 1) return "grid";
+  return "title";
+}
+function wrapColumns(state, escape) {
+  const tokens = state.tokens;
+  const top = tokens.filter((token) => token.level === 0);
+  const level = top.some((token) => token.type === "heading_open" && token.tag === "h2") ? "h2" : top.filter((token) => token.type === "heading_open" && token.tag === "h1").length > 1 ? "h1" : "";
+  const boundary = (token) => token.level === 0 && (token.type === "heading_open" && token.tag === level || token.meta?.slideMark);
+  const out = [];
+  let region = [];
+  const flush = () => {
+    const marks = region.filter((token) => token.meta?.column);
+    if (!marks.length) {
+      out.push(...region);
+      region = [];
+      return;
+    }
+    let start = 0;
+    while (start < region.length && region[start].meta?.slideMark) start++;
+    if (region[start]?.type === "heading_open") {
+      while (start < region.length && region[start].type !== "heading_close") start++;
+      start++;
+    }
+    const open2 = new state.Token("html_block", "", 0);
+    open2.content = '<div class="slide-columns" data-columns="' + escape(String(marks.length + 1)) + '"><div class="slide-column">\n';
+    const close = new state.Token("html_block", "", 0);
+    close.content = "</div></div>\n";
+    let end = region.length;
+    while (end > start && region[end - 1].meta?.notes) end--;
+    for (const mark of region.slice(start, end)) if (mark.meta?.column) mark.content = '</div><div class="slide-column">' + mark.content;
+    out.push(...region.slice(0, start), open2, ...region.slice(start, end), close, ...region.slice(end));
+    region = [];
+  };
+  for (const token of tokens) {
+    if (boundary(token) && !(region.length && region.every((each) => each.meta?.slideMark))) flush();
+    region.push(token);
+  }
+  flush();
+  state.tokens = out;
+}
+function deckPlugin(markdown2) {
+  const escape = markdown2.utils.escapeHtml;
+  const lines = (token) => token.map ? ' data-line="' + (token.map[0] + 1) + '" data-line-end="' + token.map[1] + '"' : "";
+  markdown2.core.ruler.push("aniflow_slide", (state) => {
+    let marks = 0;
+    for (const token of state.tokens) {
+      if (token.type !== "html_block" || token.level !== 0) continue;
+      const directive = slideDirective(token.content);
+      if (!directive) continue;
+      const problem = directive.problems.length ? ' data-problem="' + escape(directive.problems.join("; ")) + '"' : "";
+      if (directive.kind === "notes") {
+        token.meta = { notes: true };
+        token.content = '<aside class="slide-notes"' + lines(token) + ">" + markdown2.render(directive.notes) + "</aside>\n";
+      } else if (directive.kind === "column") {
+        token.meta = { column: true };
+        token.content = '<div class="slide-column-mark"' + lines(token) + problem + "></div>\n";
+      } else if (directive.kind === "reveal") {
+        token.content = '<div class="slide-reveal-mark"' + lines(token) + problem + "></div>\n";
+      } else {
+        marks++;
+        token.meta = { slideMark: true };
+        const options = directive.options;
+        const attrs = ["layout", "bg", "image", "transition", "story"].filter((key) => options[key] !== void 0).map((key) => " data-" + key + '="' + escape(String(options[key])) + '"').join("") + SLIDE_FLAGS.filter((flag) => options[flag]).map((flag) => " data-" + flag).join("");
+        token.content = '<div class="slide-mark"' + lines(token) + attrs + problem + "></div>\n";
+      }
+    }
+    wrapColumns(state, escape);
+    const front = readFrontMatter(state.src);
+    const { settings } = deckSettings(front?.entries);
+    const top = state.tokens.filter((token) => token.level === 0);
+    const opening = top.find((token) => token.type !== "front_matter" && token.type !== "html_block");
+    const decked = marks || top.some((token) => token.type === "heading_open" && token.tag === "h2") || top.filter((token) => token.type === "heading_open" && token.tag === "h1").length > 1;
+    if (settings.title && decked && !(opening?.type === "heading_open" && opening.tag === "h1")) {
+      const cover = new state.Token("html_block", "", 0);
+      const byline = [settings.author, settings.date].filter(Boolean).map(escape).join(" \xB7 ");
+      cover.content = '<div class="slide-mark" data-layout="cover" data-auto></div><div class="slide-autocover"><p class="slide-cover-title">' + escape(settings.title) + "</p>" + (byline ? '<p class="slide-cover-byline">' + byline + "</p>" : "") + '</div><div class="slide-mark"></div>\n';
+      cover.meta = { slideMark: true };
+      const at = state.tokens[0]?.type === "front_matter" ? 1 : 0;
+      state.tokens.splice(at, 0, cover);
+    }
+  });
+}
+
 // js/reader/github.js
 var CALLOUTS = {
   note: "note",
@@ -2789,9 +3010,11 @@ function githubFlavour(markdown2) {
     const text = token.content.replace(/\n$/, "");
     const language = (token.info.trim().split(/\s+/)[0] || "").toLowerCase().replace(/[^a-z0-9_+#.-]/g, "");
     const where = lines(token, token.map ? token.map[0] + 2 : 0);
+    const marked = /\{([^{}]*)\}\s*$/.exec(token.info);
+    const steps2 = marked && codeSteps(marked[1]) ? ' data-steps="' + markdown2.utils.escapeHtml(marked[1].replace(/\s+/g, "")) + '"' : "";
     if (!language) return '<pre class="notranslate"' + where + "><code>" + markdown2.utils.escapeHtml(text) + "</code></pre>\n";
     const body = language !== "mermaid" && window.hljs && hljs.getLanguage(language) ? hljs.highlight(text, { language, ignoreIllegals: true }).value : markdown2.utils.escapeHtml(text);
-    return '<div class="highlight highlight-source-' + language + '"' + where + '><pre class="notranslate">' + body + "</pre></div>\n";
+    return '<div class="highlight highlight-source-' + language + '"' + where + steps2 + '><pre class="notranslate">' + body + "</pre></div>\n";
   };
   if (rules.footnote_ref) {
     rules.footnote_caption = (tokens, index) => String(tokens[index].meta.id + 1);
@@ -2820,6 +3043,7 @@ function renderLocal() {
       if (window.markdownitEmoji) markdown.use(window.markdownitEmoji);
       frontMatterPlugin(markdown);
       githubFlavour(markdown);
+      deckPlugin(markdown);
       for (const plugin of host.plugins) plugin(markdown);
     }
     return sanitize(markdown.render(host.preprocess(host.source)));
@@ -3374,36 +3598,536 @@ function initShow() {
   }
 }
 
+// js/slides/tools.js
+var overview = null;
+var presenter = null;
+var presenterStart = 0;
+var presenterClock = 0;
+var laser = null;
+var pictures = /* @__PURE__ */ new WeakMap();
+function stagePicture(stage) {
+  const svg = stage.querySelector(":scope > svg");
+  if (!svg) return Promise.resolve("");
+  if (!pictures.has(svg)) {
+    const box = svg.viewBox.baseVal;
+    pictures.set(svg, !box?.width ? Promise.resolve("") : diagramCanvas(svg, { x: box.x, y: box.y, w: box.width, h: box.height }, 1600, false, true).then(async (canvas) => {
+      await canvas.draw("");
+      return canvas.element.toDataURL("image/png");
+    }).catch(() => ""));
+  }
+  return pictures.get(svg);
+}
+function slideThumb(index, width, doc = document, complete = true) {
+  const group = slideGroups()[index];
+  if (!group) return null;
+  const size = (name, fallback) => parseFloat(document.body.style.getPropertyValue(name)) || fallback;
+  const w = size("--slide-w", 1600), h = size("--slide-h", deck.aspect === "4:3" ? 1200 : 900);
+  const thumb = doc.createElement("div");
+  thumb.className = "slide-thumb";
+  thumb.style.setProperty("--slide-w", w + "px");
+  thumb.style.setProperty("--slide-h", h + "px");
+  thumb.style.setProperty("--slide-scale", String(width / w));
+  thumb.style.setProperty("width", width + "px");
+  thumb.style.setProperty("height", Math.round(width * h / w) + "px");
+  const reader2 = doc.createElement("div");
+  reader2.className = "reader";
+  const canvas = doc.createElement("div");
+  canvas.className = "markdown-body slide-canvas";
+  const copies = group.map((element2) => {
+    const copy = element2.cloneNode(true);
+    copy.classList.add("slide-on");
+    copy.style.removeProperty("view-transition-name");
+    if (complete) for (const each of [copy, ...copy.querySelectorAll(".slide-hidden, .slide-latest")]) each.classList.remove("slide-hidden", "slide-latest");
+    for (const each of [copy, ...copy.querySelectorAll("[id]")]) each.removeAttribute("id");
+    for (const each of copy.querySelectorAll("button, .diagram-tools, .diagram-caption, .play-warn, .code-block-head")) each.remove();
+    const holders = copy.matches(".mermaid-diagram") ? [copy] : [...copy.querySelectorAll(".mermaid-diagram")];
+    const originals = element2.matches(".mermaid-diagram") ? [element2] : [...element2.querySelectorAll(".mermaid-diagram")];
+    holders.forEach((holder, at) => {
+      const stage = originals[at]?.querySelector(".diagram-stage");
+      const image = doc.createElement("img");
+      image.className = "slide-thumb-diagram";
+      image.alt = "";
+      holder.replaceChildren(image);
+      if (stage) stagePicture(stage).then((url) => {
+        if (url) image.src = url;
+      });
+    });
+    return copy;
+  });
+  canvas.append(...copies);
+  dressCanvas(canvas, copies, index);
+  reader2.append(canvas);
+  thumb.append(reader2);
+  return { thumb, canvas };
+}
+var overviewOpen = () => Boolean(overview);
+function openOverview() {
+  if (overview || slideAt < 0) return;
+  overview = document.createElement("div");
+  overview.className = "slide-overview";
+  overview.setAttribute("role", "dialog");
+  overview.setAttribute("aria-label", "All slides");
+  const list = document.createElement("div");
+  list.className = "slide-overview-grid";
+  overview.append(list);
+  document.body.append(overview);
+  const width = Math.floor(Math.max(160, Math.min(340, (list.clientWidth - 64 - 3 * 28) / 4)));
+  const buttons = slideGroups().map((group, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "slide-overview-item";
+    if (index === slideAt) button.setAttribute("aria-current", "step");
+    const made = slideThumb(index, width);
+    const label = document.createElement("span");
+    label.textContent = index + 1 + ". " + slideTitle(group, index);
+    button.append(made.thumb, label);
+    button.addEventListener("click", () => {
+      const from = slideAt;
+      closeOverview();
+      present(index, index - from, index < from ? Infinity : 0);
+    });
+    list.append(button);
+    fitSlide(made.canvas);
+    return button;
+  });
+  list.addEventListener("keydown", (event) => {
+    const at = buttons.indexOf(document.activeElement);
+    if (at < 0) return;
+    const across = Math.max(1, Math.round(list.clientWidth / (buttons[0].offsetWidth + 16)));
+    const move = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: across, ArrowUp: -across }[event.key];
+    if (!move) return;
+    event.preventDefault();
+    event.stopPropagation();
+    buttons[Math.max(0, Math.min(buttons.length - 1, at + move))].focus();
+  }, true);
+  buttons[slideAt]?.focus();
+  buttons[slideAt]?.scrollIntoView({ block: "center" });
+}
+function closeOverview() {
+  overview?.remove();
+  overview = null;
+}
+function toggleLaser(force) {
+  const on = force ?? !laser;
+  if (on && !laser) {
+    const dot = document.createElement("div");
+    dot.className = "slide-laser";
+    dot.hidden = true;
+    dot.move = (event) => {
+      dot.hidden = false;
+      dot.style.setProperty("transform", "translate(" + event.clientX + "px, " + event.clientY + "px)");
+    };
+    document.body.append(dot);
+    addEventListener("pointermove", dot.move, { passive: true });
+    document.body.classList.add("slide-lasering");
+    laser = dot;
+  } else if (!on && laser) {
+    removeEventListener("pointermove", laser.move);
+    laser.remove();
+    laser = null;
+    document.body.classList.remove("slide-lasering");
+  }
+  return Boolean(laser);
+}
+function openPresenter() {
+  if (slideAt < 0) return;
+  if (presenter && !presenter.closed) {
+    presenter.focus();
+    return;
+  }
+  presenter = open("", "aniflow-presenter", "popup,width=1180,height=760");
+  if (!presenter) return;
+  const doc = presenter.document;
+  doc.title = "Presenter: " + document.title;
+  doc.head.replaceChildren(...[...document.querySelectorAll('link[rel="stylesheet"], style')].map((sheet) => sheet.cloneNode(true)));
+  doc.body.className = "slide-presenter";
+  doc.body.innerHTML = '<main class="presenter-grid"><section class="presenter-now"><div class="presenter-slot"></div></section><section class="presenter-side"><h2>Next</h2><div class="presenter-next"><div class="presenter-slot"></div></div><h2>Notes</h2><div class="presenter-notes markdown-body"></div></section><footer class="presenter-bar"><button type="button" data-go="-1">Back</button><button type="button" data-go="1">Next</button><span class="presenter-count"></span><span class="presenter-step"></span><button type="button" class="presenter-timer" title="Restart the timer">00:00</button><span class="presenter-clock"></span></footer></main>';
+  const tick = () => {
+    if (!presenter || presenter.closed) {
+      clearInterval(presenterClock);
+      return;
+    }
+    const seconds = Math.floor((Date.now() - presenterStart) / 1e3);
+    doc.querySelector(".presenter-timer").textContent = String(Math.floor(seconds / 60)).padStart(2, "0") + ":" + String(seconds % 60).padStart(2, "0");
+    doc.querySelector(".presenter-clock").textContent = (/* @__PURE__ */ new Date()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+  for (const button of doc.querySelectorAll("[data-go]")) {
+    button.addEventListener("click", () => slideKey(new KeyboardEvent("keydown", { key: button.dataset.go === "1" ? "ArrowRight" : "ArrowLeft" })));
+  }
+  doc.querySelector(".presenter-timer").addEventListener("click", () => {
+    presenterStart = Date.now();
+    tick();
+  });
+  doc.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") presenter.close();
+    else if (event.key !== "s") slideKey(event);
+  });
+  presenter.addEventListener("resize", paintPresenter);
+  presenterStart = Date.now();
+  clearInterval(presenterClock);
+  presenterClock = setInterval(tick, 1e3);
+  tick();
+  presenter.requestAnimationFrame(paintPresenter);
+}
+function closePresenter() {
+  clearInterval(presenterClock);
+  if (presenter && !presenter.closed) presenter.close();
+  presenter = null;
+}
+function paintPresenter() {
+  if (!presenter || presenter.closed || slideAt < 0) return;
+  const doc = presenter.document;
+  for (const name of ["theme", "mode", "choice"]) {
+    if (document.documentElement.dataset[name]) doc.documentElement.dataset[name] = document.documentElement.dataset[name];
+  }
+  for (const name of ["deckAccent", "deckFont"]) {
+    if (document.body.dataset[name]) doc.body.dataset[name] = document.body.dataset[name];
+    else delete doc.body.dataset[name];
+  }
+  const groups = slideGroups();
+  const place = (slot, index, complete) => {
+    const ratio = (parseFloat(document.body.style.getPropertyValue("--slide-w")) || 16) / (parseFloat(document.body.style.getPropertyValue("--slide-h")) || 9);
+    const room = slot.clientHeight > 40 ? Math.min(slot.clientWidth, slot.clientHeight * ratio) : slot.clientWidth;
+    const made = index < groups.length ? slideThumb(index, Math.max(120, Math.floor(room)), doc, complete) : null;
+    slot.replaceChildren(...made ? [made.thumb] : []);
+    if (made) fitSlide(made.canvas);
+  };
+  place(doc.querySelector(".presenter-now .presenter-slot"), slideAt, false);
+  place(doc.querySelector(".presenter-next .presenter-slot"), slideAt + 1, true);
+  const notes = groups[slideAt].filter((element2) => element2.matches(".slide-notes"));
+  const body = doc.querySelector(".presenter-notes");
+  body.replaceChildren(...notes.flatMap((note) => [...note.cloneNode(true).childNodes]));
+  if (!notes.length) {
+    const empty = doc.createElement("p");
+    empty.className = "presenter-empty";
+    empty.textContent = "No notes for this slide.";
+    body.append(empty);
+  }
+  doc.querySelector(".presenter-count").textContent = slideAt + 1 + " / " + groups.length + ": " + slideTitle(groups[slideAt], slideAt);
+  doc.querySelector(".presenter-step").textContent = slideStep ? "step " + slideStep : "";
+}
+var frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+async function settled() {
+  await document.fonts?.ready;
+  await Promise.all([...host.article.querySelectorAll(".slide-on img")].map((image) => image.complete ? null : new Promise((resolve) => {
+    image.addEventListener("load", resolve, { once: true });
+    image.addEventListener("error", resolve, { once: true });
+  })));
+  await frames();
+  fitSlide();
+  await frames();
+}
+async function showSlide(index) {
+  document.body.classList.add("slide-export");
+  if (!present(index, 0, Infinity)) throw new Error("there is no slide " + (index + 1));
+  const story = slideStory();
+  if (story) {
+    if (story.playing()) story.toggle();
+    story.restore(story.where().story || 1, Infinity);
+  }
+  await settled();
+  return { index, title: slideTitle(slideGroups()[index], index) };
+}
+function pictureLoads(url) {
+  if (!url) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const image = new Image();
+    const timer = setTimeout(() => resolve(false), 8e3);
+    image.onload = () => {
+      clearTimeout(timer);
+      resolve(image.naturalWidth > 0);
+    };
+    image.onerror = () => {
+      clearTimeout(timer);
+      resolve(false);
+    };
+    image.src = url;
+  });
+}
+var DECK_KEYS = ["accent", "font", "footer", "logo", "numbers", "aspect", "transition"];
+async function deckCheck() {
+  const problems = [];
+  const lineOf = (element2) => Number(element2?.dataset?.line || element2?.querySelector?.("[data-line]")?.dataset.line) || 0;
+  const front = readFrontMatter(host.source || "")?.entries || [];
+  const explicit = front.some((entry) => DECK_KEYS.includes(entry.key)) || host.article.querySelector(".slide-mark:not([data-auto]), .slide-notes, .slide-column-mark, .slide-reveal-mark");
+  if (!explicit) return problems;
+  for (const message of deckSettings(front).problems) problems.push({ line: 1, message: "front matter: " + message });
+  const groups = slideGroups();
+  if (!groups.length) {
+    for (const note of host.article.querySelectorAll(".slide-notes")) problems.push({ line: lineOf(note), message: "speaker notes in a document with no slides" });
+    for (const mark of host.article.querySelectorAll("[data-problem]")) problems.push({ line: lineOf(mark), message: mark.dataset.problem });
+    return problems;
+  }
+  for (let index = 0; index < groups.length; index++) {
+    await showSlide(index);
+    const group = slideGroups()[index];
+    const line = lineOf(group.find((element2) => !element2.matches(".slide-mark") && lineOf(element2))) || lineOf(group[0]);
+    const where = "slide " + (index + 1) + " (" + slideTitle(group, index) + ")";
+    const { mark, layout, media, summary } = slideLayout(group, index);
+    for (const element2 of group.flatMap((each) => [each, ...each.querySelectorAll("[data-problem]")])) {
+      if (element2.dataset?.problem) problems.push({ line: lineOf(element2) || line, message: where + ": " + element2.dataset.problem });
+    }
+    if (host.article.hasAttribute("data-overflow")) problems.push({ line, message: where + ": does not fit even with smaller text; split it or cut words" });
+    else if (summary.words > WORDS_MAX && layout !== "full") problems.push({ line, message: where + ": " + summary.words + " words; keep a slide under " + WORDS_MAX });
+    if (mark?.dataset.layout === "columns" && !group.some((element2) => element2.matches(".slide-columns"))) problems.push({ line: lineOf(mark), message: where + ": layout=columns needs a <!-- column --> between the columns" });
+    if (["split", "full"].includes(mark?.dataset.layout) && !media) problems.push({ line: lineOf(mark), message: where + ": layout=" + mark.dataset.layout + " needs a picture or a diagram on the slide" });
+    if (mark?.dataset.image && !await pictureLoads(slidePicture(mark.dataset.image))) problems.push({ line: lineOf(mark), message: where + ": background picture not found: " + mark.dataset.image });
+    for (const image of host.article.querySelectorAll(".slide-on img")) {
+      if (image.complete && !image.naturalWidth) problems.push({ line: lineOf(image.closest("[data-line]")) || line, message: where + ": picture not shown: " + image.getAttribute("src") });
+    }
+  }
+  if (deck.logo && !await pictureLoads(slidePicture(deck.logo))) problems.push({ line: 1, message: "front matter: logo not found: " + deck.logo });
+  stopPresenting();
+  document.body.classList.remove("slide-export");
+  return problems.sort((a, b) => a.line - b.line);
+}
+var slideCount = () => slideGroups().length;
+
 // js/slides.js
 var slideAt = -1;
+var slideStep = 0;
 var slideDock = null;
 var slideFull = false;
 var slideIdle = 0;
+var deck = deckSettings([]).settings;
+var slideFrame = null;
+var steps = [];
+var themeBefore = null;
 var slideReturn = "";
 var isHeading = (element2) => /^H[1-6]$/.test(element2.tagName);
+var MARKERS = ".slide-mark, .slide-column-mark, .slide-reveal-mark, .slide-notes";
+var reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 function slideGroups() {
   const blocks = [...host.article.children].filter((element2) => !element2.matches(".frontmatter, .frontmatter-raw, .review-gutter"));
+  const marked = blocks.some((element2) => element2.matches(".slide-mark"));
   const level = blocks.some((element2) => element2.tagName === "H2") ? "H2" : blocks.filter((element2) => element2.tagName === "H1").length > 1 ? "H1" : "";
-  if (!level) return [];
+  if (!level && !marked) return [];
   const groups = [[]];
+  let previous = null;
   for (const element2 of blocks) {
-    if (element2.tagName === level && groups[groups.length - 1].length) groups.push([]);
+    const opens = element2.matches(".slide-mark") || element2.tagName === level && !previous?.matches(".slide-mark");
+    if (opens && groups[groups.length - 1].length) groups.push([]);
     groups[groups.length - 1].push(element2);
+    previous = element2;
   }
-  return groups.filter((group) => group.some((element2) => element2.textContent.trim() || element2.querySelector("img, svg")));
+  return groups.filter((group) => group.some((element2) => !element2.matches(MARKERS) && (element2.textContent.trim() || element2.querySelector("img, svg"))));
 }
+var slideTitle = (group, index) => {
+  const heading = group.find(isHeading) || group.find((element2) => element2.matches(".slide-autocover"))?.querySelector(".slide-cover-title");
+  if (heading) return heading.textContent.replace(/^#/, "").trim();
+  const text = group.find((element2) => element2.matches("blockquote, p") && element2.textContent.trim())?.textContent.trim().replace(/\s+/g, " ");
+  if (!text) return "Slide " + (index + 1);
+  return text.length > 48 ? text.slice(0, 47).trimEnd() + "\u2026" : text;
+};
 var slideStory = () => [...host.article.querySelectorAll(".slide-on .diagram-stage")].map((stage) => stage.diagramPlay).find(Boolean);
+function blockKind(element2) {
+  if (element2.matches(".mermaid-diagram, .highlight-source-mermaid")) return "diagram";
+  if (element2.matches(".slide-columns")) return "columns";
+  if (element2.matches(".slide-autocover")) return "cover";
+  if (element2.tagName === "P") {
+    const media = element2.querySelectorAll("img, svg, video");
+    return media.length === 1 && !element2.textContent.trim() ? "picture" : "p";
+  }
+  if (/^[UO]L$/.test(element2.tagName)) return "list";
+  if (element2.tagName === "BLOCKQUOTE") return "quote";
+  if (element2.matches(".code-block, .highlight, pre")) return "code";
+  if (element2.matches("table") || element2.querySelector(":scope > table")) return "table";
+  return "other";
+}
+var leadNumber = (element2) => {
+  const lead = element2.querySelector(":scope > strong:first-child");
+  return Boolean(lead && /\d/.test(lead.textContent) && lead.textContent.length <= 14 && element2.textContent.trimStart().startsWith(lead.textContent));
+};
+function slideLayout(group, index) {
+  const mark = group[0]?.matches(".slide-mark") ? group[0] : null;
+  const content = group.filter((element2) => !element2.matches(MARKERS) && !isHeading(element2));
+  const kinds = content.map(blockKind);
+  const heading = group.find(isHeading);
+  const words = content.filter((element2) => !element2.matches(".mermaid-diagram, .highlight-source-mermaid")).reduce((sum, element2) => sum + (element2.textContent.trim().match(/\S+/g) || []).length, 0);
+  const lists = content.filter((element2) => /^[UO]L$/.test(element2.tagName));
+  const items = lists.flatMap((list) => [...list.children]);
+  const texts = content.filter((element2) => element2.tagName === "P").concat(items);
+  const summary = {
+    kinds,
+    heading: heading ? heading.tagName.toLowerCase() : null,
+    first: index === 0,
+    words,
+    stat: texts.length > 0 && texts.every(leadNumber),
+    cards: items.length && items.every((item) => item.querySelector(":scope > strong:first-child, :scope > p:first-child > strong:first-child")) ? items.length : 0,
+    cover: kinds.includes("cover")
+  };
+  const layout = mark?.dataset.layout || pickLayout(summary);
+  const media = layout === "split" || layout === "full" ? content.find((element2) => ["picture", "diagram"].includes(blockKind(element2))) || null : null;
+  return { mark, layout, media, heading, content, summary };
+}
+function dressCanvas(canvas, group, index) {
+  const info = slideLayout(group, index);
+  const { mark, layout, media } = info;
+  canvas.dataset.layout = layout;
+  const options = mark?.dataset || {};
+  for (const name of ["bg", "dim", "flip", "full"]) delete canvas.dataset[name];
+  canvas.style.removeProperty("background-image");
+  canvas.style.removeProperty("grid-template-rows");
+  if (options.bg) canvas.dataset.bg = options.bg;
+  if (options.dim !== void 0) canvas.dataset.dim = "";
+  if (options.flip !== void 0) canvas.dataset.flip = "";
+  if (options.image) {
+    const url = slidePicture(options.image);
+    if (url) {
+      canvas.dataset.bg = "image";
+      canvas.style.setProperty("background-image", "linear-gradient(var(--slide-scrim), var(--slide-scrim)), url(" + JSON.stringify(url) + ")");
+    }
+  }
+  for (const element2 of group) {
+    element2.classList.remove("slide-media");
+    element2.style.removeProperty("grid-row");
+  }
+  if (media) {
+    media.classList.add("slide-media");
+    canvas.dataset.full = media.matches(".mermaid-diagram, .highlight-source-mermaid") ? "diagram" : "picture";
+  }
+  if (layout === "split" && media) {
+    const text = group.filter((element2) => element2 !== media && !element2.matches(MARKERS));
+    canvas.style.setProperty("grid-template-rows", "1fr repeat(" + Math.max(1, text.length) + ", auto) 1fr");
+    text.forEach((element2, at) => element2.style.setProperty("grid-row", String(at + 2)));
+  }
+  canvas.style.setProperty("--slide-cards", String(Math.min(3, info.summary.cards === 4 ? 2 : info.summary.cards || 1)));
+  if (info.layout === "grid") {
+    for (const label of group.flatMap((element2) => [...element2.querySelectorAll(":scope > li > strong:first-child, :scope > li > p:first-child > strong:first-child")])) {
+      const next = label.nextSibling;
+      const separator = next?.nodeType === Node.TEXT_NODE && /^\s*[:\u2013\u2014-]\s*/.exec(next.data);
+      if (!separator) continue;
+      next.splitText(separator[0].length);
+      const span = document.createElement("span");
+      span.className = "slide-card-sep";
+      next.replaceWith(span);
+      span.append(next);
+    }
+  }
+  const sections = slideGroups().slice(0, index + 1).filter((each, at) => slideLayout(each, at).layout === "section").length;
+  canvas.style.setProperty("--slide-section", '"' + String(sections).padStart(2, "0") + '"');
+  return info;
+}
+function slidePicture(value) {
+  const resolved = host.resolveImage(value);
+  if (resolved) return resolved;
+  return /^https:\/\//i.test(value) ? value : null;
+}
+function canvasSize() {
+  const portrait = innerWidth < innerHeight && innerWidth < 760;
+  if (portrait) return [900, Math.round(Math.max(1200, Math.min(1900, 900 * innerHeight / innerWidth)))];
+  return deck.aspect === "4:3" ? [1600, 1200] : [1600, 900];
+}
+function scaleCanvas() {
+  if (!document.body.classList.contains("presenting")) return;
+  const [width, height] = canvasSize();
+  const root = document.body.style;
+  root.setProperty("--slide-w", width + "px");
+  root.setProperty("--slide-h", height + "px");
+  root.setProperty("--slide-scale", String(Math.min(innerWidth / width, innerHeight / height)));
+  document.body.classList.toggle("slide-portrait", width < height);
+}
+function fitSlide(canvas = host.article) {
+  const spills = () => canvas.scrollHeight > canvas.clientHeight + 2 || canvas.scrollWidth > canvas.clientWidth + 2;
+  let fit = 1;
+  canvas.style.setProperty("--slide-fit", "1");
+  while (spills() && fit > 0.62) {
+    fit = Math.round((fit - 0.06) * 100) / 100;
+    canvas.style.setProperty("--slide-fit", String(fit));
+  }
+  canvas.toggleAttribute("data-overflow", spills());
+  if (canvas === host.article) paintCode();
+}
+function slideSteps(group) {
+  const found = [];
+  const marked = group[0]?.matches(".slide-mark") && group[0].dataset.reveal !== void 0;
+  const reveal = (element2) => {
+    if (/^[UO]L$/.test(element2.tagName)) found.push(...[...element2.children].map((item) => ({ show: item })));
+    else found.push({ show: element2 });
+  };
+  const walk = (elements) => {
+    for (const element2 of elements) {
+      if (element2.matches(".slide-columns")) {
+        walk([...element2.querySelectorAll(":scope > .slide-column > *")]);
+        continue;
+      }
+      if (element2.matches(".slide-reveal-mark")) {
+        const next = element2.nextElementSibling;
+        if (next && !next.matches(MARKERS)) reveal(next);
+        continue;
+      }
+      if (marked && /^[UO]L$/.test(element2.tagName) && !found.some((step) => step.show?.parentElement === element2)) reveal(element2);
+      for (const code of element2.matches("[data-steps]") ? [element2] : element2.querySelectorAll("[data-steps]")) {
+        const ranges = codeSteps(code.dataset.steps) || [];
+        for (let at = 1; at < ranges.length; at++) found.push({ code, at });
+      }
+    }
+  };
+  walk(group);
+  return found;
+}
+function paintSteps() {
+  const shown = /* @__PURE__ */ new Set();
+  const codeAt = /* @__PURE__ */ new Map();
+  steps.forEach((step, at) => {
+    if (at >= slideStep) return;
+    if (step.show) shown.add(step.show);
+    else codeAt.set(step.code, step.at);
+  });
+  for (const step of steps) {
+    if (step.show) {
+      step.show.classList.toggle("slide-hidden", !shown.has(step.show));
+      step.show.classList.toggle("slide-latest", step === steps[slideStep - 1]);
+    }
+  }
+  for (const code of host.article.querySelectorAll(".slide-on [data-steps]")) code.dataset.stepAt = String(codeAt.get(code) || 0);
+  paintCode();
+}
+function paintCode() {
+  for (const code of host.article.querySelectorAll("[data-steps]")) {
+    const pre = code.querySelector("pre");
+    if (!pre) continue;
+    const ranges = slideAt >= 0 && code.closest(".slide-on") ? (codeSteps(code.dataset.steps) || [])[Number(code.dataset.stepAt) || 0] : null;
+    if (!ranges) {
+      pre.style.removeProperty("mask-image");
+      pre.style.removeProperty("-webkit-mask-image");
+      continue;
+    }
+    const style = getComputedStyle(pre);
+    const line = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.5;
+    const top = parseFloat(style.paddingTop) + parseFloat(style.borderTopWidth);
+    const dim = "rgba(0,0,0,.28)", lit = "rgba(0,0,0,1)";
+    const stops = [dim + " 0px"];
+    for (const [first, last] of ranges.slice().sort((a, b) => a[0] - b[0])) {
+      const from = top + (first - 1) * line, to = top + last * line;
+      stops.push(dim + " " + from + "px", lit + " " + from + "px", lit + " " + to + "px", dim + " " + to + "px");
+    }
+    stops.push(dim + " 100%");
+    const mask = "linear-gradient(to bottom, " + stops.join(", ") + ")";
+    pre.style.setProperty("mask-image", mask);
+    pre.style.setProperty("-webkit-mask-image", mask);
+    if (code.closest(".slide-on")) {
+      const [first] = ranges[0];
+      const want = top + (first - 1) * line - pre.clientHeight / 3;
+      pre.scrollTo({ top: Math.max(0, want), behavior: reduced() ? "auto" : "smooth" });
+    }
+  }
+}
 function buildDock() {
   slideDock = document.createElement("div");
   slideDock.className = "slide-dock";
-  slideDock.innerHTML = '<div class="slide-rail"></div><div class="slide-controls"><button type="button" data-slide="-1" aria-label="Previous slide" title="Previous slide (B)">' + diagramIcon("left") + '</button><span class="slide-count" aria-live="polite"></span><button type="button" data-slide="1" aria-label="Next slide" title="Next slide (N)">' + diagramIcon("right") + "</button>" + (window.aniflowTheme ? '<button type="button" class="slide-theme">' + diagramIcon("theme") + "</button>" : "") + '<button type="button" data-slide="0" aria-label="Leave presentation" title="Leave (Esc)">' + diagramIcon("close") + "</button></div>";
-  for (const button of slideDock.querySelectorAll("[data-slide]")) {
-    button.addEventListener("pointerdown", (event) => event.preventDefault());
-    button.addEventListener("click", () => {
-      const direction = Number(button.dataset.slide);
+  const button = (attrs, icon, label) => '<button type="button" ' + attrs + ' aria-label="' + label + '" title="' + label + '">' + diagramIcon(icon) + "</button>";
+  slideDock.innerHTML = '<div class="slide-rail"></div><div class="slide-controls">' + button('data-slide="-1"', "left", "Previous slide (B)") + '<span class="slide-count" aria-live="polite"></span>' + button('data-slide="1"', "right", "Next slide (N)") + button('data-tool="overview"', "grid", "All slides (O)") + button('data-tool="presenter"', "notes", "Presenter view (S)") + button('data-tool="laser"', "laser", "Laser pointer (L)") + (window.aniflowTheme ? '<button type="button" class="slide-theme">' + diagramIcon("theme") + "</button>" : "") + button('data-slide="0"', "close", "Leave (Esc)") + "</div>";
+  for (const control of slideDock.querySelectorAll("button")) control.addEventListener("pointerdown", (event) => event.preventDefault());
+  for (const control of slideDock.querySelectorAll("[data-slide]")) {
+    control.addEventListener("click", () => {
+      const direction = Number(control.dataset.slide);
       direction ? present(slideAt + direction, direction) : stopPresenting();
     });
   }
+  slideDock.querySelector('[data-tool="overview"]').addEventListener("click", () => overviewOpen() ? closeOverview() : openOverview());
+  slideDock.querySelector('[data-tool="presenter"]').addEventListener("click", openPresenter);
+  slideDock.querySelector('[data-tool="laser"]').addEventListener("click", (event) => event.currentTarget.setAttribute("aria-pressed", String(toggleLaser())));
   const theme = slideDock.querySelector(".slide-theme");
   if (theme) {
     const paint = () => {
@@ -3412,15 +4136,18 @@ function buildDock() {
       theme.title = label;
       theme.setAttribute("aria-label", label + ", change");
     };
-    theme.addEventListener("pointerdown", (event) => event.preventDefault());
     theme.addEventListener("click", () => {
+      themeBefore = null;
       const names = ["auto", ...Object.keys(window.aniflowThemes || {})];
       window.aniflowTheme(names[(names.indexOf(document.documentElement.dataset.choice) + 1) % names.length]);
     });
     addEventListener("aniflow-theme", paint);
     paint();
   }
-  document.body.append(slideDock);
+  slideFrame = document.createElement("div");
+  slideFrame.className = "slide-frame";
+  slideFrame.setAttribute("aria-hidden", "true");
+  document.body.append(slideDock, slideFrame);
 }
 function paintDock(groups) {
   const rail = slideDock.querySelector(".slide-rail");
@@ -3428,8 +4155,7 @@ function paintDock(groups) {
     rail.replaceChildren(...groups.map((group, index) => {
       const tick = document.createElement("button");
       tick.type = "button";
-      const heading = group.find(isHeading);
-      tick.title = heading ? heading.textContent.replace(/^#/, "").trim() : "Slide " + (index + 1);
+      tick.title = slideTitle(group, index);
       tick.setAttribute("aria-label", "Slide " + (index + 1) + ": " + tick.title);
       tick.addEventListener("pointerdown", (event) => event.preventDefault());
       tick.addEventListener("click", () => present(index, index - slideAt));
@@ -3443,56 +4169,206 @@ function paintDock(groups) {
   });
   slideDock.querySelector(".slide-count").textContent = slideAt + 1 + " / " + groups.length;
 }
-function present(at, direction) {
+function paintFrame(groups) {
+  const parts = [];
+  const footer = document.createElement("span");
+  footer.className = "slide-footer";
+  for (const [name, text] of [["slide-footer-text", deck.footer], ["slide-number", deck.numbers && slideAt + 1 + " / " + groups.length]]) {
+    if (!text) continue;
+    const span = document.createElement("span");
+    span.className = name;
+    span.textContent = text;
+    footer.append(span);
+  }
+  if (footer.childElementCount) parts.push(footer);
+  const logo = deck.logo && slidePicture(deck.logo);
+  if (logo) {
+    const image = document.createElement("img");
+    image.className = "slide-logo";
+    image.alt = "";
+    image.src = logo;
+    parts.push(image);
+  }
+  slideFrame.replaceChildren(...parts);
+}
+function deckTheme(on) {
+  const root = document.documentElement;
+  const themes = window.aniflowThemes;
+  if (on && deck.theme && themes?.[deck.theme] && root.dataset.theme !== deck.theme) {
+    themeBefore = { theme: root.dataset.theme, mode: root.dataset.mode };
+    root.dataset.theme = deck.theme;
+    root.dataset.mode = themes[deck.theme][0];
+    dispatchEvent(new Event("aniflow-theme"));
+  } else if (!on && themeBefore) {
+    root.dataset.theme = themeBefore.theme;
+    root.dataset.mode = themeBefore.mode;
+    themeBefore = null;
+    dispatchEvent(new Event("aniflow-theme"));
+  }
+}
+function startPresenting() {
+  slideReturn = /^#slide=\d+(?:&step=\d+)?$/.test(location.hash) ? "" : location.hash;
+  deck = deckSettings(readFrontMatter(host.source || "")?.entries).settings;
+  document.body.classList.add("presenting");
+  host.article.classList.add("slide-canvas");
+  if (!slideDock) buildDock();
+  const body = document.body.dataset;
+  for (const [key, value] of [["deckAccent", deck.accent], ["deckFont", deck.font]]) {
+    if (value) body[key] = value;
+    else delete body[key];
+  }
+  host.presentButton?.setAttribute("aria-pressed", "true");
+  deckTheme(true);
+}
+function leaveSlide() {
+  for (const element2 of host.article.querySelectorAll(":scope > .slide-on")) element2.classList.remove("slide-on");
+  for (const element2 of host.article.querySelectorAll(".slide-hidden, .slide-latest")) element2.classList.remove("slide-hidden", "slide-latest");
+  for (const element2 of host.article.querySelectorAll(".slide-media")) element2.classList.remove("slide-media");
+  for (const element2 of host.article.children) {
+    element2.style.removeProperty("grid-row");
+    element2.style.removeProperty("--slide-i");
+    element2.style.removeProperty("view-transition-name");
+  }
+}
+function swapSlide(groups, at, step) {
+  leaveSlide();
+  for (const element2 of groups[at]) element2.classList.add("slide-on");
+  groups[at].filter((element2) => !element2.matches(MARKERS)).forEach((element2, index) => element2.style.setProperty("--slide-i", String(index)));
+  const { layout } = dressCanvas(host.article, groups[at], at);
+  document.body.dataset.slideLayout = layout;
+  if (host.article.dataset.bg) document.body.dataset.slideBg = host.article.dataset.bg;
+  else delete document.body.dataset.slideBg;
+  document.body.classList.toggle("slide-solo", layout === "full" && host.article.dataset.full === "diagram");
+  slideAt = at;
+  steps = slideSteps(groups[at]);
+  slideStep = Math.max(0, Math.min(steps.length, step));
+  fitSlide();
+  paintSteps();
+}
+function morphNames(group, on) {
+  const heading = group.find(isHeading);
+  const diagram = group.find((element2) => element2.matches(".mermaid-diagram"));
+  for (const [element2, name] of [[heading, "slide-title"], [diagram, "slide-diagram"]]) {
+    if (!element2) continue;
+    if (on) element2.style.setProperty("view-transition-name", name);
+    else element2.style.removeProperty("view-transition-name");
+  }
+}
+var morphing = null;
+function present(at, direction, step) {
+  if (morphing) {
+    morphing.transition?.skipTransition();
+    morphing.swap();
+  }
   const groups = slideGroups();
   if (!groups.length || at < 0 || at >= groups.length) return false;
-  if (slideAt < 0) {
-    slideReturn = /^#slide=\d+$/.test(location.hash) ? "" : location.hash;
-    document.body.classList.add("presenting");
-    if (!slideDock) buildDock();
-    host.presentButton?.setAttribute("aria-pressed", "true");
-  }
+  const starting = slideAt < 0;
+  if (starting) startPresenting();
+  scaleCanvas();
   const leaving = slideStory();
   if (leaving?.playing()) leaving.toggle();
-  for (const element2 of host.article.querySelectorAll(":scope > .slide-on")) element2.classList.remove("slide-on");
-  for (const element2 of groups[at]) element2.classList.add("slide-on");
-  const diagrams2 = groups[at].filter((element2) => element2.matches(".mermaid-diagram, .highlight-source-mermaid"));
-  const words = groups[at].filter((element2) => !diagrams2.includes(element2) && !isHeading(element2)).reduce((sum, element2) => sum + element2.textContent.trim().length, 0);
-  document.body.classList.toggle("slide-solo", diagrams2.length === 1 && words < 240);
+  const from = slideAt;
+  const want = step ?? (direction < 0 ? Infinity : 0);
+  const mark = groups[at][0]?.matches(".slide-mark") ? groups[at][0] : null;
+  const transition = reduced() || starting || !direction ? "none" : mark?.dataset.transition || deck.transition || "slide";
+  document.body.dataset.transition = transition;
   host.article.classList.remove("slide-enter");
-  if (direction && slideAt >= 0) {
-    host.article.style.setProperty("--slide-from", (direction > 0 ? 18 : -18) + "px");
-    void host.article.offsetWidth;
-    host.article.classList.add("slide-enter");
+  const show2 = () => {
+    swapSlide(groups, at, want);
+    slideHash();
+    paintDock(groups);
+    paintFrame(groups);
+    slideWake();
+    slideAutoplay();
+    paintPresenter();
+    document.fonts?.ready.then(() => {
+      if (slideAt === at) fitSlide();
+    });
+    for (const image of host.article.querySelectorAll(".slide-on img")) {
+      if (!image.complete) image.addEventListener("load", () => {
+        if (slideAt === at) fitSlide();
+      }, { once: true });
+    }
+  };
+  if (transition === "morph" && document.startViewTransition && from >= 0) {
+    morphNames(groups[from], true);
+    const pending = {
+      swap() {
+        if (morphing !== pending) return;
+        morphing = null;
+        morphNames(groups[from], false);
+        show2();
+        morphNames(groups[at], true);
+      }
+    };
+    morphing = pending;
+    pending.transition = document.startViewTransition(() => pending.swap());
+    pending.transition.finished.finally(() => morphNames(groups[at], false));
+  } else {
+    show2();
+    if (transition !== "none") {
+      host.article.style.setProperty("--slide-from", (direction > 0 ? 40 : -40) + "px");
+      void host.article.offsetWidth;
+      host.article.classList.add("slide-enter");
+    }
   }
-  slideAt = at;
   scrollTo(0, 0);
-  history.replaceState(null, "", "#slide=" + (at + 1));
-  paintDock(groups);
-  slideWake();
-  slideAutoplay();
   return true;
 }
+function slideHash() {
+  history.replaceState(null, "", "#slide=" + (slideAt + 1) + (slideStep ? "&step=" + slideStep : ""));
+}
 function slideAutoplay() {
-  if (slideAt < 0 || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  const setting = readFrontMatter(host.source || "")?.entries?.find((entry) => entry.key === "autoplay");
-  if (setting && /^(?:false|no|off)$/i.test(String(setting.value ?? "").trim())) return;
+  if (slideAt < 0 || reduced() || !deck.autoplay || slideStep < steps.length) return;
   const story = slideStory();
-  if (story && !story.playing() && (story.where().step === null || story.finished())) story.toggle();
+  if (!story || story.playing() || !(story.where().step === null || story.finished())) return;
+  const mark = slideGroups()[slideAt]?.[0];
+  const wanted = mark?.matches(".slide-mark") ? Number(mark.dataset.story) : 0;
+  if (wanted && story.where().story !== wanted) story.restore(wanted, null);
+  story.toggle();
 }
 function slideMove(direction) {
+  if (direction > 0 && slideStep < steps.length) {
+    slideStep++;
+    paintSteps();
+    slideHash();
+    slideAutoplay();
+    paintPresenter();
+    return;
+  }
   if (slideStory()?.walk(direction > 0)) return;
+  if (direction < 0 && slideStep > 0) {
+    slideStep--;
+    paintSteps();
+    slideHash();
+    paintPresenter();
+    return;
+  }
   present(slideAt + direction, direction);
 }
 function stopPresenting() {
   if (slideAt < 0) return;
+  morphing?.transition?.skipTransition();
+  morphing = null;
   const first = host.article.querySelector(":scope > .slide-on");
-  for (const element2 of host.article.querySelectorAll(":scope > .slide-on")) element2.classList.remove("slide-on");
-  host.article.classList.remove("slide-enter");
+  leaveSlide();
+  closeOverview();
+  closePresenter();
+  toggleLaser(false);
+  slideDock?.querySelector('[data-tool="laser"]')?.setAttribute("aria-pressed", "false");
+  host.article.classList.remove("slide-enter", "slide-canvas");
+  for (const name of ["layout", "bg", "dim", "flip", "full"]) delete host.article.dataset[name];
+  host.article.removeAttribute("data-overflow");
+  for (const name of ["background-image", "grid-template-rows", "--slide-fit", "--slide-cards", "--slide-section", "--slide-from"]) host.article.style.removeProperty(name);
   clearTimeout(slideIdle);
-  document.body.classList.remove("presenting", "slide-solo", "slide-idle");
+  document.body.classList.remove("presenting", "slide-solo", "slide-idle", "slide-portrait");
+  for (const name of ["slideLayout", "slideBg", "transition", "deckAccent", "deckFont"]) delete document.body.dataset[name];
   host.presentButton?.setAttribute("aria-pressed", "false");
   slideAt = -1;
+  slideStep = 0;
+  steps = [];
+  paintCode();
+  deckTheme(false);
   history.replaceState(null, "", location.pathname + location.search + slideReturn);
   slideReturn = "";
   if (slideFull && document.fullscreenElement) document.exitFullscreen().catch(() => {
@@ -3506,8 +4382,47 @@ function slideWake() {
   clearTimeout(slideIdle);
   if (slideAt >= 0) slideIdle = setTimeout(() => document.body.classList.add("slide-idle"), 2500);
 }
+function slideKey(event) {
+  if (event.ctrlKey || event.metaKey || event.altKey || document.querySelector("dialog[open]")) return;
+  if (event.target.closest?.('input, textarea, select, [contenteditable="true"], [contenteditable=""]')) return;
+  if (slideAt < 0) {
+    if (event.key === "p" && host.presentButton && !host.presentButton.hidden) {
+      event.preventDefault();
+      host.presentButton.click();
+    }
+    return;
+  }
+  if ((event.key === " " || event.key === "Enter") && event.target.closest?.("button")) return;
+  const key = event.key;
+  if (overviewOpen() && key !== "o" && key !== "Escape") return;
+  if (key === "n" || key === "PageDown" && event.shiftKey) present(slideAt + 1, 1);
+  else if (key === "b" || key === "PageUp" && event.shiftKey) present(slideAt - 1, -1);
+  else if (key === " " && !event.shiftKey && slideStory() && slideStep >= steps.length) slideStory().toggle();
+  else if (key === "ArrowRight" && !event.shiftKey || key === "ArrowDown" || key === "PageDown" || key === "j" || key === " " && !event.shiftKey) slideMove(1);
+  else if (key === "ArrowLeft" && !event.shiftKey || key === "ArrowUp" || key === "PageUp" || key === "k" || key === " " && event.shiftKey) slideMove(-1);
+  else if ((key === "<" || key === ">") && slideStory()) setDiagramSpeed(key === ">" ? 1 : -1);
+  else if (key === "Home") present(0, -1, 0);
+  else if (key === "End") present(slideGroups().length - 1, 1, Infinity);
+  else if (key === "o") overviewOpen() ? closeOverview() : openOverview();
+  else if (key === "s") openPresenter();
+  else if (key === "l") slideDock?.querySelector('[data-tool="laser"]')?.setAttribute("aria-pressed", String(toggleLaser()));
+  else if (key === "Escape" && overviewOpen()) closeOverview();
+  else return;
+  event.preventDefault();
+  event.stopPropagation();
+  slideWake();
+}
 function initSlides() {
-  host.onSlideDiagram = slideAutoplay;
+  host.onSlideDiagram = () => {
+    fitSlide();
+    slideAutoplay();
+  };
+  addEventListener("resize", () => {
+    if (slideAt < 0) return;
+    const portrait = document.body.classList.contains("slide-portrait");
+    scaleCanvas();
+    if (portrait !== document.body.classList.contains("slide-portrait")) fitSlide();
+  });
   if (host.presentButton) {
     host.presentButton.hidden = slideGroups().length < 2;
     host.presentButton.addEventListener("click", () => {
@@ -3517,7 +4432,8 @@ function initSlides() {
       }
       let at = 0;
       slideGroups().forEach((group, index) => {
-        if (group[0].getBoundingClientRect().top <= 96) at = index;
+        const shown = group.find((element2) => !element2.matches(MARKERS) && element2.getClientRects().length);
+        if (shown && shown.getBoundingClientRect().top <= 96) at = index;
       });
       if (!present(at)) return;
       if (document.documentElement.requestFullscreen && !document.fullscreenElement) {
@@ -3528,8 +4444,10 @@ function initSlides() {
       }
     });
     const fromHash = () => {
-      const wanted = /^#slide=(\d+)$/.exec(location.hash);
-      if (wanted && Number(wanted[1]) - 1 !== slideAt) present(Number(wanted[1]) - 1);
+      const wanted = /^#slide=(\d+)(?:&step=(\d+))?$/.exec(location.hash);
+      if (!wanted) return;
+      const at = Number(wanted[1]) - 1, step = Number(wanted[2] || 0);
+      if (at !== slideAt || step !== slideStep) present(at, 0, step);
     };
     fromHash();
     addEventListener("hashchange", fromHash);
@@ -3541,31 +4459,7 @@ function initSlides() {
     addEventListener("pointermove", () => {
       if (slideAt >= 0) slideWake();
     }, { passive: true });
-    document.addEventListener("keydown", (event) => {
-      if (event.ctrlKey || event.metaKey || event.altKey || document.querySelector("dialog[open]")) return;
-      if (event.target.closest?.('input, textarea, select, [contenteditable="true"], [contenteditable=""]')) return;
-      if (slideAt < 0) {
-        if (event.key === "p" && !host.presentButton.hidden) {
-          event.preventDefault();
-          host.presentButton.click();
-        }
-        return;
-      }
-      if ((event.key === " " || event.key === "Enter") && event.target.closest?.("button")) return;
-      const key = event.key;
-      if (key === "n" || key === "PageDown" && event.shiftKey) present(slideAt + 1, 1);
-      else if (key === "b" || key === "PageUp" && event.shiftKey) present(slideAt - 1, -1);
-      else if (key === " " && !event.shiftKey && slideStory()) slideStory().toggle();
-      else if (key === "ArrowRight" && !event.shiftKey || key === "PageDown" || key === "j" || key === " " && !event.shiftKey) slideMove(1);
-      else if (key === "ArrowLeft" && !event.shiftKey || key === "PageUp" || key === "k" || key === " " && event.shiftKey) slideMove(-1);
-      else if ((key === "<" || key === ">") && slideStory()) setDiagramSpeed(key === ">" ? 1 : -1);
-      else if (key === "Home") present(0, -1);
-      else if (key === "End") present(slideGroups().length - 1, 1);
-      else return;
-      event.preventDefault();
-      event.stopPropagation();
-      slideWake();
-    }, true);
+    document.addEventListener("keydown", slideKey, true);
     addEventListener("keydown", (event) => {
       if (event.key !== "Escape" || slideAt < 0 || event.defaultPrevented || document.querySelector("dialog[open]")) return;
       event.preventDefault();
@@ -3700,6 +4594,7 @@ async function diagramExport(stage, kind) {
 export {
   addBusyCheck,
   isBusy as busy,
+  deckCheck,
   diagramExport,
   diagramLines,
   diagrams,
@@ -3708,5 +4603,7 @@ export {
   playScript as parse,
   readFrontMatter,
   reader,
-  setDiagramSpeed as setSpeed
+  setDiagramSpeed as setSpeed,
+  showSlide,
+  slideCount
 };

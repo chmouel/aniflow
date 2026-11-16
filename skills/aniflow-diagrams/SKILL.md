@@ -4,10 +4,10 @@ description: Write animated Mermaid diagram walkthroughs that look good and
   play in aniflow - a dot travelling along the arrows, boxes
   lighting up, captions, pictures, several stories, slides. Use when asked to
   draw, explain, animate or walk through a flow, pipeline, request path,
-  deployment, agent loop or architecture; when preparing a talk or slides
-  with diagrams; when a document needs a diagram that shows something
-  happening in order; or whenever aniflow, diagram walkthroughs or `%% play:`
-  come up.
+  deployment, agent loop or architecture; when preparing a talk, a slide
+  deck or a presentation, with or without diagrams; when a document needs a
+  diagram that shows something happening in order; or whenever aniflow,
+  diagram walkthroughs, `%% play:` or `<!-- slide -->` come up.
 ---
 
 # aniflow diagrams
@@ -95,6 +95,36 @@ better than either.
   across the whole diagram means the diagram needs splitting.
 - Use a `sequenceDiagram` when the story is a conversation between a few
   parties and the order of messages is the point.
+
+## Slide decks
+
+A deck is a Markdown file with `##` sections; the Slides part of the
+reference has the front matter, the directives and the automatic layouts.
+Write it so it reads well on GitHub too: the directives are comments.
+
+- Set the look once in front matter: `title`, `author`, `accent`, `font`,
+  `footer`, `numbers: true`. Pick one accent and one font for the whole
+  deck.
+- One idea per slide, under about 40 words. A heading that says the point
+  ("Bots fix the nits"), not the topic ("Bots").
+- Let the automatic layouts work before naming one. Shape the content
+  instead: a lone `##` for a section break, a blockquote for a quote, a
+  paragraph opening with a bold number for a stat, a list whose items open
+  with bold text for cards, one picture next to a short list for a split.
+- Vary the rhythm: a section slide every four to six slides, a stat or a
+  quote where the talk needs weight, and a picture or diagram slide between
+  runs of text. Five bullet slides in a row is a document, not a talk.
+- `reveal` only where the order of the points matters, and code steps only
+  for code the audience must read line by line. Keep code under 15 lines.
+- A diagram gets its own slide with a short heading and at most a sentence;
+  its story plays with the arrow keys.
+- What you would say aloud goes in `<!-- notes: -->`, not on the slide.
+- Use `bg=` backgrounds for covers, sections and closing slides, not for
+  every slide.
+- Run `aniflow --check deck.md` and fix every line it prints. Look at the
+  deck with `aniflow deck.md --slides png -o /tmp/deck-shots` and open
+  the pictures, since a slide can pass the check and still look crowded.
+  `--slides pdf` gives the user a file they can hand out.
 
 ## Example
 

@@ -1,4 +1,5 @@
 import { host } from '../host.js';
+import { deckPlugin } from './deck.js';
 import { frontMatterPlugin } from './frontmatter.js';
 import { githubFlavour, sanitize } from './github.js';
 
@@ -13,6 +14,7 @@ export function renderLocal() {
       if (window.markdownitEmoji) markdown.use(window.markdownitEmoji);
       frontMatterPlugin(markdown);
       githubFlavour(markdown);
+      deckPlugin(markdown);
       for (const plugin of host.plugins) plugin(markdown);
     }
     return sanitize(markdown.render(host.preprocess(host.source)));

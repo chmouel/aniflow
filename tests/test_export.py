@@ -495,3 +495,129 @@ def test_check_passes_a_clean_document(tmp_path, monkeypatch):
 
     monkeypatch.setattr(export, "render", render)
     assert export.check([str(walk)]) == 0
+
+
+def tiny_jpeg(width, height):
+    app0 = b"\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
+    frame = (
+        b"\xff\xc0\x00\x11\x08" + height.to_bytes(2, "big") + width.to_bytes(2, "big")
+    )
+    return b"\xff\xd8" + app0 + frame + b"\x03" + b"\x00" * 9 + b"\xff\xd9"
+
+
+def test_jpeg_size_reads_the_frame_past_other_segments():
+    assert export.jpeg_size(tiny_jpeg(3200, 1800)) == (3200, 1800)
+    with pytest.raises(ValueError):
+        export.jpeg_size(b"\x89PNG\r\n\x1a\n" + b"\x00" * 20)
+
+
+def test_pdf_has_a_page_per_slide_and_a_valid_xref():
+    pages = [tiny_jpeg(3200, 1800), tiny_jpeg(3200, 1800)]
+    data = export.pdf(pages, 1200, 675, "Ship é")
+    assert data.startswith(b"%PDF-1.4") and data.endswith(b"%%EOF\n")
+    assert b"/Count 2" in data
+    assert data.count(b"/MediaBox [0 0 1200 675]") == 2
+    assert b"/Width 3200 /Height 1800" in data
+    assert ("\ufeffShip é").encode("utf-16-be").hex().encode() in data
+    xref = int(data.rsplit(b"startxref\n", 1)[1].split(b"\n")[0])
+    table = data[xref:].split(b"trailer")[0].splitlines()[3:]
+    for number, row in enumerate(table, 1):
+        offset = int(row.split()[0])
+        assert data[offset:].startswith(f"{number} 0 obj".encode())
+
+
+def test_devtools_pairs_replies_and_keeps_events():
+    to_chrome, from_chrome = os.pipe(), os.pipe()
+    tools = export.DevTools(from_chrome[0], to_chrome[1])
+    try:
+        event = {"method": "Page.loadEventFired", "sessionId": "S", "params": {"t": 1}}
+        reply = json.dumps({"id": 1, "result": {"ok": True}}).encode()
+        stream = json.dumps(event).encode() + b"\0" + reply + b"\0"
+
+        def chrome():
+            os.read(to_chrome[0], 4096)
+            for start in range(0, len(stream), 7):
+                os.write(from_chrome[1], stream[start : start + 7])
+
+        thread = threading.Thread(target=chrome)
+        thread.start()
+        assert tools.send("Page.enable", session="S") == {"ok": True}
+        thread.join()
+        assert tools.wait_event("Page.loadEventFired", "S") == {"t": 1}
+        os.write(from_chrome[1], b'{"id": 2, "error": {"message": "nope"}}\0')
+        with pytest.raises(export.DevToolsError, match="Page.navigate: nope"):
+            tools.send("Page.navigate")
+    finally:
+        for fd in (*to_chrome, *from_chrome):
+            os.close(fd)
+
+
+def test_check_reads_a_deck_without_diagrams(tmp_path, monkeypatch, capsys):
+    readme = tmp_path / "readme.md"
+    readme.write_text("# Tool\n\n## Install\n\nRun it.\n", encoding="utf-8")
+    deck = tmp_path / "deck.md"
+    deck.write_text("<!-- slide: layout=wobbly -->\n## Hi\n", encoding="utf-8")
+    rendered = []
+
+    def render(text, folder, name, outdir, kind, diagrams):
+        rendered.append(name)
+        server = export.ExportServer(text, folder, name, outdir, kind)
+        server.server_close()
+        server.deck.append({"line": 1, "message": "slide 1 (Hi): unknown layout"})
+        return server, 0
+
+    monkeypatch.setattr(export, "render", render)
+    assert export.check([str(readme), str(deck)]) == 1
+    assert rendered == ["deck.md"]
+    assert capsys.readouterr().out.splitlines() == [
+        f"{deck}:1: slide 1 (Hi): unknown layout"
+    ]
+
+
+def test_slides_flag_checks_its_company(tmp_path, monkeypatch, capsys):
+    source = tmp_path / "deck.md"
+    source.write_text("## One\n\n## Two\n", encoding="utf-8")
+    monkeypatch.setattr(export, "chrome", lambda: "/usr/bin/chrome")
+    for argv, message in (
+        (["--slides", "pdf", "--export", "gif", str(source)], "one at a time"),
+        (["--slides", "pdf", str(source), "--diagram", "1"], "--diagram goes with"),
+        (["--slides", "pdf", str(tmp_path)], "not a directory"),
+        (["--slides", "svg", str(source)], "invalid choice"),
+    ):
+        monkeypatch.setattr("sys.argv", ["aniflow", *argv])
+        with pytest.raises(SystemExit, match="2"):
+            cli.main()
+        assert message in capsys.readouterr().err
+    calls = []
+    monkeypatch.setattr(export, "slides", lambda *args: calls.append(args) or 0)
+    monkeypatch.setattr(
+        "sys.argv", ["aniflow", "--slides", "png", str(source), "-o", "out"]
+    )
+    with pytest.raises(SystemExit, match="0"):
+        cli.main()
+    assert calls == [(str(source), "png", "out")]
+
+
+@pytest.mark.skipif(
+    os.environ.get("ANIFLOW_EXPORT_E2E") != "1" or export.chrome() is None,
+    reason="set ANIFLOW_EXPORT_E2E=1 with Chrome installed",
+)
+def test_slides_end_to_end_writes_a_pdf_and_pngs(tmp_path, capsys):
+    source = tmp_path / "deck.md"
+    source.write_text(
+        "---\ntitle: Ship\nfooter: Talk\n---\n\n# Ship\n\n## Why\n\n- fast\n\n"
+        "<!-- slide: layout=stat -->\n## Numbers\n\n42% fewer rounds\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "out"
+    assert export.slides(source, "pdf", out) == 0
+    data = (out / "deck.pdf").read_bytes()
+    assert data.startswith(b"%PDF") and b"/Count 3" in data
+    assert b"/MediaBox [0 0 1200 675]" in data
+    assert export.slides(source, "png", out) == 0
+    pngs = sorted(path.name for path in out.glob("*.png"))
+    assert pngs == ["deck-01.png", "deck-02.png", "deck-03.png"]
+    assert (out / "deck-01.png").read_bytes()[16:24] == (3200).to_bytes(4, "big") + (
+        1800
+    ).to_bytes(4, "big")
+    assert str(out / "deck.pdf") in capsys.readouterr().out

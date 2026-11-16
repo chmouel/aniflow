@@ -103,7 +103,9 @@ sequenceDiagram
 A@{ img: "/icons/agent.svg", label: "Agent", w: 48, h: 48, constraint: "on" }
 ```
 
-Always set `w`, `h` and `constraint: "on"`, or the picture stretches.
+Always set `w`, `h` and `constraint: "on"`. aniflow adds a missing
+`constraint: "on"` itself, but other Mermaid renderers stretch the picture
+without it.
 `pos: "t"` puts the label above the picture. Allowed sources:
 
 - a path relative to the document, such as `icons/build.svg`
@@ -150,9 +152,9 @@ picture stays. Viewers can step with the arrow keys, change speed, click a
 box to spotlight it and its neighbours, draw on the diagram, and save a PNG,
 GIF or video.
 
-The Present button turns a document into slides, one per `##` section. A
-section holding one diagram and little text fills the screen, and the arrow
-keys play its story before moving on.
+The Present button turns a document into slides, one per `##` section, and
+the arrow keys play a diagram's story before moving to the next slide. See
+Slides below.
 
 A link like `#diagram=2&story=1&step=3&focus=A,B` opens the second diagram
 in full screen with its first story stopped after three steps and boxes A
@@ -163,3 +165,119 @@ or the whole diagram. Such a comment is stored as a line comment on the
 fence line that declares the box or arrow, so the copied prompt reads
 `file.md:9 (diagram 1, box "Build")` followed by that line and the comment.
 Declaring an edge id (`ok@-->`) gives each arrow its own line to anchor to.
+
+## Slides
+
+A document presents as a deck: one slide per `##` section, or per `#` when
+there are several. Every slide is drawn on a fixed 1600×900 canvas (1200
+tall with `aspect: 4:3`) scaled to the screen, so it looks the same on a
+laptop, a projector and in the PDF. Text that does not fit shrinks a little;
+what still spills is reported by `--check`.
+
+Settings live in HTML comments, which GitHub and other Markdown viewers
+hide, so the same file still reads as a plain document.
+
+### Front matter
+
+```yaml
+---
+title: Shipping with bots   # with author and date, makes a cover slide
+author: Chmouel
+date: May 2026
+theme: dracula      # dark, light, dracula, tokyo-night, rose-pine, rose-pine-dawn
+accent: violet      # blue, violet, green, amber, red
+font: modern        # modern, classic, mono, rounded
+footer: KubeCon 2026
+logo: ./logo.svg    # a picture, top right of every slide
+numbers: true       # slide numbers in the footer
+aspect: 16:9        # or 4:3
+transition: slide   # slide, fade, zoom, morph, none
+autoplay: true      # play a slide's diagram story when the slide opens
+---
+```
+
+A `title` adds a cover slide unless the document already opens with a `#`
+heading, which becomes the cover itself.
+
+### Directives
+
+```markdown
+<!-- slide: layout=columns bg=muted reveal -->
+## Two ways to ship
+
+By hand, every step waits for someone.
+
+<!-- column -->
+
+With a bot, the waiting goes away.
+
+<!-- notes:
+Pause here. Ask who reviewed a PR at midnight this week.
+-->
+```
+
+- `<!-- slide: ... -->` sets options for the slide that follows. Without a
+  heading after it, it still starts a new slide.
+- `layout=NAME`, or the name alone: `title`, `cover`, `section`, `center`,
+  `columns`, `split`, `quote`, `stat`, `full`, `grid`.
+- `bg=` one of `accent`, `muted`, `inverse`, `gradient`, `none`, or a
+  picture path. A picture fills the slide under a scrim that keeps text
+  readable; add `dim` for a darker one.
+- `flip` puts the picture of a `split` slide on the right.
+- `reveal` shows the slide's list items and blocks one key press at a time.
+- `story=N` plays the diagram's Nth story on that slide.
+- `transition=` overrides the deck transition for that slide.
+- `<!-- column -->` starts the next column of a `columns` slide. Columns
+  run from the heading to the end of the slide.
+- `<!-- reveal -->` reveals only the list or block right after it.
+- `<!-- notes: ... -->` holds speaker notes, Markdown allowed. They show in
+  the presenter window only.
+- A code fence with `{1-3|5|all}` after its language highlights those
+  lines one key press at a time: ` ```js {1-3|5|all} `.
+
+Values outside these lists are reported by `--check` and ignored.
+
+### Layouts
+
+A slide with no `layout` gets one from what it holds:
+
+| The slide holds | Layout |
+| --- | --- |
+| a `#` heading and a short paragraph, first in the deck | `cover` |
+| a heading alone | `section` |
+| one blockquote | `quote` |
+| one picture | `full` |
+| one diagram and up to a few lines of text | `full` |
+| one picture with a list or short text | `split` |
+| a paragraph opening with a bold number, `**42%** fewer rounds` | `stat` |
+| one list of 2 to 6 items, each opening with bold text | `grid` |
+| text split by `<!-- column -->` | `columns` |
+| anything else | `title` |
+
+Name a layout only when the automatic one is wrong. `center` centres
+whatever the slide holds.
+
+### Presenting
+
+Keys: arrows, Space, `j`/`k` and PageDown/PageUp step through reveals, code
+steps and the diagram story, then move on; `n`/`b` jump a whole slide;
+Home/End; `o` shows every slide as a grid; `s` opens the presenter window
+with the current and next slide, notes, a timer and the clock, kept in sync
+with the main window; `l` turns on a laser pointer; Escape leaves. The link
+keeps `#slide=N&step=K`.
+
+### Checks and export
+
+`aniflow --check deck.md` presents every slide in headless Chrome and
+prints, as `file:line`: text that does not fit even when shrunk, slides over
+90 words, unknown options, layouts and front matter values, a `columns`
+slide with one column, a `split` or `full` slide with nothing to show,
+backgrounds, logos and pictures that do not load, and notes in a document
+with no slides. A document is checked as a deck only when it has a slide
+directive, notes, columns, reveal or one of the deck front matter keys, so
+a README with `##` sections reports nothing.
+
+`aniflow deck.md --slides pdf` writes `deck.pdf`, one page per slide with
+every reveal shown and every story played to the end; `--slides png`
+writes `deck-01.png` and so on, at twice the canvas size. `-o DIR` picks
+the folder.

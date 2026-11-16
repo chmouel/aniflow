@@ -45,7 +45,10 @@ export async function diagramImages(source) {
       wanted.set(value, DIAGRAM_IMAGE_MISSING);
     }
   }));
-  const rewritten = source.replace(shapes, (shape) => shape.replace(DIAGRAM_IMAGE,
-    (match, key, quote, quoted, bare) => key + '"' + wanted.get(quoted ?? bare) + '"'));
+  // Without constraint "on" mermaid stretches the picture to the label's width.
+  const rewritten = source.replace(shapes, (shape) => {
+    const drawn = shape.replace(DIAGRAM_IMAGE, (match, key, quote, quoted, bare) => key + '"' + wanted.get(quoted ?? bare) + '"');
+    return shape.search(DIAGRAM_IMAGE) < 0 || /\bconstraint\s*:/.test(shape) ? drawn : drawn.replace(/\s*\}$/, ', constraint: "on" }');
+  });
   return { source: rewritten, problems: problems };
 }

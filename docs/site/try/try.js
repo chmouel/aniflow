@@ -2,11 +2,23 @@
 const examples = [
   {
     name: 'Tour (slides)',
-    source: `# A tour of aniflow
+    source: `---
+accent: violet
+font: modern
+footer: A tour of aniflow
+numbers: true
+transition: slide
+---
 
-Press **Present** or <kbd>P</kbd>, then use the arrow keys. Each \`##\` heading is a slide, and on a slide with a diagram the arrows walk its story first.
+# A tour of aniflow
 
-Everything here is the Markdown on the left. Change a line and the preview follows.
+Press **Present** or <kbd>P</kbd>, then the arrow keys. Everything here is the Markdown on the left.
+
+<!-- notes:
+Speaker notes stay out of the slide. Press S while presenting to see them in the presenter window.
+-->
+
+## Diagrams that move
 
 ## A story
 
@@ -117,6 +129,40 @@ sequenceDiagram
 %% GH -> Dev | You get a notification.
 \`\`\`
 
+## Slides from plain Markdown
+
+## Each slide picks a layout
+
+<!-- reveal -->
+- **Section**: a heading alone
+- **Quote**: one blockquote
+- **Stat**: a paragraph opening with a bold number
+- **Cards**: a list like this one
+
+<!-- slide: layout=columns -->
+## Two columns
+
+Settings sit in HTML comments, so GitHub shows a clean document.
+
+<!-- column -->
+
+\`<!-- column -->\` starts the next column, \`<!-- reveal -->\` shows a list one item at a time.
+
+## The numbers
+
+**1600×900** pixels on every screen, scaled to fit, so a slide looks the same on a laptop and a projector.
+
+<!-- slide -->
+> A slide should carry one idea. The talk carries the rest.
+
+## Code, one step at a time
+
+\`\`\`js {1|2-3|all}
+const bot = connect('ci');
+bot.on('red', readLogs);
+bot.on('logs', suggestFix);
+\`\`\`
+
 ## Plain Markdown works too
 
 | Key | Does |
@@ -132,6 +178,7 @@ sequenceDiagram
 > [!TIP]
 > Click a box in a diagram to spotlight it and its neighbours.
 
+<!-- slide: bg=accent -->
 ## Your turn
 
 Edit the text on the left, or pick another example. **Copy link** gives you a link with your text inside it, and the diagram's share button saves a PNG, GIF or video.

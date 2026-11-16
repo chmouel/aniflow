@@ -1,4 +1,5 @@
 import { host } from '../host.js';
+import { codeSteps } from './deck.js';
 
 // Obsidian callout types drawn with the closest of GitHub's five alert styles.
 export const CALLOUTS = {
@@ -116,12 +117,15 @@ export function githubFlavour(markdown) {
     const text = token.content.replace(/\n$/, '');
     const language = (token.info.trim().split(/\s+/)[0] || '').toLowerCase().replace(/[^a-z0-9_+#.-]/g, '');
     const where = lines(token, token.map ? token.map[0] + 2 : 0);
+    // ```js {1-3|5} highlights those lines one step at a time while presenting.
+    const marked = /\{([^{}]*)\}\s*$/.exec(token.info);
+    const steps = marked && codeSteps(marked[1]) ? ' data-steps="' + markdown.utils.escapeHtml(marked[1].replace(/\s+/g, '')) + '"' : '';
     if (!language) return '<pre class="notranslate"' + where + '><code>' + markdown.utils.escapeHtml(text) + '</code></pre>\n';
     const body = language !== 'mermaid' && window.hljs && hljs.getLanguage(language)
       ? hljs.highlight(text, { language: language, ignoreIllegals: true }).value
       : markdown.utils.escapeHtml(text);
     // The highlight-source-* wrapper is what the mermaid step below looks for.
-    return '<div class="highlight highlight-source-' + language + '"' + where + '><pre class="notranslate">' + body + '</pre></div>\n';
+    return '<div class="highlight highlight-source-' + language + '"' + where + steps + '><pre class="notranslate">' + body + '</pre></div>\n';
   };
   if (rules.footnote_ref) {
     rules.footnote_caption = (tokens, index) => String(tokens[index].meta.id + 1);
