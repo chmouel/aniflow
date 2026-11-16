@@ -10,6 +10,7 @@ import { directoryUrl, renderLocal } from './reader/render.js';
 import { initReview } from './reader/review.js';
 import { initShow, show } from './reader/show.js';
 import { initSlides, slideGroups, stopPresenting } from './slides.js';
+import { deckCheck, showSlide, slideCount } from './slides/tools.js';
 
 const element = (value) => typeof value === 'string' ? document.querySelector(value) : value || null;
 const none = () => null;
@@ -136,10 +137,13 @@ export async function diagramExport(stage, kind) {
 
 export {
   addBusyCheck,
+  deckCheck,
   diagramLines,
   flowchartLines,
   isBusy as busy,
   playScript as parse,
   readFrontMatter,
   setDiagramSpeed as setSpeed,
+  showSlide,
+  slideCount,
 };
