@@ -7,7 +7,7 @@ description: Write animated Mermaid diagram walkthroughs that look good and
   deployment, agent loop or architecture; when preparing a talk, a slide
   deck or a presentation, with or without diagrams; when a document needs a
   diagram that shows something happening in order; or whenever aniflow,
-  diagram walkthroughs, `%% play:` or `<!-- slide -->` come up.
+  diagram walkthroughs, `%% play:` or slide directives come up.
 ---
 
 # aniflow diagrams
@@ -107,7 +107,8 @@ Write it so it reads well on GitHub too: the directives are comments.
   deck.
 - One idea per slide, under about 40 words. A heading that says the point
   ("Bots fix the nits"), not the topic ("Bots").
-- Let the automatic layouts work before naming one. Shape the content
+- Start with a presentation style such as `conference`, `keynote` or `minimal`;
+  use the automatic layouts before naming one. Shape the content
   instead: a lone `##` for a section break, a blockquote for a quote, a
   paragraph opening with a bold number for a stat, a list whose items open
   with bold text for cards, one picture next to a short list for a split.

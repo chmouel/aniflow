@@ -9,6 +9,7 @@ on:
       - "src/aniflow/vendor/**"
       - "src/aniflow/icons/**"
       - "src/aniflow/themes.py"
+      - "src/aniflow/templates/**"
       - ".github/workflows/pages.yaml"
   workflow_dispatch:
 
@@ -42,7 +43,11 @@ jobs:
             -e "s#site\.js\"#site.js?v=${GITHUB_SHA::8}\"#" \
             -e "s#lib/aniflow\.min\.js\"#lib/aniflow.min.js?v=${GITHUB_SHA::8}\"#" \
             -e "s#lib/aniflow\.css\"#lib/aniflow.css?v=${GITHUB_SHA::8}\"#" \
-            -e "s#try\.js\"#try.js?v=${GITHUB_SHA::8}\"#" docs/site/index.html docs/site/try/index.html
+            -e "s#try\.js\"#try.js?v=${GITHUB_SHA::8}\"#" \
+            -e "s#settings\.js\"#settings.js?v=${GITHUB_SHA::8}\"#" \
+            -e "s#gallery\.js\"#gallery.js?v=${GITHUB_SHA::8}\"#" \
+            -e "s#view\.js\"#view.js?v=${GITHUB_SHA::8}\"#" \
+            docs/site/index.html docs/site/try/index.html docs/site/gallery/index.html docs/site/gallery/view.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -5,13 +5,13 @@ build-backend = "hatchling.build"
 [project]
 name = "aniflow"
 version = "0.1.0"
-description = "Read Markdown in the browser and play its diagrams as animated walkthroughs"
+description = "Markdown presentations with animated diagrams and a local document reader"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE", "src/aniflow/vendor/LICENSE.*", "src/aniflow/icons/LICENSE.*"]
 requires-python = ">=3.12"
 authors = [{ name = "Chmouel Boudjnah", email = "chmouel@chmouel.com" }]
-keywords = ["markdown", "mermaid", "diagrams", "walkthrough", "slides"]
+keywords = ["markdown", "mermaid", "diagrams", "walkthrough", "slides", "presentations"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Environment :: Web Environment",

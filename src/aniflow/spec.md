@@ -184,20 +184,37 @@ hide, so the same file still reads as a plain document.
 title: Shipping with bots   # with author and date, makes a cover slide
 author: Chmouel
 date: May 2026
+style: conference   # keynote, conference, minimal
 theme: dracula      # dark, light, dracula, tokyo-night, rose-pine, rose-pine-dawn
-accent: violet      # blue, violet, green, amber, red
+accent: "#cc2244"   # blue, violet, green, amber, red, or a quoted hex colour
 font: modern        # modern, classic, mono, rounded
 footer: KubeCon 2026
 logo: ./logo.svg    # a picture, top right of every slide
+logo-dark: ./white-logo.svg # optional logo on dark slides
 numbers: true       # slide numbers in the footer
 aspect: 16:9        # or 4:3
 transition: slide   # slide, fade, zoom, morph, none
+motion: subtle      # subtle or none
 autoplay: true      # play a slide's diagram story when the slide opens
 ---
 ```
 
 A `title` adds a cover slide unless the document already opens with a `#`
 heading, which becomes the cover itself.
+
+The three styles set coordinated defaults for colour, font and motion, and
+each has its own look: Keynote is dark with a large cover title and big
+section numbers; Conference puts section slides on the accent colour, rules
+under slide titles and turns on slide numbers; Minimal drops the cover glow,
+the accent bars and the card fills for plain type and hairlines. Explicit
+front matter overrides a style, and a section's own `bg=` wins over
+Conference's accent. Slide directives override deck transitions. Without a style,
+existing defaults apply. `motion: none` stops slide and reveal animation;
+reduced-motion browser preferences do the same. Logos can be paths, HTTPS
+URLs or embedded image data URLs.
+
+Create a ready-to-edit deck with `aniflow --init talk.md` and choose a style
+with `--style keynote`, `--style conference` or `--style minimal`.
 
 ### Directives
 

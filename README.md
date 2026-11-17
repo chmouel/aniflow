@@ -1,13 +1,15 @@
 # aniflow
 
-aniflow reads Markdown in the browser and plays its Mermaid diagrams as
-animated walkthroughs: a dot travels along the arrows, boxes light up, a
-caption explains each step, and a document can turn into slides.
+aniflow makes Markdown presentations with animated diagrams. Write your slides
+in Markdown, add a logo, and present them in your browser. Mermaid diagrams
+can play as walkthroughs: a dot travels along the arrows, boxes light up, and
+captions explain each step.
 
 It comes as a small command that serves a folder of Markdown files, and as a
 JavaScript library other apps can embed.
 
-The site at <https://chmouel.github.io/aniflow/> has a diagram you can play.
+Browse the [presentation gallery](https://chmouel.github.io/aniflow/gallery/)
+or [try the editor](https://chmouel.github.io/aniflow/try/) in your browser.
 
 ![A fix travels from issue to release in a playing diagram](docs/screenshots/demo.gif)
 
@@ -27,6 +29,36 @@ aniflow ./docs --port 8080
 ```
 
 To keep it installed, run `uv tool install git+https://github.com/chmouel/aniflow`.
+
+## Make a presentation
+
+Create a starter deck and open its folder:
+
+```sh
+aniflow --init talk.md              # --style keynote, conference or minimal
+aniflow .
+```
+
+Edit `talk.md`, open it in aniflow and press Present. Each `##` heading starts
+a slide; arrow keys walk through reveals and animated diagrams. A deck can
+start as simply as:
+
+```markdown
+---
+title: Shipping with bots
+author: Chmouel
+style: conference
+logo: ./logo.svg
+---
+
+## The problem
+
+Too much waiting between steps.
+```
+
+Add `motion: none` to turn off slide animation. Press `s` while presenting for
+speaker notes, and use `aniflow --slides pdf talk.md` or `--slides png` to
+export a deck. `aniflow --spec` documents branding, layouts and transitions.
 
 Documents get syntax highlighting, colour themes, a table of contents and
 interactive Mermaid flowcharts. Relative links and images stay relative to
@@ -50,8 +82,8 @@ Use Comments on any page, including the demo, to comment on source lines or
 on a box or arrow in a diagram, edit or delete feedback, and copy it with the
 quoted text for a coding agent. Comments are kept in `$XDG_CACHE_HOME/aniflow`
 (usually `~/.cache/aniflow`), one file per served folder and document.
-aniflow never writes to your source files. Refresh the browser after saving changes to a
-document.
+Reading and commenting leave your source files untouched. Refresh the browser
+after saving changes to a document.
 
 ## Write a walkthrough
 
@@ -115,8 +147,8 @@ binary's path when it is somewhere unusual.
 `aniflow --check FILE...` draws every diagram in headless Chrome and prints
 each problem as `file:line: message`: a diagram Mermaid cannot draw, a story
 step that does not play and why, and pictures that did not load. It exits 1
-when it finds anything, so it fits a pre-commit hook or a docs linter. Files
-without a Mermaid fence are skipped.
+when it finds anything, so it fits a pre-commit hook or a docs linter. Decks
+are checked even when they contain no Mermaid diagrams.
 
 ```sh
 aniflow --check docs/*.md
@@ -239,6 +271,8 @@ uv run ruff format . && uv run ruff check .
 
 The built files are committed so `uvx` works without Node; `npm run check`
 fails when they are out of date.
+After changing a gallery deck, run `uv run python contrib/gallery_previews.py`
+to regenerate its preview strip (Chrome and ImageMagick 7).
 
 ## License
 

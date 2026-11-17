@@ -13,6 +13,8 @@ for file in markdown-it.min.js markdown-it-footnote.min.js markdown-it-emoji.min
 done
 cp "$src"/vendor/LICENSE.* lib/vendor/
 cp -r "$src/icons" lib/icons
+mkdir -p lib/templates
+cp "$src"/templates/* lib/templates/
 # GitHub's markdown colours keyed on html[data-mode], so the demo stays light
 # whatever the visitor's system prefers.
 PYTHONPATH=../../src python3 -c 'from aniflow.themes import theme_reader_css; print(theme_reader_css())' >lib/modes.css

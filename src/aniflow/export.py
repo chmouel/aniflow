@@ -62,7 +62,7 @@ MERMAID_START = re.compile(
 # A slide directive or deck front matter: the library decides whether it is a deck.
 DECK_HINT = re.compile(
     r"<!--\s*(?:slide|notes|column|reveal)\b"
-    r"|^(?:accent|font|footer|logo|numbers|aspect|transition)\s*:",
+    r"|^(?:accent|font|footer|logo|logo-dark|numbers|aspect|transition|style|motion)\s*:",
     re.MULTILINE,
 )
 
@@ -133,6 +133,7 @@ EXPORT_JS = r"""
   async function check() {
     await rendered();
     const deck = await Aniflow.deckCheck();
+    await rendered();
     await tell(job.done, { failures: lines(failed()), problems: problems(), pictures: pictures(), deck: deck });
   }
   // --slides: the page only gets ready; aniflow then shows each slide through DevTools and

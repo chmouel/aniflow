@@ -5,7 +5,8 @@ import { diagramFromHash } from './diagram/hash.js';
 import { diagramLines, flowchartLines, playScript } from './diagram/parse.js';
 import { saveBlob } from './diagram/share.js';
 import { setDiagramSpeed } from './diagram/speed.js';
-import { readFrontMatter } from './reader/frontmatter.js';
+import { readFrontMatter, updateFrontMatter } from './reader/frontmatter.js';
+import { deckSettings } from './reader/deck.js';
 import { directoryUrl, renderLocal } from './reader/render.js';
 import { initReview } from './reader/review.js';
 import { initShow, show } from './reader/show.js';
@@ -138,11 +139,13 @@ export async function diagramExport(stage, kind) {
 export {
   addBusyCheck,
   deckCheck,
+  deckSettings,
   diagramLines,
   flowchartLines,
   isBusy as busy,
   playScript as parse,
   readFrontMatter,
+  updateFrontMatter,
   setDiagramSpeed as setSpeed,
   showSlide,
   slideCount,

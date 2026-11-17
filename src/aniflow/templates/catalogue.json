@@ -1,0 +1,26 @@
+[
+  {
+    "id": "keynote",
+    "title": "Keynote",
+    "description": "Bold, spacious slides for a memorable talk.",
+    "file": "keynote.md"
+  },
+  {
+    "id": "conference",
+    "title": "Conference",
+    "description": "A clear, versatile style for technical talks.",
+    "file": "conference.md"
+  },
+  {
+    "id": "minimal",
+    "title": "Minimal",
+    "description": "Quiet typography and generous space.",
+    "file": "minimal.md"
+  },
+  {
+    "id": "showcase",
+    "title": "Feature showcase",
+    "description": "See reveals, backgrounds, notes and animated diagrams in action.",
+    "file": "showcase.md"
+  }
+]

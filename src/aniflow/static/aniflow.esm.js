@@ -2634,6 +2634,7 @@ function frontDate(text) {
 }
 function frontScalar(text) {
   if (text === "" || /^(?:null|~)$/i.test(text)) return '<span class="frontmatter-empty">empty</span>';
+  if (/^data:image\/(?:png|jpe?g|gif|webp|svg\+xml);base64,/i.test(text)) return "Embedded image";
   if (/^(?:true|false)$/i.test(text)) return /^t/i.test(text) ? "Yes" : "No";
   const date = frontDate(text);
   if (date) return date;
@@ -2679,6 +2680,66 @@ function frontMatterPlugin(markdown2) {
   });
   markdown2.renderer.rules.front_matter = (tokens, index) => frontPanel(tokens[index].meta, tokens[index].map);
 }
+function updateFrontMatter(source, changes) {
+  const front = readFrontMatter(source);
+  if (/^---[ \t]*(?:\r?\n|$)/.test(source) && !front) throw new Error("Fix the front matter before changing settings.");
+  if (front && !front.entries) throw new Error("Fix the front matter before changing settings.");
+  if (front) {
+    for (const key of Object.keys(changes)) {
+      const entries = front.entries.filter((entry) => entry.key === key);
+      if (entries.length > 1 || entries.some((entry) => !["scalar", "empty"].includes(entry.kind))) throw new Error("Fix the " + key + " setting before changing it.");
+    }
+  }
+  const lines = source.split("\n");
+  if (!front) lines.unshift("---", "---");
+  let end = front ? front.lines - 1 : 1;
+  for (const [key, value] of Object.entries(changes)) {
+    const pattern = new RegExp("^" + key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "[ \\t]*:");
+    const at = lines.findIndex((line2, index) => index > 0 && index < end && pattern.test(line2));
+    if (at >= 0) {
+      for (let i = at + 1; i < end && !FRONT_KEY.test(lines[i]); i++) {
+        if (/^[ \t]+\S/.test(lines[i]) && !/^[ \t]*#/.test(lines[i])) throw new Error("Fix the " + key + " setting before changing it.");
+      }
+    }
+    if (!value) {
+      if (at >= 0) {
+        lines.splice(at, 1);
+        end--;
+      }
+      continue;
+    }
+    const quoted = JSON.stringify(value);
+    let suffix = "";
+    if (at >= 0) {
+      const line2 = lines[at];
+      let quote = "";
+      for (let i = line2.indexOf(":") + 1; i < line2.length; i++) {
+        const char = line2[i];
+        if (quote === '"' && char === "\\") {
+          i++;
+          continue;
+        }
+        if (quote === "'" && char === "'" && line2[i + 1] === "'") {
+          i++;
+          continue;
+        }
+        if (quote && char === quote) quote = "";
+        else if (!quote && (char === '"' || char === "'")) quote = char;
+        else if (!quote && char === "#" && /\s/.test(line2[i - 1])) {
+          suffix = " " + line2.slice(i);
+          break;
+        }
+      }
+    }
+    const line = key + ": " + quoted + suffix;
+    if (at >= 0) lines[at] = line;
+    else {
+      lines.splice(end, 0, line);
+      end++;
+    }
+  }
+  return lines.join("\n");
+}
 
 // js/reader/deck.js
 var LAYOUTS = ["title", "cover", "section", "center", "columns", "split", "quote", "stat", "full", "grid"];
@@ -2687,10 +2748,17 @@ var TRANSITIONS = ["slide", "fade", "zoom", "morph", "none"];
 var ACCENTS = ["blue", "violet", "green", "amber", "red"];
 var FONTS = ["modern", "classic", "mono", "rounded"];
 var ASPECTS = ["16:9", "4:3"];
+var STYLES = ["keynote", "conference", "minimal"];
+var MOTIONS = ["subtle", "none"];
+var PRESETS = {
+  keynote: { theme: "dark", font: "modern", accent: "violet", motion: "subtle", numbers: false },
+  conference: { theme: "light", font: "modern", accent: "blue", motion: "subtle", numbers: true },
+  minimal: { theme: "light", font: "classic", accent: "blue", motion: "none", numbers: false }
+};
 var SLIDE_FLAGS = ["reveal", "dim", "flip"];
 var WORDS_MAX = 90;
 var DIRECTIVE = /^<!--[ \t]*(slide|column|reveal|notes)(?=[\s:]|-->)([\s\S]*?)-->\s*$/;
-var PICTURE = /^(?:\.{0,2}\/|[\w-][\w./-]*\.(?:png|jpe?g|gif|webp|svg|avif)$|https:\/\/)/i;
+var PICTURE = /^(?:\.{0,2}\/|[\w-][\w./-]*\.(?:png|jpe?g|gif|webp|svg|avif)$|https:\/\/|data:image\/(?:png|jpe?g|gif|webp|svg\+xml);base64,)/i;
 function slideDirective(text) {
   const match = DIRECTIVE.exec(String(text).trim());
   if (!match) return null;
@@ -2736,6 +2804,9 @@ var no = (value) => /^(?:false|no|off)$/i.test(String(value).trim());
 function deckSettings(entries) {
   const settings = { autoplay: true, numbers: false, aspect: "16:9" };
   const problems = [];
+  const style = [...entries || []].reverse().find((entry) => entry.key === "style");
+  const preset = String(style?.value || "").trim().toLowerCase();
+  if (PRESETS[preset]) Object.assign(settings, PRESETS[preset]);
   for (const entry of entries || []) {
     const value = entry.kind === "scalar" || entry.kind === "text" ? String(entry.value).trim() : "";
     const pick = (key, allowed) => {
@@ -2743,8 +2814,15 @@ function deckSettings(entries) {
       else problems.push(key + ": " + (value || entry.kind) + " is not one of " + allowed.join(", "));
     };
     switch (entry.key) {
+      case "style":
+        pick("style", STYLES);
+        break;
+      case "motion":
+        pick("motion", MOTIONS);
+        break;
       case "accent":
-        pick("accent", ACCENTS);
+        if (/^#[0-9a-f]{6}$/i.test(value)) settings.accent = value;
+        else pick("accent", ACCENTS);
         break;
       case "font":
         pick("font", FONTS);
@@ -2768,8 +2846,9 @@ function deckSettings(entries) {
         if (value) settings.footer = value.slice(0, 160);
         break;
       case "logo":
-        if (PICTURE.test(value) && !/["'()\\\s]/.test(value)) settings.logo = value;
-        else if (value) problems.push("logo: " + value + " is not a picture path");
+      case "logo-dark":
+        if (PICTURE.test(value) && !/["'()\\\s]/.test(value)) settings[entry.key === "logo" ? "logo" : "logoDark"] = value;
+        else if (value) problems.push(entry.key + ": " + value.slice(0, 120) + " is not a picture path");
         break;
       case "title":
       case "author":
@@ -3673,6 +3752,11 @@ function slideThumb(index, width, doc = document, complete = true) {
   dressCanvas(canvas, copies, index);
   reader2.append(canvas);
   thumb.append(reader2);
+  const frame = doc.createElement("div");
+  frame.className = "slide-frame";
+  frame.dataset.bg = canvas.dataset.bg || "";
+  frame.append(...slideFrameContents(doc, index, slideGroups().length, canvas));
+  thumb.append(frame);
   return { thumb, canvas };
 }
 var overviewOpen = () => Boolean(overview);
@@ -3795,10 +3879,13 @@ function paintPresenter() {
   for (const name of ["theme", "mode", "choice"]) {
     if (document.documentElement.dataset[name]) doc.documentElement.dataset[name] = document.documentElement.dataset[name];
   }
-  for (const name of ["deckAccent", "deckFont"]) {
+  for (const name of ["deckAccent", "deckFont", "deckStyle", "deckMotion", "accentDark"]) {
     if (document.body.dataset[name]) doc.body.dataset[name] = document.body.dataset[name];
     else delete doc.body.dataset[name];
   }
+  const accent = document.body.style.getPropertyValue("--slide-accent");
+  if (accent) doc.body.style.setProperty("--slide-accent", accent);
+  else doc.body.style.removeProperty("--slide-accent");
   const groups = slideGroups();
   const place = (slot, index, complete) => {
     const ratio = (parseFloat(document.body.style.getPropertyValue("--slide-w")) || 16) / (parseFloat(document.body.style.getPropertyValue("--slide-h")) || 9);
@@ -3824,9 +3911,19 @@ function paintPresenter() {
 var frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 async function settled() {
   await document.fonts?.ready;
-  await Promise.all([...host.article.querySelectorAll(".slide-on img")].map((image) => image.complete ? null : new Promise((resolve) => {
-    image.addEventListener("load", resolve, { once: true });
-    image.addEventListener("error", resolve, { once: true });
+  const deadline = Date.now() + 1e4;
+  while (host.article.querySelector(".highlight-source-mermaid:not([title])") && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  const images = [...host.article.querySelectorAll(".slide-on img"), ...document.querySelectorAll("body > .slide-frame img")];
+  await Promise.all(images.map((image) => image.complete ? null : new Promise((resolve) => {
+    const timer = setTimeout(resolve, 1e4);
+    const done = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    image.addEventListener("load", done, { once: true });
+    image.addEventListener("error", done, { once: true });
   })));
   await frames();
   fitSlide();
@@ -3859,7 +3956,7 @@ function pictureLoads(url) {
     image.src = url;
   });
 }
-var DECK_KEYS = ["accent", "font", "footer", "logo", "numbers", "aspect", "transition"];
+var DECK_KEYS = ["accent", "font", "footer", "logo", "logo-dark", "numbers", "aspect", "transition", "style", "motion"];
 async function deckCheck() {
   const problems = [];
   const lineOf = (element2) => Number(element2?.dataset?.line || element2?.querySelector?.("[data-line]")?.dataset.line) || 0;
@@ -3892,6 +3989,7 @@ async function deckCheck() {
     }
   }
   if (deck.logo && !await pictureLoads(slidePicture(deck.logo))) problems.push({ line: 1, message: "front matter: logo not found: " + deck.logo });
+  if (deck.logoDark && !await pictureLoads(slidePicture(deck.logoDark))) problems.push({ line: 1, message: "front matter: logo-dark not found: " + deck.logoDark });
   stopPresenting();
   document.body.classList.remove("slide-export");
   return problems.sort((a, b) => a.line - b.line);
@@ -3984,6 +4082,7 @@ function dressCanvas(canvas, group, index) {
   canvas.style.removeProperty("background-image");
   canvas.style.removeProperty("grid-template-rows");
   if (options.bg) canvas.dataset.bg = options.bg;
+  else if (layout === "section" && deck.style === "conference") canvas.dataset.bg = "accent";
   if (options.dim !== void 0) canvas.dataset.dim = "";
   if (options.flip !== void 0) canvas.dataset.flip = "";
   if (options.image) {
@@ -4026,7 +4125,7 @@ function dressCanvas(canvas, group, index) {
 function slidePicture(value) {
   const resolved = host.resolveImage(value);
   if (resolved) return resolved;
-  return /^https:\/\//i.test(value) ? value : null;
+  return /^(?:https:\/\/|data:image\/(?:png|jpe?g|gif|webp|svg\+xml);base64,)/i.test(value) ? value : null;
 }
 function canvasSize() {
   const portrait = innerWidth < innerHeight && innerWidth < 760;
@@ -4184,39 +4283,55 @@ function paintDock(groups) {
   });
   slideDock.querySelector(".slide-count").textContent = slideAt + 1 + " / " + groups.length;
 }
-function paintFrame(groups) {
+function darkColour(value) {
+  const rgb = [1, 3, 5].map((at) => parseInt(value.slice(at, at + 2), 16) / 255).map((channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+  return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722 < 0.179;
+}
+function slideFrameContents(doc, index, count, canvas) {
   const parts = [];
-  const footer = document.createElement("span");
+  const footer = doc.createElement("span");
   footer.className = "slide-footer";
-  for (const [name, text] of [["slide-footer-text", deck.footer], ["slide-number", deck.numbers && slideAt + 1 + " / " + groups.length]]) {
+  for (const [name, text] of [["slide-footer-text", deck.footer], ["slide-number", deck.numbers && index + 1 + " / " + count]]) {
     if (!text) continue;
-    const span = document.createElement("span");
+    const span = doc.createElement("span");
     span.className = name;
     span.textContent = text;
     footer.append(span);
   }
   if (footer.childElementCount) parts.push(footer);
-  const logo = deck.logo && slidePicture(deck.logo);
+  const baseDark = document.documentElement.dataset.mode === "dark";
+  let dark = baseDark;
+  if (canvas.dataset.bg === "inverse") dark = !baseDark;
+  if (canvas.dataset.bg === "accent") {
+    dark = /^#[0-9a-f]{6}$/i.test(deck.accent || "") ? darkColour(deck.accent) : !baseDark;
+  }
+  const logoPath = dark && deck.logoDark ? deck.logoDark : deck.logo;
+  const logo = logoPath && slidePicture(logoPath);
   if (logo) {
-    const image = document.createElement("img");
+    const image = doc.createElement("img");
     image.className = "slide-logo";
     image.alt = "";
     image.src = logo;
     parts.push(image);
   }
-  slideFrame.replaceChildren(...parts);
+  return parts;
+}
+function paintFrame(groups) {
+  slideFrame.replaceChildren(...slideFrameContents(document, slideAt, groups.length, host.article));
 }
 function deckTheme(on) {
   const root = document.documentElement;
-  const themes = window.aniflowThemes;
+  const themes = window.aniflowThemes || { light: ["light"], dark: ["dark"] };
   if (on && deck.theme && themes?.[deck.theme] && root.dataset.theme !== deck.theme) {
     themeBefore = { theme: root.dataset.theme, mode: root.dataset.mode };
     root.dataset.theme = deck.theme;
     root.dataset.mode = themes[deck.theme][0];
     dispatchEvent(new Event("aniflow-theme"));
   } else if (!on && themeBefore) {
-    root.dataset.theme = themeBefore.theme;
-    root.dataset.mode = themeBefore.mode;
+    if (themeBefore.theme === void 0) delete root.dataset.theme;
+    else root.dataset.theme = themeBefore.theme;
+    if (themeBefore.mode === void 0) delete root.dataset.mode;
+    else root.dataset.mode = themeBefore.mode;
     themeBefore = null;
     dispatchEvent(new Event("aniflow-theme"));
   }
@@ -4228,9 +4343,16 @@ function startPresenting() {
   host.article.classList.add("slide-canvas");
   if (!slideDock) buildDock();
   const body = document.body.dataset;
-  for (const [key, value] of [["deckAccent", deck.accent], ["deckFont", deck.font]]) {
+  for (const [key, value] of [["deckAccent", deck.accent], ["deckFont", deck.font], ["deckStyle", deck.style], ["deckMotion", deck.motion]]) {
     if (value) body[key] = value;
     else delete body[key];
+  }
+  if (/^#[0-9a-f]{6}$/i.test(deck.accent || "")) {
+    document.body.style.setProperty("--slide-accent", deck.accent);
+    body.accentDark = String(darkColour(deck.accent));
+  } else {
+    document.body.style.removeProperty("--slide-accent");
+    delete body.accentDark;
   }
   host.presentButton?.setAttribute("aria-pressed", "true");
   deckTheme(true);
@@ -4285,7 +4407,8 @@ function present(at, direction, step) {
   const from = slideAt;
   const want = step ?? (direction < 0 ? Infinity : 0);
   const mark = groups[at][0]?.matches(".slide-mark") ? groups[at][0] : null;
-  const transition = reduced() || starting || !direction ? "none" : mark?.dataset.transition || deck.transition || "slide";
+  const auto = deck.motion === "subtle" ? ["cover", "section"].includes(slideLayout(groups[at], at).layout) ? "slide" : "fade" : "slide";
+  const transition = reduced() || deck.motion === "none" || starting || !direction ? "none" : mark?.dataset.transition || deck.transition || auto;
   document.body.dataset.transition = transition;
   host.article.classList.remove("slide-enter");
   const show2 = () => {
@@ -4377,7 +4500,8 @@ function stopPresenting() {
   for (const name of ["background-image", "grid-template-rows", "--slide-fit", "--slide-cards", "--slide-section", "--slide-from"]) host.article.style.removeProperty(name);
   clearTimeout(slideIdle);
   document.body.classList.remove("presenting", "slide-solo", "slide-idle", "slide-portrait");
-  for (const name of ["slideLayout", "slideBg", "transition", "deckAccent", "deckFont"]) delete document.body.dataset[name];
+  for (const name of ["slideLayout", "slideBg", "transition", "deckAccent", "deckFont", "deckStyle", "deckMotion", "accentDark"]) delete document.body.dataset[name];
+  document.body.style.removeProperty("--slide-accent");
   host.presentButton?.setAttribute("aria-pressed", "false");
   slideAt = -1;
   slideStep = 0;
@@ -4610,6 +4734,7 @@ export {
   addBusyCheck,
   isBusy as busy,
   deckCheck,
+  deckSettings,
   diagramExport,
   diagramLines,
   diagrams,
@@ -4620,5 +4745,6 @@ export {
   reader,
   setDiagramSpeed as setSpeed,
   showSlide,
-  slideCount
+  slideCount,
+  updateFrontMatter
 };

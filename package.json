@@ -2,7 +2,7 @@
   "name": "aniflow",
   "private": true,
   "type": "module",
-  "description": "Markdown reader with animated Mermaid walkthroughs, slides and line comments",
+  "description": "Markdown presentations with animated diagrams and a local document reader",
   "license": "Apache-2.0",
   "scripts": {
     "build": "node build.mjs",

@@ -93,6 +93,7 @@ export function frontDate(text) {
 
 export function frontScalar(text) {
   if (text === '' || /^(?:null|~)$/i.test(text)) return '<span class="frontmatter-empty">empty</span>';
+  if (/^data:image\/(?:png|jpe?g|gif|webp|svg\+xml);base64,/i.test(text)) return 'Embedded image';
   if (/^(?:true|false)$/i.test(text)) return /^t/i.test(text) ? 'Yes' : 'No';
   const date = frontDate(text);
   if (date) return date;
@@ -141,4 +142,50 @@ export function frontMatterPlugin(markdown) {
     return true;
   });
   markdown.renderer.rules.front_matter = (tokens, index) => frontPanel(tokens[index].meta, tokens[index].map);
+}
+
+export function updateFrontMatter(source, changes) {
+  const front = readFrontMatter(source);
+  if (/^---[ \t]*(?:\r?\n|$)/.test(source) && !front) throw new Error('Fix the front matter before changing settings.');
+  if (front && !front.entries) throw new Error('Fix the front matter before changing settings.');
+  if (front) {
+    for (const key of Object.keys(changes)) {
+      const entries = front.entries.filter((entry) => entry.key === key);
+      if (entries.length > 1 || entries.some((entry) => !['scalar', 'empty'].includes(entry.kind))) throw new Error('Fix the ' + key + ' setting before changing it.');
+    }
+  }
+  const lines = source.split('\n');
+  if (!front) lines.unshift('---', '---');
+  let end = front ? front.lines - 1 : 1;
+  for (const [key, value] of Object.entries(changes)) {
+    const pattern = new RegExp('^' + key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[ \\t]*:');
+    const at = lines.findIndex((line, index) => index > 0 && index < end && pattern.test(line));
+    if (at >= 0) {
+      for (let i = at + 1; i < end && !FRONT_KEY.test(lines[i]); i++) {
+        if (/^[ \t]+\S/.test(lines[i]) && !/^[ \t]*#/.test(lines[i])) throw new Error('Fix the ' + key + ' setting before changing it.');
+      }
+    }
+    if (!value) {
+      if (at >= 0) { lines.splice(at, 1); end--; }
+      continue;
+    }
+    const quoted = JSON.stringify(value);
+    let suffix = '';
+    if (at >= 0) {
+      const line = lines[at];
+      let quote = '';
+      for (let i = line.indexOf(':') + 1; i < line.length; i++) {
+        const char = line[i];
+        if (quote === '"' && char === '\\') { i++; continue; }
+        if (quote === "'" && char === "'" && line[i + 1] === "'") { i++; continue; }
+        if (quote && char === quote) quote = '';
+        else if (!quote && (char === '"' || char === "'")) quote = char;
+        else if (!quote && char === '#' && /\s/.test(line[i - 1])) { suffix = ' ' + line.slice(i); break; }
+      }
+    }
+    const line = key + ': ' + quoted + suffix;
+    if (at >= 0) lines[at] = line;
+    else { lines.splice(end, 0, line); end++; }
+  }
+  return lines.join('\n');
 }

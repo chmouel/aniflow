@@ -882,6 +882,10 @@ pie title Readings collected
 
 ## Step 18: Present a deck
 
+Start a new deck with `aniflow --init talk.md`, or browse the
+[presentation gallery](https://chmouel.github.io/aniflow/gallery/) for
+examples. Pick `keynote`, `conference` or `minimal` as its `style`.
+
 Press Present in the header, or `p`, and any page becomes slides: one per
 `##` section, drawn on a fixed canvas that scales to your screen. A slide
 picks its own layout from what it holds. A heading alone is a section break,
@@ -896,6 +900,7 @@ file still reads as a normal document:
 ---
 title: Shipping with bots
 author: Chmouel
+style: conference
 accent: violet
 footer: KubeCon 2026
 numbers: true

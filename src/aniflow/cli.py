@@ -46,7 +46,19 @@ def share_url(text: str) -> str:
 
 def offline_pictures(text: str) -> list[str]:
     """Pictures the try page cannot load: anything besides built-in icons, https and data URLs."""
-    found = (a or b for a, b in PICTURE.findall(text))
+    found = [a or b for a, b in PICTURE.findall(text)]
+    lines = text.splitlines()
+    if lines and lines[0].strip() == "---":
+        for line in lines[1:201]:
+            if line.strip() in {"---", "..."}:
+                break
+            match = re.match(
+                r"""^logo(?:-dark)?\s*:\s*(?:"([^"]*)"|'([^']*)'|([^\s#]+))""", line
+            )
+            if match:
+                found.append(
+                    next(value for value in match.groups() if value is not None)
+                )
     return sorted(
         {
             value
@@ -365,7 +377,7 @@ class Handler(web.Handler):
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Browse local Markdown and interactive flowcharts."
+        description="Present Markdown, play diagrams and browse local documents."
     )
     parser.add_argument(
         "directory",
@@ -387,6 +399,12 @@ def main() -> None:
         "--spec",
         action="store_true",
         help="print the diagram walkthrough syntax reference and exit",
+    )
+    parser.add_argument("--init", metavar="FILE", help="create a starter presentation")
+    parser.add_argument(
+        "--style",
+        choices=["keynote", "conference", "minimal"],
+        help="presentation style for --init (default: conference)",
     )
     parser.add_argument(
         "--share",
@@ -436,6 +454,38 @@ def main() -> None:
         "exit 1 when there is any",
     )
     args = parser.parse_args()
+    if args.style and not args.init:
+        parser.error("--style goes with --init")
+    if args.init:
+        if (
+            args.check
+            or args.spec
+            or args.share
+            or args.open
+            or args.export
+            or args.slides
+            or args.out
+            or args.diagram is not None
+            or args.directory != Path.cwd()
+            or args.host != "127.0.0.1"
+            or args.port
+        ):
+            parser.error(
+                "--init cannot be combined with other actions or server options"
+            )
+        template = (
+            Path(__file__).with_name("templates") / f"{args.style or 'conference'}.md"
+        )
+        try:
+            source = template.read_text("utf-8")
+            with Path(args.init).open("x", encoding="utf-8") as output:
+                output.write(source)
+        except OSError as error:
+            parser.error(f"cannot create {args.init}: {error}")
+        print(
+            f"Created {args.init}. Run aniflow {Path(args.init).parent} to present it."
+        )
+        return
     if args.check:
         if export.chrome() is None:
             parser.error(

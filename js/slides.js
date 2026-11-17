@@ -106,6 +106,7 @@ export function dressCanvas(canvas, group, index) {
   canvas.style.removeProperty('background-image');
   canvas.style.removeProperty('grid-template-rows');
   if (options.bg) canvas.dataset.bg = options.bg;
+  else if (layout === 'section' && deck.style === 'conference') canvas.dataset.bg = 'accent';
   if (options.dim !== undefined) canvas.dataset.dim = '';
   if (options.flip !== undefined) canvas.dataset.flip = '';
   if (options.image) {
@@ -152,7 +153,7 @@ export function dressCanvas(canvas, group, index) {
 export function slidePicture(value) {
   const resolved = host.resolveImage(value);
   if (resolved) return resolved;
-  return /^https:\/\//i.test(value) ? value : null;
+  return /^(?:https:\/\/|data:image\/(?:png|jpe?g|gif|webp|svg\+xml);base64,)/i.test(value) ? value : null;
 }
 
 function canvasSize() {
@@ -330,42 +331,61 @@ export function paintDock(groups) {
 }
 
 // Footer, logo and slide number, drawn over the canvas at its scale.
-function paintFrame(groups) {
+function darkColour(value) {
+  const rgb = [1, 3, 5].map((at) => parseInt(value.slice(at, at + 2), 16) / 255)
+    .map((channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+  return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722 < 0.179;
+}
+
+export function slideFrameContents(doc, index, count, canvas) {
   const parts = [];
-  const footer = document.createElement('span');
+  const footer = doc.createElement('span');
   footer.className = 'slide-footer';
-  for (const [name, text] of [['slide-footer-text', deck.footer], ['slide-number', deck.numbers && (slideAt + 1) + ' / ' + groups.length]]) {
+  for (const [name, text] of [['slide-footer-text', deck.footer], ['slide-number', deck.numbers && (index + 1) + ' / ' + count]]) {
     if (!text) continue;
-    const span = document.createElement('span');
+    const span = doc.createElement('span');
     span.className = name;
     span.textContent = text;
     footer.append(span);
   }
   if (footer.childElementCount) parts.push(footer);
-  const logo = deck.logo && slidePicture(deck.logo);
+  const baseDark = document.documentElement.dataset.mode === 'dark';
+  let dark = baseDark;
+  if (canvas.dataset.bg === 'inverse') dark = !baseDark;
+  if (canvas.dataset.bg === 'accent') {
+    dark = /^#[0-9a-f]{6}$/i.test(deck.accent || '') ? darkColour(deck.accent) : !baseDark;
+  }
+  const logoPath = dark && deck.logoDark ? deck.logoDark : deck.logo;
+  const logo = logoPath && slidePicture(logoPath);
   if (logo) {
-    const image = document.createElement('img');
+    const image = doc.createElement('img');
     image.className = 'slide-logo';
     image.alt = '';
     image.src = logo;
     parts.push(image);
   }
-  slideFrame.replaceChildren(...parts);
+  return parts;
+}
+
+function paintFrame(groups) {
+  slideFrame.replaceChildren(...slideFrameContents(document, slideAt, groups.length, host.article));
 }
 
 // A deck can ask for one of the reader's themes while it is presented; leaving puts the
 // reader's own back, unless the viewer picked one from the dock in between.
 function deckTheme(on) {
   const root = document.documentElement;
-  const themes = window.aniflowThemes;
+  const themes = window.aniflowThemes || { light: ['light'], dark: ['dark'] };
   if (on && deck.theme && themes?.[deck.theme] && root.dataset.theme !== deck.theme) {
     themeBefore = { theme: root.dataset.theme, mode: root.dataset.mode };
     root.dataset.theme = deck.theme;
     root.dataset.mode = themes[deck.theme][0];
     dispatchEvent(new Event('aniflow-theme'));
   } else if (!on && themeBefore) {
-    root.dataset.theme = themeBefore.theme;
-    root.dataset.mode = themeBefore.mode;
+    if (themeBefore.theme === undefined) delete root.dataset.theme;
+    else root.dataset.theme = themeBefore.theme;
+    if (themeBefore.mode === undefined) delete root.dataset.mode;
+    else root.dataset.mode = themeBefore.mode;
     themeBefore = null;
     dispatchEvent(new Event('aniflow-theme'));
   }
@@ -378,9 +398,16 @@ function startPresenting() {
   host.article.classList.add('slide-canvas');
   if (!slideDock) buildDock();
   const body = document.body.dataset;
-  for (const [key, value] of [['deckAccent', deck.accent], ['deckFont', deck.font]]) {
+  for (const [key, value] of [['deckAccent', deck.accent], ['deckFont', deck.font], ['deckStyle', deck.style], ['deckMotion', deck.motion]]) {
     if (value) body[key] = value;
     else delete body[key];
+  }
+  if (/^#[0-9a-f]{6}$/i.test(deck.accent || '')) {
+    document.body.style.setProperty('--slide-accent', deck.accent);
+    body.accentDark = String(darkColour(deck.accent));
+  } else {
+    document.body.style.removeProperty('--slide-accent');
+    delete body.accentDark;
   }
   host.presentButton?.setAttribute('aria-pressed', 'true');
   deckTheme(true);
@@ -444,7 +471,8 @@ export function present(at, direction, step) {
   const from = slideAt;
   const want = step ?? (direction < 0 ? Infinity : 0);
   const mark = groups[at][0]?.matches('.slide-mark') ? groups[at][0] : null;
-  const transition = reduced() || starting || !direction ? 'none' : mark?.dataset.transition || deck.transition || 'slide';
+  const auto = deck.motion === 'subtle' ? (['cover', 'section'].includes(slideLayout(groups[at], at).layout) ? 'slide' : 'fade') : 'slide';
+  const transition = reduced() || deck.motion === 'none' || starting || !direction ? 'none' : mark?.dataset.transition || deck.transition || auto;
   document.body.dataset.transition = transition;
   host.article.classList.remove('slide-enter');
   const show = () => {
@@ -534,7 +562,8 @@ export function stopPresenting() {
   for (const name of ['background-image', 'grid-template-rows', '--slide-fit', '--slide-cards', '--slide-section', '--slide-from']) host.article.style.removeProperty(name);
   clearTimeout(slideIdle);
   document.body.classList.remove('presenting', 'slide-solo', 'slide-idle', 'slide-portrait');
-  for (const name of ['slideLayout', 'slideBg', 'transition', 'deckAccent', 'deckFont']) delete document.body.dataset[name];
+  for (const name of ['slideLayout', 'slideBg', 'transition', 'deckAccent', 'deckFont', 'deckStyle', 'deckMotion', 'accentDark']) delete document.body.dataset[name];
+  document.body.style.removeProperty('--slide-accent');
   host.presentButton?.setAttribute('aria-pressed', 'false');
   slideAt = -1;
   slideStep = 0;

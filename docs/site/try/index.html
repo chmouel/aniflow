@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Try aniflow in your browser</title>
-<meta name="description" content="Write a Mermaid diagram with a few %% lines under it and watch the walkthrough play, all in the browser.">
+<meta name="description" content="Write Markdown presentations and animated diagrams in your browser.">
 <meta property="og:title" content="Try aniflow">
-<meta property="og:description" content="Animated flow diagrams, in your browser.">
+<meta property="og:description" content="Markdown presentations and animated diagrams, in your browser.">
 <meta property="og:image" content="https://chmouel.github.io/aniflow/img/slide.png">
 <link rel="icon" href="../img/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../lib/vendor/github-markdown.css">
@@ -22,6 +22,7 @@
     <a class="brand" href="../"><img src="../img/logo.svg" width="190" height="53" alt="aniflow"></a>
     <nav aria-label="Site">
       <a href="../">Home</a>
+      <a href="../gallery/">Presentation gallery</a>
       <a href="https://github.com/chmouel/aniflow/blob/main/docs/diagram-walkthroughs.md">Walkthrough guide</a>
       <a href="https://github.com/chmouel/aniflow/blob/main/src/aniflow/spec.md">Syntax</a>
       <a href="https://github.com/chmouel/aniflow">GitHub</a>
@@ -40,9 +41,28 @@
     </label>
     <button type="button" class="button ghost" id="share" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>Copy link</button>
     <button type="button" class="button ghost" id="present" aria-pressed="false" title="Present (P)" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4.5h18v11H3zM12 15.5V20M8 20h8M10 8l4 2.5-4 2.5z"/></svg>Present</button>
+    <button type="button" class="button ghost" id="download">Download Markdown</button>
     <button type="button" class="try-count" id="problem-count" hidden></button>
     <span id="status" class="try-status" role="status"></span>
   </div>
+  <details class="presentation-settings wrap">
+    <summary>Presentation settings</summary>
+    <div class="settings-grid">
+      <label>Style <select data-setting="style"><option value="">Default</option><option>keynote</option><option>conference</option><option>minimal</option></select></label>
+      <label>Accent <input data-setting="accent" placeholder="blue or #cc2244"></label>
+      <label>Pick colour <input id="accent-colour" type="color" value="#5f35a8"></label>
+      <label>Logo URL <input data-setting="logo" placeholder="https://…"></label>
+      <label>Upload logo <input type="file" data-upload="logo" accept="image/png,image/jpeg,image/webp,image/svg+xml"></label>
+      <label>Logo for dark backgrounds <input data-setting="logo-dark" placeholder="https://…"></label>
+      <label>Upload dark logo <input type="file" data-upload="logo-dark" accept="image/png,image/jpeg,image/webp,image/svg+xml"></label>
+      <label>Footer <input data-setting="footer" maxlength="160"></label>
+      <label>Slide numbers <select data-setting="numbers"><option value="">Style default</option><option value="true">On</option><option value="false">Off</option></select></label>
+      <label>Motion <select data-setting="motion"><option value="">Style default</option><option value="subtle">Subtle</option><option value="none">None</option></select></label>
+      <label>Transition <select data-setting="transition"><option value="">Automatic</option><option>slide</option><option>fade</option><option>zoom</option><option>morph</option><option>none</option></select></label>
+    </div>
+    <div class="settings-actions"><button type="button" id="style-defaults">Use style defaults</button> <button type="button" id="save-brand">Save brand</button> <button type="button" id="apply-brand">Apply saved brand</button></div>
+    <p id="settings-status" role="status"></p>
+  </details>
   <div class="try-split">
     <div class="try-editor">
       <label class="sr-only" for="source">Markdown source</label>
@@ -82,5 +102,6 @@
 <script src="../lib/vendor/purify.min.js"></script>
 <script src="../lib/aniflow.min.js"></script>
 <script src="try.js"></script>
+<script src="settings.js"></script>
 </body>
 </html>

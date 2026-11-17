@@ -2,7 +2,7 @@ import { host } from '../host.js';
 import { diagramCanvas } from '../diagram/picture.js';
 import { readFrontMatter } from '../reader/frontmatter.js';
 import { deckSettings, WORDS_MAX } from '../reader/deck.js';
-import { deck, dressCanvas, fitSlide, present, slideAt, slideGroups, slideKey, slideLayout, slidePicture, slideStep, slideStory, slideTitle, stopPresenting } from '../slides.js';
+import { deck, dressCanvas, fitSlide, present, slideAt, slideFrameContents, slideGroups, slideKey, slideLayout, slidePicture, slideStep, slideStory, slideTitle, stopPresenting } from '../slides.js';
 
 let overview = null;
 let presenter = null;
@@ -70,6 +70,11 @@ export function slideThumb(index, width, doc = document, complete = true) {
   dressCanvas(canvas, copies, index);
   reader.append(canvas);
   thumb.append(reader);
+  const frame = doc.createElement('div');
+  frame.className = 'slide-frame';
+  frame.dataset.bg = canvas.dataset.bg || '';
+  frame.append(...slideFrameContents(doc, index, slideGroups().length, canvas));
+  thumb.append(frame);
   return { thumb, canvas };
 }
 
@@ -205,10 +210,13 @@ export function paintPresenter() {
   for (const name of ['theme', 'mode', 'choice']) {
     if (document.documentElement.dataset[name]) doc.documentElement.dataset[name] = document.documentElement.dataset[name];
   }
-  for (const name of ['deckAccent', 'deckFont']) {
+  for (const name of ['deckAccent', 'deckFont', 'deckStyle', 'deckMotion', 'accentDark']) {
     if (document.body.dataset[name]) doc.body.dataset[name] = document.body.dataset[name];
     else delete doc.body.dataset[name];
   }
+  const accent = document.body.style.getPropertyValue('--slide-accent');
+  if (accent) doc.body.style.setProperty('--slide-accent', accent);
+  else doc.body.style.removeProperty('--slide-accent');
   const groups = slideGroups();
   const place = (slot, index, complete) => {
     const ratio = (parseFloat(document.body.style.getPropertyValue('--slide-w')) || 16) / (parseFloat(document.body.style.getPropertyValue('--slide-h')) || 9);
@@ -235,9 +243,16 @@ export function paintPresenter() {
 const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 async function settled() {
   await document.fonts?.ready;
-  await Promise.all([...host.article.querySelectorAll('.slide-on img')].map((image) => image.complete ? null : new Promise((resolve) => {
-    image.addEventListener('load', resolve, { once: true });
-    image.addEventListener('error', resolve, { once: true });
+  const deadline = Date.now() + 10000;
+  while (host.article.querySelector('.highlight-source-mermaid:not([title])') && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  const images = [...host.article.querySelectorAll('.slide-on img'), ...document.querySelectorAll('body > .slide-frame img')];
+  await Promise.all(images.map((image) => image.complete ? null : new Promise((resolve) => {
+    const timer = setTimeout(resolve, 10000);
+    const done = () => { clearTimeout(timer); resolve(); };
+    image.addEventListener('load', done, { once: true });
+    image.addEventListener('error', done, { once: true });
   })));
   await frames();
   fitSlide();
@@ -272,7 +287,7 @@ function pictureLoads(url) {
     image.src = url;
   });
 }
-const DECK_KEYS = ['accent', 'font', 'footer', 'logo', 'numbers', 'aspect', 'transition'];
+const DECK_KEYS = ['accent', 'font', 'footer', 'logo', 'logo-dark', 'numbers', 'aspect', 'transition', 'style', 'motion'];
 export async function deckCheck() {
   const problems = [];
   const lineOf = (element) => Number(element?.dataset?.line || element?.querySelector?.('[data-line]')?.dataset.line) || 0;
@@ -306,6 +321,7 @@ export async function deckCheck() {
     }
   }
   if (deck.logo && !await pictureLoads(slidePicture(deck.logo))) problems.push({ line: 1, message: 'front matter: logo not found: ' + deck.logo });
+  if (deck.logoDark && !await pictureLoads(slidePicture(deck.logoDark))) problems.push({ line: 1, message: 'front matter: logo-dark not found: ' + deck.logoDark });
   stopPresenting();
   document.body.classList.remove('slide-export');
   return problems.sort((a, b) => a.line - b.line);

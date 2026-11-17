@@ -2,11 +2,58 @@ import http.client
 import json
 import re
 import shutil
+import sys
 import threading
 
 import pytest
 
 from aniflow import cli, comments, page, web
+
+
+def test_init_creates_selected_template_without_overwriting(
+    tmp_path, monkeypatch, capsys
+):
+    target = tmp_path / "talk.md"
+    monkeypatch.setattr(
+        sys, "argv", ["aniflow", "--init", str(target), "--style", "keynote"]
+    )
+    cli.main()
+    assert "style: keynote" in target.read_text(encoding="utf-8")
+    assert "Created" in capsys.readouterr().out
+    with pytest.raises(SystemExit) as error:
+        cli.main()
+    assert error.value.code == 2
+    assert "style: keynote" in target.read_text(encoding="utf-8")
+
+
+def test_init_rejects_invalid_combinations(tmp_path, monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["aniflow", "--style", "minimal"])
+    with pytest.raises(SystemExit):
+        cli.main()
+    monkeypatch.setattr(
+        sys, "argv", ["aniflow", "--init", str(tmp_path / "talk.md"), "--spec"]
+    )
+    with pytest.raises(SystemExit):
+        cli.main()
+    assert not (tmp_path / "talk.md").exists()
+
+
+def test_packaged_template_catalogue():
+    folder = cli.SPEC.parent / "templates"
+    catalogue = json.loads((folder / "catalogue.json").read_text(encoding="utf-8"))
+    assert {deck["id"] for deck in catalogue} == {
+        "keynote",
+        "conference",
+        "minimal",
+        "showcase",
+    }
+    for deck in catalogue:
+        assert (folder / deck["file"]).read_text(encoding="utf-8").startswith("---\n")
+
+
+def test_share_warns_about_local_logos():
+    text = '---\nlogo: "./logo.svg"\nlogo-dark: https://example.com/white.svg\n---\n'
+    assert cli.offline_pictures(text) == ["./logo.svg"]
 
 
 def json_block(body, name):

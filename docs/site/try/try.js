@@ -276,6 +276,8 @@ const picker = document.getElementById('example');
 const shareButton = document.getElementById('share');
 const status = document.getElementById('status');
 const draftKey = 'aniflow-try';
+const assetQuery = new URL(document.currentScript.src).search;
+let activeDraftKey = draftKey;
 
 for (const [index, example] of examples.entries()) picker.add(new Option(example.name, String(index)));
 const own = new Option('Your text', '');
@@ -319,8 +321,24 @@ function mermaidProblem(block) {
   return { line: start + at, kind: 'error', message, raw, block };
 }
 
+const logoChecks = new Map();
 function collectProblems() {
   const found = [];
+  const front = Aniflow.readFrontMatter(textarea.value);
+  if (front?.entries) {
+    const deck = Aniflow.deckSettings(front.entries);
+    for (const message of deck.problems) found.push({ line: 1, kind: 'warn', message: 'Front matter: ' + message });
+    for (const [name, url] of [['logo', deck.settings.logo], ['logo-dark', deck.settings.logoDark]]) {
+      if (!url) continue;
+      if (!logoChecks.has(url)) {
+        logoChecks.set(url, null);
+        const image = new Image();
+        image.onload = () => { logoChecks.set(url, true); showProblems(); };
+        image.onerror = () => { logoChecks.set(url, false); showProblems(); };
+        image.src = url;
+      } else if (logoChecks.get(url) === false) found.push({ line: 1, kind: 'warn', message: 'Front matter: ' + name + ' could not be loaded.' });
+    }
+  }
   for (const block of preview.querySelectorAll('.highlight-source-mermaid[title^="Mermaid:"]')) found.push(mermaidProblem(block));
   for (const item of preview.querySelectorAll('.diagram-problems li[data-line]')) {
     const story = item.querySelector('small')?.textContent.split(' · ')[0];
@@ -441,7 +459,7 @@ textarea.addEventListener('input', () => {
   marks.replaceChildren();
   const index = examples.findIndex((example) => example.source === textarea.value);
   picker.value = index < 0 ? '' : String(index);
-  try { localStorage.setItem(draftKey, textarea.value); } catch (error) { /* private mode */ }
+  try { localStorage.setItem(activeDraftKey, textarea.value); } catch (error) { /* private mode */ }
   if (location.hash) history.replaceState(null, '', location.pathname + location.search);
 });
 
@@ -462,6 +480,7 @@ textarea.addEventListener('blur', () => { leaving = false; });
 function load(text) {
   textarea.value = text;
   render();
+  textarea.dispatchEvent(new Event('aniflow-settings-sync'));
 }
 
 picker.addEventListener('change', () => {
@@ -471,9 +490,16 @@ picker.addEventListener('change', () => {
     picker.value = '';
     return;
   }
-  load(example.source);
-  try { localStorage.removeItem(draftKey); } catch (error) { /* private mode */ }
-  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+  activeDraftKey = example.id ? draftKey + '-' + example.id : draftKey;
+  let saved = null;
+  try { saved = localStorage.getItem(activeDraftKey); } catch (error) { /* private mode */ }
+  load(saved !== null ? saved : example.source);
+  if (saved !== null) picker.value = '';
+  const url = new URL(location.href);
+  if (example.id) url.searchParams.set('template', example.id);
+  else url.searchParams.delete('template');
+  url.hash = '';
+  history.replaceState(null, '', url);
 });
 
 // Links carry the text deflated and base64url encoded in #src=, so they stay short and need no server.
@@ -530,13 +556,45 @@ async function fromHash() {
 addEventListener('hashchange', fromHash);
 
 (async () => {
-  if (await fromHash()) return;
-  let draft = null;
-  try { draft = localStorage.getItem(draftKey); } catch (error) { /* private mode */ }
-  if (draft) {
-    load(draft);
-    picker.value = '';
-  } else {
-    load(examples[0].source);
+  textarea.disabled = true;
+  try {
+    const linked = await fromHash();
+    try {
+      const response = await fetch('../lib/templates/catalogue.json' + assetQuery);
+      if (!response.ok) throw new Error('catalogue unavailable');
+      const catalogue = await response.json();
+      for (const item of catalogue) {
+        const template = await fetch('../lib/templates/' + item.file + assetQuery);
+        if (!template.ok) throw new Error('template unavailable');
+        const source = await template.text();
+        examples.push({ id: item.id, name: item.title, source });
+        picker.add(new Option(item.title, String(examples.length - 1)));
+      }
+      if (linked) return;
+      const requested = new URLSearchParams(location.search).get('template');
+      if (requested) {
+        const index = examples.findIndex((item) => item.id === requested);
+        if (index < 0) say('Template not found.');
+        else {
+          activeDraftKey = draftKey + '-' + requested;
+          let saved = null;
+          try { saved = localStorage.getItem(activeDraftKey); } catch (error) { /* private mode */ }
+          load(saved !== null ? saved : examples[index].source);
+          picker.value = saved !== null ? '' : String(index);
+          return;
+        }
+      }
+    } catch (error) { say('Presentation templates could not be loaded.'); }
+    if (linked) return;
+    let draft = null;
+    try { draft = localStorage.getItem(draftKey); } catch (error) { /* private mode */ }
+    if (draft !== null) {
+      load(draft);
+      picker.value = '';
+    } else {
+      load(examples[0].source);
+    }
+  } finally {
+    textarea.disabled = false;
   }
 })();

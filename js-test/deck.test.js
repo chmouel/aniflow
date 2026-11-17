@@ -50,6 +50,17 @@ test('deckSettings takes presets and reports the rest', () => {
   assert.match(deckSettings(readFrontMatter('---\nlogo: x(y)\n---\n').entries).problems[0], /logo/);
 });
 
+test('presentation styles provide defaults that explicit settings override', () => {
+  const front = readFrontMatter('---\nstyle: keynote\naccent: "#cc2244"\nnumbers: true\nmotion: none\nlogo-dark: ./white.svg\n---\n');
+  assert.deepEqual(deckSettings(front.entries).settings, {
+    autoplay: true, numbers: true, aspect: '16:9', theme: 'dark', font: 'modern',
+    accent: '#cc2244', motion: 'none', style: 'keynote', logoDark: './white.svg',
+  });
+  assert.equal(deckSettings(readFrontMatter('---\nstyle: minimal\n---\n').entries).settings.motion, 'none');
+  assert.equal(deckSettings([]).settings.style, undefined);
+  assert.equal(deckSettings(readFrontMatter('---\nstyle: unknown\nmotion: fast\naccent: "#xyz123"\n---\n').entries).problems.length, 3);
+});
+
 test('codeSteps parses line ranges and rejects anything else', () => {
   assert.deepEqual(codeSteps('1-3|5|all'), [[[1, 3]], [[5, 5]], null]);
   assert.deepEqual(codeSteps('2,4-5'), [[[2, 2], [4, 5]]]);

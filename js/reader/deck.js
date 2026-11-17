@@ -9,11 +9,18 @@ export const TRANSITIONS = ['slide', 'fade', 'zoom', 'morph', 'none'];
 export const ACCENTS = ['blue', 'violet', 'green', 'amber', 'red'];
 export const FONTS = ['modern', 'classic', 'mono', 'rounded'];
 export const ASPECTS = ['16:9', '4:3'];
+export const STYLES = ['keynote', 'conference', 'minimal'];
+export const MOTIONS = ['subtle', 'none'];
+const PRESETS = {
+  keynote: { theme: 'dark', font: 'modern', accent: 'violet', motion: 'subtle', numbers: false },
+  conference: { theme: 'light', font: 'modern', accent: 'blue', motion: 'subtle', numbers: true },
+  minimal: { theme: 'light', font: 'classic', accent: 'blue', motion: 'none', numbers: false },
+};
 export const SLIDE_FLAGS = ['reveal', 'dim', 'flip'];
 export const WORDS_MAX = 90;
 
 const DIRECTIVE = /^<!--[ \t]*(slide|column|reveal|notes)(?=[\s:]|-->)([\s\S]*?)-->\s*$/;
-const PICTURE = /^(?:\.{0,2}\/|[\w-][\w./-]*\.(?:png|jpe?g|gif|webp|svg|avif)$|https:\/\/)/i;
+const PICTURE = /^(?:\.{0,2}\/|[\w-][\w./-]*\.(?:png|jpe?g|gif|webp|svg|avif)$|https:\/\/|data:image\/(?:png|jpe?g|gif|webp|svg\+xml);base64,)/i;
 
 // One HTML comment block: {kind, options, notes, problems}, or null when it is an ordinary comment.
 export function slideDirective(text) {
@@ -64,6 +71,9 @@ const no = (value) => /^(?:false|no|off)$/i.test(String(value).trim());
 export function deckSettings(entries) {
   const settings = { autoplay: true, numbers: false, aspect: '16:9' };
   const problems = [];
+  const style = [...(entries || [])].reverse().find((entry) => entry.key === 'style');
+  const preset = String(style?.value || '').trim().toLowerCase();
+  if (PRESETS[preset]) Object.assign(settings, PRESETS[preset]);
   for (const entry of entries || []) {
     const value = entry.kind === 'scalar' || entry.kind === 'text' ? String(entry.value).trim() : '';
     const pick = (key, allowed) => {
@@ -71,7 +81,12 @@ export function deckSettings(entries) {
       else problems.push(key + ': ' + (value || entry.kind) + ' is not one of ' + allowed.join(', '));
     };
     switch (entry.key) {
-      case 'accent': pick('accent', ACCENTS); break;
+      case 'style': pick('style', STYLES); break;
+      case 'motion': pick('motion', MOTIONS); break;
+      case 'accent':
+        if (/^#[0-9a-f]{6}$/i.test(value)) settings.accent = value;
+        else pick('accent', ACCENTS);
+        break;
       case 'font': pick('font', FONTS); break;
       case 'aspect': pick('aspect', ASPECTS); break;
       case 'transition': pick('transition', TRANSITIONS); break;
@@ -79,9 +94,9 @@ export function deckSettings(entries) {
       case 'numbers': settings.numbers = yes(value); break;
       case 'autoplay': settings.autoplay = !no(value); break;
       case 'footer': if (value) settings.footer = value.slice(0, 160); break;
-      case 'logo':
-        if (PICTURE.test(value) && !/["'()\\\s]/.test(value)) settings.logo = value;
-        else if (value) problems.push('logo: ' + value + ' is not a picture path');
+      case 'logo': case 'logo-dark':
+        if (PICTURE.test(value) && !/["'()\\\s]/.test(value)) settings[entry.key === 'logo' ? 'logo' : 'logoDark'] = value;
+        else if (value) problems.push(entry.key + ': ' + value.slice(0, 120) + ' is not a picture path');
         break;
       case 'title': case 'author': case 'date':
         if (value) settings[entry.key] = value.slice(0, 200);

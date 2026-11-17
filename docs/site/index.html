@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>aniflow: animated flow diagrams</title>
-<meta name="description" content="aniflow serves a folder of Markdown on localhost. A few %% lines under a Mermaid diagram turn it into a walkthrough: a dot follows the arrows, boxes light up and a caption explains each step.">
+<title>aniflow: Markdown presentations with animated diagrams</title>
+<meta name="description" content="Write Markdown presentations, add a logo, and present animated Mermaid diagrams in your browser.">
 <meta property="og:title" content="aniflow">
-<meta property="og:description" content="Animated flow diagrams.">
+<meta property="og:description" content="Markdown presentations with animated diagrams.">
 <meta property="og:image" content="https://chmouel.github.io/aniflow/img/slide.png">
 <link rel="icon" href="img/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="lib/vendor/github-markdown.css">
@@ -26,6 +26,7 @@
       <a href="#agents">Agents</a>
       <a href="#library">Library</a>
       <a href="#install">Install</a>
+      <a href="gallery/">Gallery</a>
       <a href="try/">Try it</a>
       <a href="https://github.com/chmouel/aniflow">GitHub</a>
     </nav>
@@ -36,11 +37,13 @@
 <section class="land-hero">
   <div class="wrap">
     <div class="hero-text">
-      <h1>Animated flow diagrams.</h1>
+      <h1>Markdown presentations with animated diagrams.</h1>
       <div>
-        <p class="lede">aniflow serves a folder of Markdown files on your machine. Put a few <code>%%</code> lines under a Mermaid diagram and it turns into a walkthrough: a dot follows the arrows, boxes light up, and a caption tells the reader what is happening.</p>
+        <p class="lede">Write your slides in Markdown, add your logo, and present in the browser. Bring Mermaid diagrams to life as walkthroughs, or browse your documents locally.</p>
         <div class="actions">
           <button type="button" class="button" id="run"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>Run it</button>
+          <a class="button ghost" href="gallery/">Browse templates</a>
+          <a class="button ghost" href="try/">Try it</a>
           <a class="button ghost" href="#install"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7.5 10 12l-5 4.5M12.5 17H19"/></svg>Install</a>
           <a class="button ghost" href="https://github.com/chmouel/aniflow"><svg class="solid" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2 0-.4-.5-1.6.2-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.7 18.3 5 18.3 5c.7 1.6.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg>GitHub</a>
         </div>
@@ -132,10 +135,10 @@ flowchart LR
 <section class="band" aria-labelledby="band-title">
   <div class="wrap">
     <div>
-      <h2 id="band-title">Present it without making slides</h2>
-      <p>Present mode shows the document you already wrote as slides. Each <code>##</code> heading starts a slide, a slide with only a diagram gets the whole screen, and the arrow keys walk through the story before they turn the page.</p>
-      <p>Pick Light, Dark, Dracula, Tokyo Night, Rosé Pine or Rosé Pine Dawn from the menu. The diagrams take the colours of whichever you choose.</p>
-      <a class="button" href="https://github.com/chmouel/aniflow/blob/main/docs/diagram-walkthroughs.md">Read the walkthrough guide</a>
+      <h2 id="band-title">Make a presentation in Markdown</h2>
+      <p>Choose a style, add a logo and write your talk. Each <code>##</code> heading starts a slide, and the arrow keys walk through a diagram before turning the page.</p>
+      <p>Present with speaker notes, or export your slides to PDF or PNG.</p>
+      <a class="button" href="gallery/">Browse presentation templates</a>
     </div>
     <figure class="browser dark">
       <span class="bar">Present mode, Tokyo Night</span>
