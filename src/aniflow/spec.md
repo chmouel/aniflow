@@ -276,8 +276,11 @@ whatever the slide holds.
 
 ### Presenting
 
-Keys: arrows, Space, `j`/`k` and PageDown/PageUp step through reveals, code
-steps and the diagram story, then move on; `n`/`b` jump a whole slide;
+Keys: arrows, Space/Shift+Space, `j`/`k` and PageDown/PageUp step through
+reveals, code steps and the diagram story, then move on, even with a diagram
+focused. A click on the right half of the screen goes forward and on the left
+half back, like an e-book, diagrams included; links, buttons and the diagram
+tools still work, and a drag still pans; `n`/`b` jump a whole slide;
 Home/End; `o` shows every slide as a grid; `s` opens the presenter window
 with the current and next slide, notes, a timer and the clock, kept in sync
 with the main window; `l` turns on a laser pointer; Escape leaves. The link

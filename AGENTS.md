@@ -223,7 +223,10 @@ draws or shows a dialog; an app that reloads itself checks it first
 
 Slides (`slides.js`) split the article's direct children on H2, or H1 when
 there are several, keep `#slide=N`, and let a diagram's story steps run
-before the slide changes (`slideMove`). The dock buttons, rail ticks, `n`/`b`
+before the slide changes (`slideMove`). Space and Shift+Space call
+`slideMove` like the arrows, and a click (not a drag, not on `SLIDE_CONTROLS`)
+on the left or right half of the screen does too, captured before a diagram's
+own click and double-click handlers. The dock buttons, rail ticks, `n`/`b`
 and Shift+PageDown/PageUp call `present()` directly and skip the story;
 `present()` pauses a story still playing on the slide it leaves and plays
 the new slide's story when it has not started or has finished

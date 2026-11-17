@@ -931,7 +931,8 @@ Ask who reviewed a pull request at midnight this week.
 
 | Key | Does |
 | --- | --- |
-| Right, Space, `j` | Next reveal, code step or diagram step, then the next slide |
+| Right, Space, `j`, click the right half | Next reveal, code step or diagram step, then the next slide |
+| Left, Shift+Space, `k`, click the left half | The step or slide before |
 | `n`, `b` | Next or previous slide, skipping the steps |
 | `o` | Every slide as a grid; click one to go there |
 | `s` | Presenter window with notes, the next slide and a timer |

@@ -19,6 +19,8 @@ let themeBefore = null;
 let slideReturn = '';
 export const isHeading = (element) => /^H[1-6]$/.test(element.tagName);
 const MARKERS = '.slide-mark, .slide-column-mark, .slide-reveal-mark, .slide-notes';
+// What a click while presenting should reach instead of turning the page.
+const SLIDE_CONTROLS = 'a[href], button, input, select, textarea, summary, label, video, audio, iframe, [contenteditable="true"], [contenteditable=""], .slide-dock, .diagram-tools, .diagram-pins, .diagram-notes, .play-warn';
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // The article's children cut into slides: at each H2 (or H1 when there are several), and at
@@ -594,13 +596,12 @@ export function slideKey(event) {
     }
     return;
   }
-  if ((event.key === ' ' || event.key === 'Enter') && event.target.closest?.('button')) return;
+  if (event.key === 'Enter' && event.target.closest?.('button')) return;
   const key = event.key;
   if (overviewOpen() && key !== 'o' && key !== 'Escape') return;
   // n, b and Shift+PageDown/PageUp leave the slide even while it has steps left.
   if (key === 'n' || (key === 'PageDown' && event.shiftKey)) present(slideAt + 1, 1);
   else if (key === 'b' || (key === 'PageUp' && event.shiftKey)) present(slideAt - 1, -1);
-  else if (key === ' ' && !event.shiftKey && slideStory() && slideStep >= steps.length) slideStory().toggle();
   else if ((key === 'ArrowRight' && !event.shiftKey) || key === 'ArrowDown' || key === 'PageDown' || key === 'j' || (key === ' ' && !event.shiftKey)) slideMove(1);
   else if ((key === 'ArrowLeft' && !event.shiftKey) || key === 'ArrowUp' || key === 'PageUp' || key === 'k' || (key === ' ' && event.shiftKey)) slideMove(-1);
   else if ((key === '<' || key === '>') && slideStory()) setDiagramSpeed(key === '>' ? 1 : -1);
@@ -669,6 +670,36 @@ export function initSlides() {
       stopPresenting();
     });
     let swipe = null;
+    // Like an e-book: a click on the left half of the screen goes back, anywhere else forward,
+    // diagrams included. Drags (panning, the pen, selecting text) and the slide's own controls
+    // are left alone; a selection that was there before the press does not count.
+    let press = null;
+    document.addEventListener('pointerdown', (event) => {
+      press = slideAt >= 0 && event.isPrimary && event.button === 0
+        ? { x: event.clientX, y: event.clientY, moved: false, selection: String(document.getSelection() || '') } : null;
+    }, true);
+    document.addEventListener('pointermove', (event) => {
+      if (press && event.isPrimary && Math.hypot(event.clientX - press.x, event.clientY - press.y) > 6) press.moved = true;
+    }, { capture: true, passive: true });
+    document.addEventListener('pointercancel', () => { press = null; }, true);
+    document.addEventListener('click', (event) => {
+      const start = press;
+      press = null;
+      if (slideAt < 0 || !start || start.moved || event.button !== 0 || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 6 || overviewOpen() || document.querySelector('dialog[open]')) return;
+      const selection = String(document.getSelection() || '');
+      if (selection && selection !== start.selection) return;
+      const under = document.elementFromPoint(event.clientX, event.clientY) || event.target;
+      if (under.closest?.(SLIDE_CONTROLS) || under.closest?.('.diagram-stage.drawing, .diagram-stage.commenting')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      slideMove(event.clientX < innerWidth / 2 ? -1 : 1);
+      slideWake();
+    }, true);
+    // A double click is two page turns while presenting, not a diagram zoom.
+    document.addEventListener('dblclick', (event) => {
+      if (slideAt >= 0 && !event.target.closest?.(SLIDE_CONTROLS)) event.stopPropagation();
+    }, true);
     document.addEventListener('touchstart', (event) => {
       swipe = slideAt >= 0 && event.touches.length === 1 && !event.target.closest('.diagram-stage, pre, table, .slide-dock')
         ? [event.touches[0].clientX, event.touches[0].clientY] : null;
