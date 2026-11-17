@@ -65,6 +65,16 @@ def test_gallery_and_template_editor(tmp_path):
                 "Feature showcase",
                 "Animated diagram walkthroughs",
             ]
+            assert (
+                client.evaluate(
+                    session,
+                    """(async () => {
+                  const source = await (await fetch('../lib/templates/walkthrough.md')).text();
+                  return (source.match(/data:image\\/webp;base64,/g) || []).length;
+                })()""",
+                )
+                == 12
+            )
 
             navigate("gallery/view.html?deck=walkthrough#slide=3")
             walkthrough = client.evaluate(
@@ -82,6 +92,18 @@ def test_gallery_and_template_editor(tmp_path):
             assert walkthrough["presenting"]
             assert walkthrough["slides"] >= 20
             assert walkthrough["heading"] == "Animated diagram walkthroughs"
+            assert client.evaluate(
+                session,
+                """(async () => {
+                  let images;
+                  for (let n = 0; n < 100; n++) {
+                    images = [...document.querySelectorAll('#deck img[src^="data:image/webp;base64,"]')];
+                    if (images.length === 12 && images.every(img => img.naturalWidth)) break;
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                  }
+                  return images.length === 12 && images.every(img => img.naturalWidth > 0);
+                })()""",
+            )
 
             story = client.evaluate(
                 session,

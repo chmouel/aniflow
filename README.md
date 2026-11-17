@@ -275,8 +275,9 @@ fails when they are out of date.
 After changing a gallery deck, run
 `uv run python contrib/gallery_previews.py walkthrough` (using its ID) to
 regenerate its preview strip. Omit the ID to rebuild every preview. This needs
-Chrome and ImageMagick 7. The walkthrough's embedded pencil drawings can be
+Chrome and ImageMagick 7. The walkthrough's pencil drawings can be
 regenerated with `uv run --with pillow python contrib/walkthrough_illustrations.py`.
+The site embeds them in its downloadable Markdown.
 
 ## License
 

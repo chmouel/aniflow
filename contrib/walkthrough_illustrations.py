@@ -1,21 +1,18 @@
-"""Draw the walkthrough's pencil illustrations and embed them in the deck.
+"""Draw the walkthrough's pencil illustrations.
 
 Run with Pillow installed: python contrib/walkthrough_illustrations.py
 """
 
-import base64
-import io
 import itertools
 import math
 import random
-import re
 from pathlib import Path
 
 from PIL import Image, ImageDraw
 
 SIZE = 1200
 ROOT = Path(__file__).resolve().parents[1]
-DECK = ROOT / "src/aniflow/templates/walkthrough.md"
+TEMPLATES = ROOT / "src/aniflow/templates"
 
 
 class Pencil:
@@ -198,43 +195,200 @@ def paper_plane():
     return p.finish()
 
 
+def branching_paths():
+    p = Pencil(1904)
+    p.curve((295, 972), (336, 820), (410, 657), (566, 566), width=5)
+    p.curve((566, 566), (663, 508), (719, 394), (777, 255), width=5)
+    p.curve((566, 566), (683, 584), (794, 652), (927, 712), width=5)
+    p.curve((331, 993), (380, 820), (453, 688), (583, 605), width=2, strength=75)
+    p.curve((583, 605), (708, 628), (810, 690), (919, 742), width=2, strength=75)
+    for x, y, r in ((295, 972, 25), (566, 566, 32), (777, 255, 25), (927, 712, 25)):
+        p.ring(x, y, r, width=3, strength=135)
+    p.arrow((758, 303), (777, 255), 28)
+    p.arrow((875, 688), (927, 712), 28)
+    p.stroke([(602, 240), (632, 224), (651, 244)], width=2, strength=75)
+    p.stroke([(908, 537), (940, 529), (959, 550)], width=2, strength=75)
+    p.hatch((338, 822), 14, 8, -14, -22, -12, 35)
+    p.hatch((657, 609), 15, 14, 6, -10, 25, 35)
+    return p.finish()
+
+
+def playback_keys():
+    p = Pencil(1905)
+    p.stroke([(193, 484), (924, 363), (1007, 724), (280, 854), (193, 484)], width=5)
+    p.stroke([(205, 503), (287, 838), (995, 710)], width=2, strength=75)
+    p.stroke([(278, 563), (439, 537), (467, 657), (307, 683), (278, 563)], width=3)
+    p.stroke([(350, 602), (385, 577), (393, 620), (350, 602)], width=3)
+    p.stroke([(504, 526), (856, 468), (881, 590), (530, 650), (504, 526)], width=3)
+    p.stroke([(544, 584), (828, 536)], width=2, strength=80)
+    p.stroke([(390, 735), (807, 665)], width=3, strength=90)
+    p.hatch((294, 854), 35, 19, -3.4, 15, 22, 36)
+    p.stroke([(435, 353), (420, 313)], width=2, strength=80)
+    p.stroke([(501, 335), (499, 288)], width=2, strength=80)
+    p.stroke([(568, 327), (580, 285)], width=2, strength=80)
+    return p.finish()
+
+
+def conversation():
+    p = Pencil(1906)
+    p.curve((231, 310), (302, 216), (642, 211), (727, 302), width=4)
+    p.curve((727, 302), (805, 382), (741, 506), (630, 529), width=4)
+    p.stroke([(630, 529), (570, 612), (559, 535)], width=4)
+    p.curve((559, 535), (384, 555), (243, 528), (211, 450), width=4)
+    p.curve((211, 450), (192, 408), (197, 353), (231, 310), width=4)
+    p.curve((598, 639), (667, 584), (883, 591), (940, 653), width=4)
+    p.curve((940, 653), (999, 719), (958, 811), (883, 830), width=4)
+    p.stroke([(883, 830), (858, 909), (811, 834)], width=4)
+    p.curve((811, 834), (673, 847), (575, 811), (563, 741), width=4)
+    p.curve((563, 741), (554, 699), (567, 666), (598, 639), width=4)
+    for x in (361, 461, 561):
+        p.ring(x, 385, 17, width=3, strength=120)
+    for x in (678, 758, 838):
+        p.ring(x, 716, 13, width=3, strength=120)
+    p.hatch((258, 480), 16, 12, 2, 18, -25, 32)
+    p.hatch((617, 791), 14, 12, 2, 17, -22, 32)
+    return p.finish()
+
+
+def presentation():
+    p = Pencil(1907)
+    p.stroke([(240, 252), (966, 252), (966, 708), (240, 708), (240, 252)], width=5)
+    p.stroke(
+        [(255, 269), (950, 269), (950, 690), (255, 690), (255, 269)],
+        width=2,
+        strength=80,
+    )
+    p.stroke([(217, 231), (990, 231)], width=5)
+    p.stroke([(603, 710), (603, 891)], width=4)
+    p.stroke([(604, 830), (473, 969)], width=4)
+    p.stroke([(604, 830), (739, 969)], width=4)
+    p.stroke([(456, 976), (490, 976)], width=3, strength=95)
+    p.stroke([(723, 976), (757, 976)], width=3, strength=95)
+    for x, y in ((392, 466), (570, 405), (762, 505)):
+        p.ring(x, y, 30, width=3, strength=130)
+    p.curve((423, 457), (460, 441), (502, 420), (537, 411), width=3)
+    p.arrow((511, 418), (537, 411), 20)
+    p.curve((601, 412), (657, 422), (688, 470), (728, 493), width=3)
+    p.arrow((705, 479), (728, 493), 20)
+    p.hatch((258, 702), 34, 20, 0, 15, 21, 35)
+    p.hatch((278, 286), 20, 0, 18, 19, -25, 28)
+    return p.finish()
+
+
+def node_tag():
+    p = Pencil(1908)
+    p.stroke(
+        [(304, 419), (610, 238), (930, 563), (627, 873), (304, 549), (304, 419)],
+        width=5,
+    )
+    p.stroke([(319, 432), (605, 257), (910, 563), (625, 854)], width=2, strength=75)
+    p.ring(403, 468, 25, width=3, strength=120)
+    p.curve((400, 467), (301, 469), (234, 354), (299, 289), width=3, strength=100)
+    p.curve((299, 289), (357, 231), (444, 278), (423, 352), width=3, strength=100)
+    p.stroke([(558, 439), (680, 563)], width=5)
+    p.stroke([(611, 386), (733, 510)], width=5)
+    p.stroke([(545, 510), (695, 360)], width=5)
+    p.stroke([(604, 570), (754, 420)], width=5)
+    p.hatch((640, 848), 17, 15, -15, 23, 14, 35)
+    return p.finish()
+
+
+def parallel_paths():
+    p = Pencil(1909)
+    p.ring(228, 584, 42, width=4, strength=135)
+    p.ring(966, 584, 42, width=4, strength=135)
+    p.curve((271, 565), (420, 495), (424, 350), (590, 350), width=4)
+    p.curve((590, 350), (754, 350), (769, 488), (922, 565), width=4)
+    p.curve((271, 603), (420, 673), (424, 819), (590, 819), width=4)
+    p.curve((590, 819), (754, 819), (769, 681), (922, 603), width=4)
+    p.arrow((643, 350), (683, 365), 25)
+    p.arrow((643, 819), (683, 804), 25)
+    p.ring(590, 350, 20, width=3, strength=120)
+    p.ring(590, 819, 20, width=3, strength=120)
+    p.hatch((352, 488), 10, 8, -11, -21, -12, 35)
+    p.hatch((737, 738), 10, 9, -10, 19, 17, 35)
+    return p.finish()
+
+
+def stopwatch():
+    p = Pencil(1910)
+    p.ring(600, 620, 298, width=5, strength=140)
+    p.ring(600, 620, 280, width=2, strength=85)
+    p.stroke([(553, 324), (553, 265), (647, 265), (647, 324)], width=4)
+    p.stroke([(529, 261), (671, 261), (671, 224), (529, 224), (529, 261)], width=4)
+    p.stroke([(787, 383), (828, 342), (864, 377), (823, 418)], width=4)
+    for angle in range(0, 360, 30):
+        a = math.radians(angle)
+        p.stroke(
+            [
+                (600 + 239 * math.cos(a), 620 + 239 * math.sin(a)),
+                (600 + 259 * math.cos(a), 620 + 259 * math.sin(a)),
+            ],
+            width=3,
+            strength=105,
+        )
+    p.stroke([(600, 620), (600, 439)], width=5, strength=135)
+    p.stroke([(600, 620), (740, 678)], width=4, strength=125)
+    p.ring(600, 620, 13, width=3, strength=130)
+    p.hatch((370, 810), 23, 17, 7, 18, -20, 35)
+    p.stroke([(265, 449), (228, 431)], width=2, strength=80)
+    p.stroke([(253, 500), (209, 494)], width=2, strength=80)
+    return p.finish()
+
+
+def drawing_pencil():
+    p = Pencil(1911)
+    p.stroke([(489, 801), (878, 297), (930, 338), (542, 842), (489, 801)], width=5)
+    p.stroke([(878, 297), (906, 264), (947, 299), (930, 338)], width=4)
+    p.stroke([(489, 801), (464, 895), (542, 842)], width=4)
+    p.stroke([(464, 895), (489, 881)], width=4)
+    p.stroke([(505, 805), (892, 306)], width=2, strength=85)
+    p.stroke([(525, 822), (913, 321)], width=2, strength=85)
+    p.stroke([(830, 359), (882, 399)], width=3, strength=90)
+    p.hatch((557, 800), 19, 14, -18, 19, 15, 45)
+    p.curve((468, 895), (365, 955), (245, 944), (281, 846), width=3, strength=105)
+    p.curve((281, 846), (313, 767), (423, 844), (391, 914), width=3, strength=105)
+    p.curve((391, 914), (363, 983), (237, 1004), (193, 950), width=3, strength=95)
+    p.stroke([(692, 262), (677, 222)], width=2, strength=80)
+    p.stroke([(744, 246), (750, 206)], width=2, strength=80)
+    p.stroke([(792, 254), (815, 220)], width=2, strength=80)
+    return p.finish()
+
+
+def saved_picture():
+    p = Pencil(1912)
+    p.stroke([(275, 321), (808, 233), (905, 805), (372, 893), (275, 321)], width=4)
+    p.stroke([(314, 289), (847, 201), (944, 773)], width=3, strength=85)
+    p.stroke([(342, 390), (755, 322), (819, 698), (405, 766), (342, 390)], width=4)
+    p.ring(690, 418, 41, width=3, strength=115)
+    p.stroke([(405, 714), (495, 579), (572, 640), (645, 532), (797, 669)], width=4)
+    p.stroke([(553, 913), (666, 1015), (767, 878)], width=4)
+    p.stroke([(666, 1015), (648, 823)], width=4)
+    p.hatch((385, 900), 21, 19, -3, 13, 22, 35)
+    p.stroke([(246, 276), (221, 244)], width=2, strength=80)
+    p.stroke([(299, 250), (291, 209)], width=2, strength=80)
+    return p.finish()
+
+
 SLOTS = (
-    (
-        "A dot travels along the arrows. Boxes light up. Captions explain what is happening.",
-        "Pencil sketch of a diagram on paper",
-        sketch_page,
-    ),
-    (
-        "Drag, zoom or pan whenever you want to take over.",
-        "Pencil sketch of a magnifying glass following a branching path",
-        follow_path,
-    ),
-    (
-        "Run `aniflow --spec` for the full syntax and icon list.",
-        "Pencil sketch of a paper plane following a path",
-        paper_plane,
-    ),
+    ("walkthrough-pencil-page.webp", sketch_page),
+    ("walkthrough-pencil-magnifier.webp", follow_path),
+    ("walkthrough-pencil-plane.webp", paper_plane),
+    ("walkthrough-pencil-paths.webp", branching_paths),
+    ("walkthrough-pencil-keys.webp", playback_keys),
+    ("walkthrough-pencil-comments.webp", conversation),
+    ("walkthrough-pencil-presentation.webp", presentation),
+    ("walkthrough-pencil-tag.webp", node_tag),
+    ("walkthrough-pencil-parallel.webp", parallel_paths),
+    ("walkthrough-pencil-stopwatch.webp", stopwatch),
+    ("walkthrough-pencil-drawing.webp", drawing_pencil),
+    ("walkthrough-pencil-save.webp", saved_picture),
 )
 
 
 def main():
-    text = DECK.read_text(encoding="utf-8")
-    for anchor, alt, draw in SLOTS:
-        if text.count(anchor) != 1:
-            raise ValueError(f"Expected one copy of {anchor!r}")
-        data = io.BytesIO()
-        draw().save(data, format="WEBP", quality=78, method=6)
-        picture = f"![{alt}](data:image/webp;base64,{base64.b64encode(data.getvalue()).decode()})"
-        pattern = (
-            r"\n\n!\["
-            + re.escape(alt)
-            + r"\]\(data:image/webp;base64,[A-Za-z0-9+/=]+\)"
-        )
-        text, count = re.subn(pattern, "", text)
-        if count > 1:
-            raise ValueError(f"Duplicate illustration: {alt}")
-        text = text.replace(anchor, anchor + "\n\n" + picture, 1)
-    DECK.write_text(text, encoding="utf-8")
+    for name, draw in SLOTS:
+        draw().save(TEMPLATES / name, format="WEBP", quality=78, method=6)
 
 
 if __name__ == "__main__":

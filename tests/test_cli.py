@@ -50,6 +50,12 @@ def test_packaged_template_catalogue():
     }
     for deck in catalogue:
         assert (folder / deck["file"]).read_text(encoding="utf-8").startswith("---\n")
+    walkthrough = (folder / "walkthrough.md").read_text(encoding="utf-8")
+    pictures = re.findall(r"!\[Pencil sketch[^]]*\]\(([^)]+)\)", walkthrough)
+    assert len(pictures) == 12
+    for name in pictures:
+        data = (folder / name).read_bytes()
+        assert data[:4] == b"RIFF" and data[8:12] == b"WEBP"
 
 
 def test_share_warns_about_local_logos():
