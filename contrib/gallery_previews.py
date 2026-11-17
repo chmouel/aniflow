@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 
 # Inner slides shown beside the cover, 1-based.
-PICKS = {"showcase": (3, 5), "minimal": (6, 5), "walkthrough": (3, 8)}
+PICKS = {"showcase": (3, 5), "minimal": (6, 5), "walkthrough": (2, 8)}
 DEFAULT_PICKS = (2, 5)
 
 root = Path(__file__).resolve().parents[1]
