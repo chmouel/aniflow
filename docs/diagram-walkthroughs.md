@@ -1,5 +1,7 @@
 # Diagram walkthroughs
 
+For a guided tour, open the [walkthrough presentation](https://chmouel.github.io/aniflow/gallery/view.html?deck=walkthrough).
+
 aniflow can play a mermaid flowchart or sequence diagram as a short story. A
 labelled dot travels from box to box, the box it reaches lights up, finished
 boxes get a check mark,

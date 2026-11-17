@@ -103,8 +103,9 @@ flowchart LR
 
 `aniflow --spec` prints the full syntax and the built-in icon names, handy as
 a cheat sheet or for a coding agent writing diagrams.
-[`docs/diagram-walkthroughs.md`](docs/diagram-walkthroughs.md) shows every
-feature in a live document.
+The [walkthrough presentation](https://chmouel.github.io/aniflow/gallery/view.html?deck=walkthrough)
+shows how to write and play stories; [`docs/diagram-walkthroughs.md`](docs/diagram-walkthroughs.md)
+has the detailed reference.
 
 To show a walkthrough to someone without aniflow installed,
 `aniflow --share FILE` prints a link to the [online try
@@ -271,8 +272,10 @@ uv run ruff format . && uv run ruff check .
 
 The built files are committed so `uvx` works without Node; `npm run check`
 fails when they are out of date.
-After changing a gallery deck, run `uv run python contrib/gallery_previews.py`
-to regenerate its preview strip (Chrome and ImageMagick 7).
+After changing a gallery deck, run
+`uv run python contrib/gallery_previews.py walkthrough` (using its ID) to
+regenerate its preview strip. Omit the ID to rebuild every preview. This needs
+Chrome and ImageMagick 7.
 
 ## License
 

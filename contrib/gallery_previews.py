@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 
 # Inner slides shown beside the cover, 1-based.
-PICKS = {"showcase": (3, 5), "minimal": (6, 5)}
+PICKS = {"showcase": (3, 5), "minimal": (6, 5), "walkthrough": (3, 8)}
 DEFAULT_PICKS = (2, 5)
 
 root = Path(__file__).resolve().parents[1]
@@ -20,7 +20,14 @@ output = root / "docs/site/gallery/previews"
 output.mkdir(parents=True, exist_ok=True)
 if not shutil.which("magick"):
     sys.exit("gallery_previews.py needs ImageMagick 7 (magick) on PATH")
-for deck in json.loads((templates / "catalogue.json").read_text(encoding="utf-8")):
+catalogue = json.loads((templates / "catalogue.json").read_text(encoding="utf-8"))
+wanted = set(sys.argv[1:])
+unknown = wanted - {deck["id"] for deck in catalogue}
+if unknown:
+    sys.exit("unknown gallery decks: " + ", ".join(sorted(unknown)))
+for deck in catalogue:
+    if wanted and deck["id"] not in wanted:
+        continue
     with tempfile.TemporaryDirectory(prefix="aniflow-gallery-") as folder:
         subprocess.run(
             [

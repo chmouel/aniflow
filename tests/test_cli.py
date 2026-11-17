@@ -46,6 +46,7 @@ def test_packaged_template_catalogue():
         "conference",
         "minimal",
         "showcase",
+        "walkthrough",
     }
     for deck in catalogue:
         assert (folder / deck["file"]).read_text(encoding="utf-8").startswith("---\n")

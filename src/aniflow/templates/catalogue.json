@@ -22,5 +22,11 @@
     "title": "Feature showcase",
     "description": "See reveals, backgrounds, notes and animated diagrams in action.",
     "file": "showcase.md"
+  },
+  {
+    "id": "walkthrough",
+    "title": "Animated diagram walkthroughs",
+    "description": "Learn to write, play and share animated Mermaid diagrams.",
+    "file": "walkthrough.md"
   }
 ]

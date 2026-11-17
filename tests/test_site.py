@@ -43,6 +43,11 @@ def test_gallery_and_template_editor(tmp_path):
                 client.send("Page.navigate", {"url": url}, session)
                 client.wait_event("Page.loadEventFired", session)
 
+            navigate("")
+            assert client.evaluate(
+                session,
+                "[...document.querySelectorAll('a')].some(a => a.getAttribute('href') === 'gallery/view.html?deck=walkthrough')",
+            )
             navigate("gallery/")
             titles = client.evaluate(
                 session,
@@ -53,7 +58,50 @@ def test_gallery_and_template_editor(tmp_path):
                   return [...document.querySelectorAll('.gallery-item h2')].map(el => el.textContent);
                 })()""",
             )
-            assert titles == ["Keynote", "Conference", "Minimal", "Feature showcase"]
+            assert titles == [
+                "Keynote",
+                "Conference",
+                "Minimal",
+                "Feature showcase",
+                "Animated diagram walkthroughs",
+            ]
+
+            navigate("gallery/view.html?deck=walkthrough#slide=3")
+            walkthrough = client.evaluate(
+                session,
+                """(async () => {
+                  for (let n = 0; n < 100 && !document.body.classList.contains('presenting'); n++)
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                  return {
+                    presenting: document.body.classList.contains('presenting'),
+                    slides: Aniflow.slideCount(),
+                    heading: document.querySelector('.slide-cover-title')?.textContent,
+                  };
+                })()""",
+            )
+            assert walkthrough["presenting"]
+            assert walkthrough["slides"] >= 20
+            assert walkthrough["heading"] == "Animated diagram walkthroughs"
+
+            story = client.evaluate(
+                session,
+                """(async () => {
+                  let stage;
+                  for (let n = 0; n < 100; n++) {
+                    stage = document.querySelector('.slide-on .diagram-stage');
+                    if (stage?.diagramPlay) break;
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                  }
+                  if (!stage?.diagramPlay) return null;
+                  const before = stage.diagramPlay.playing();
+                  document.dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true}));
+                  await new Promise(resolve => setTimeout(resolve, 100));
+                  return {before, playing: stage.diagramPlay.playing(),
+                    pictures: stage.closest('.mermaid-diagram').title};
+                })()""",
+            )
+            assert story and not story["before"] and story["playing"]
+            assert "Pictures not shown" not in story["pictures"]
 
             navigate("try/?template=keynote")
             state = client.evaluate(
