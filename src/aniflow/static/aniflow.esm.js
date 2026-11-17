@@ -4524,7 +4524,7 @@ function slideWake() {
 }
 function slideKey(event) {
   if (event.ctrlKey || event.metaKey || event.altKey || document.querySelector("dialog[open]")) return;
-  if (event.target.closest?.('input, textarea, select, [contenteditable="true"], [contenteditable=""]')) return;
+  if (event.target?.closest?.('input, textarea, select, [contenteditable="true"], [contenteditable=""]')) return;
   if (slideAt < 0) {
     if (event.key === "p" && host.presentButton && !host.presentButton.hidden) {
       event.preventDefault();
@@ -4532,13 +4532,13 @@ function slideKey(event) {
     }
     return;
   }
-  if (event.key === "Enter" && event.target.closest?.("button")) return;
+  if (event.key === "Enter" && event.target?.closest?.("button")) return;
   const key = event.key;
   if (overviewOpen() && key !== "o" && key !== "Escape") return;
-  if (key === "n" || key === "PageDown" && event.shiftKey) present(slideAt + 1, 1);
-  else if (key === "b" || key === "PageUp" && event.shiftKey) present(slideAt - 1, -1);
-  else if (key === "ArrowRight" && !event.shiftKey || key === "ArrowDown" || key === "PageDown" || key === "j" || key === " " && !event.shiftKey) slideMove(1);
-  else if (key === "ArrowLeft" && !event.shiftKey || key === "ArrowUp" || key === "PageUp" || key === "k" || key === " " && event.shiftKey) slideMove(-1);
+  if (key === "n" || key === "ArrowRight" && !event.shiftKey || key === "PageDown" && event.shiftKey) present(slideAt + 1, 1);
+  else if (key === "b" || key === "ArrowLeft" && !event.shiftKey || key === "PageUp" && event.shiftKey) present(slideAt - 1, -1);
+  else if (key === "ArrowDown" || key === "PageDown" || key === "j" || key === " " && !event.shiftKey) slideMove(1);
+  else if (key === "ArrowUp" || key === "PageUp" || key === "k" || key === " " && event.shiftKey) slideMove(-1);
   else if ((key === "<" || key === ">") && slideStory()) setDiagramSpeed(key === ">" ? 1 : -1);
   else if (key === "Home") present(0, -1, 0);
   else if (key === "End") present(slideGroups().length - 1, 1, Infinity);
@@ -4607,11 +4607,17 @@ function initSlides() {
     let swipe = null;
     let press = null;
     document.addEventListener("pointerdown", (event) => {
-      press = slideAt >= 0 && event.isPrimary && event.button === 0 ? { x: event.clientX, y: event.clientY, moved: false, selection: String(document.getSelection() || "") } : null;
+      press = slideAt >= 0 && event.isPrimary && event.button === 0 ? { x: event.clientX, y: event.clientY, endX: event.clientX, endY: event.clientY, moved: false, selection: String(document.getSelection() || "") } : null;
     }, true);
     document.addEventListener("pointermove", (event) => {
       if (press && event.isPrimary && Math.hypot(event.clientX - press.x, event.clientY - press.y) > 6) press.moved = true;
     }, { capture: true, passive: true });
+    document.addEventListener("pointerup", (event) => {
+      if (press && event.isPrimary) {
+        press.endX = event.clientX;
+        press.endY = event.clientY;
+      }
+    }, true);
     document.addEventListener("pointercancel", () => {
       press = null;
     }, true);
@@ -4619,14 +4625,15 @@ function initSlides() {
       const start = press;
       press = null;
       if (slideAt < 0 || !start || start.moved || event.button !== 0 || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
-      if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 6 || overviewOpen() || document.querySelector("dialog[open]")) return;
+      if (Math.hypot(start.endX - start.x, start.endY - start.y) > 6 || overviewOpen() || document.querySelector("dialog[open]")) return;
       const selection = String(document.getSelection() || "");
       if (selection && selection !== start.selection) return;
-      const under = document.elementFromPoint(event.clientX, event.clientY) || event.target;
-      if (under.closest?.(SLIDE_CONTROLS) || under.closest?.(".diagram-stage.drawing, .diagram-stage.commenting")) return;
+      const under = document.elementFromPoint(start.endX, start.endY) || event.target;
+      if ([under, event.target].some((element2) => element2.closest?.(SLIDE_CONTROLS) || element2.closest?.(".diagram-stage.drawing, .diagram-stage.commenting"))) return;
       event.preventDefault();
       event.stopPropagation();
-      slideMove(event.clientX < innerWidth / 2 ? -1 : 1);
+      const direction = start.endX < innerWidth / 2 ? -1 : 1;
+      present(slideAt + direction, direction);
       slideWake();
     }, true);
     document.addEventListener("dblclick", (event) => {
@@ -4639,7 +4646,10 @@ function initSlides() {
       if (!swipe) return;
       const dx = event.changedTouches[0].clientX - swipe[0], dy = event.changedTouches[0].clientY - swipe[1];
       swipe = null;
-      if (Math.abs(dx) > 60 && Math.abs(dx) > 2 * Math.abs(dy)) slideMove(dx < 0 ? 1 : -1);
+      if (Math.abs(dx) > 60 && Math.abs(dx) > 2 * Math.abs(dy)) {
+        const direction = dx < 0 ? 1 : -1;
+        present(slideAt + direction, direction);
+      }
     }, { passive: true });
   }
 }

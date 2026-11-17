@@ -21,7 +21,7 @@ A single setting changes the mood of this slide.
 ## Reveal ideas as you speak
 
 - One idea at a time.
-- The arrow key reveals the next.
+- Space reveals the next.
 
 <!-- notes: Ask the audience what they would like to explain. -->
 

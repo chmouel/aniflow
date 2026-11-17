@@ -118,7 +118,7 @@ Write it so it reads well on GitHub too: the directives are comments.
 - `reveal` only where the order of the points matters, and code steps only
   for code the audience must read line by line. Keep code under 15 lines.
 - A diagram gets its own slide with a short heading and at most a sentence;
-  its story plays with the arrow keys.
+  Space steps through its story.
 - What you would say aloud goes in `<!-- notes: -->`, not on the slide.
 - Use `bg=` backgrounds for covers, sections and closing slides, not for
   every slide.

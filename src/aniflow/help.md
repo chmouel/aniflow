@@ -891,7 +891,7 @@ Press Present in the header, or `p`, and any page becomes slides: one per
 picks its own layout from what it holds. A heading alone is a section break,
 a blockquote becomes a quote slide, a paragraph that opens with a bold number
 becomes a big statistic, and a diagram fills the slide and plays its story as
-you press Right.
+you press Space.
 
 Settings go in front matter and in HTML comments, which GitHub hides, so the
 file still reads as a normal document:
@@ -931,9 +931,9 @@ Ask who reviewed a pull request at midnight this week.
 
 | Key | Does |
 | --- | --- |
-| Right, Space, `j`, click the right half | Next reveal, code step or diagram step, then the next slide |
-| Left, Shift+Space, `k`, click the left half | The step or slide before |
-| `n`, `b` | Next or previous slide, skipping the steps |
+| Space, Down, `j` | Next reveal, code step or diagram step, then the next slide |
+| Shift+Space, Up, `k` | The step or slide before |
+| Left/Right, `n`/`b`, click or swipe | Previous or next slide, skipping the steps |
 | `o` | Every slide as a grid; click one to go there |
 | `s` | Presenter window with notes, the next slide and a timer |
 | `l` | Laser pointer |

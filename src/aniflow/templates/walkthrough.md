@@ -6,7 +6,7 @@ numbers: true
 autoplay: false
 ---
 
-<!-- notes: This is a hands-on tour of aniflow's Mermaid walkthroughs. Use the arrow keys to step through the diagrams, then move to the next slide. Press S to see these notes. -->
+<!-- notes: This is a hands-on tour of aniflow's Mermaid walkthroughs. Use Space to step through the diagrams and the left and right arrows to change slides. Press S to see these notes. -->
 
 ## A diagram can tell a story
 
@@ -30,7 +30,7 @@ flowchart LR
 %% API -> User : 200 | The answer comes back.
 ```
 
-<!-- notes: Press Right to play each step. The return path follows the same arrows backwards. A box is checked when the dot leaves it. -->
+<!-- notes: Press Space to play each step. The return path follows the same arrows backwards. A box is checked when the dot leaves it. -->
 
 ## Write the story in Mermaid comments
 
@@ -181,7 +181,7 @@ Use a built-in icon, a relative file, an HTTPS URL or an image data URL.
 
 ## Play at your own pace
 
-- Use the arrow keys to step forward and back.
+- Left and right arrows change slides.
 - Space steps forward; Shift+Space steps back.
 - The toolbar plays, pauses, changes speed and switches stories.
 
@@ -197,7 +197,7 @@ Drag, zoom or pan whenever you want to take over.
 
 ## Spotlight what matters
 
-Click a flowchart box to highlight it and its neighbours.
+In the reader or diagram full screen, click a box to highlight its neighbours.
 
 Shift-click adds another box. Escape clears the spotlight.
 
@@ -244,7 +244,7 @@ The check reports missing pictures, broken diagrams and dropped steps by line.
 
 ## Make it a presentation
 
-Each `##` heading starts a slide. Present mode plays a diagram's steps before moving on.
+Each `##` heading starts a slide. Space steps through a diagram; left and right arrows change slides.
 
 <!-- notes: Use N and B to skip a whole slide, O for the overview and S for the presenter window. aniflow --slides pdf talk.md makes a handout; --slides png writes one image per slide. -->
 

@@ -12,7 +12,7 @@ transition: slide
 
 # A tour of aniflow
 
-Press **Present** or <kbd>P</kbd>, then the arrow keys. Everything here is the Markdown on the left.
+Press **Present** or <kbd>P</kbd>, then use Space to step through a diagram or the left and right arrows to change slides. Everything here is the Markdown on the left.
 
 <!-- notes:
 Speaker notes stay out of the slide. Press S while presenting to see them in the presenter window.
@@ -167,8 +167,8 @@ bot.on('logs', suggestFix);
 
 | Key | Does |
 | --- | --- |
-| Arrows | step the story, then the slides |
-| Space | play or pause |
+| Left / Right | change slides |
+| Space / Shift+Space | step forward / back |
 | < and > | slower or faster |
 | Esc | leave |
 
@@ -176,7 +176,7 @@ bot.on('logs', suggestFix);
 - [x] GitHub alerts and code blocks
 
 > [!TIP]
-> Click a box in a diagram to spotlight it and its neighbours.
+> In the reader, click a box to spotlight it and its neighbours.
 
 <!-- slide: bg=accent -->
 ## Your turn

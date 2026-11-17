@@ -225,11 +225,11 @@ When you talk over a diagram, the next step button plays one step and stops,
 so the dot waits on its box until you move on. Pressing it during a normal
 play makes the story stop at the end of the current step. Previous step
 rebuilds the story from the start up to the step before, with no animation,
-and from the middle of a step it goes back to that step's start. With the
-diagram focused, or in full screen, the keyboard does the same: the right
-arrow, `j` and Page Down go forward, the left arrow, `k` and Page Up go
-back, and Space plays or pauses the whole story. Page Down and Page Up are
-what most presentation clickers send.
+and from the middle of a step it goes back to that step's start. Outside
+presentation mode, with the diagram focused or in full screen, the keyboard
+does the same: the right arrow, `j` and Page Down go forward, the left arrow,
+`k` and Page Up go back, and Space plays or pauses the whole story. Page Down
+and Page Up are what most presentation clickers send.
 
 A thin rail under the story controls has one tick per step. Played steps
 fill in, the one playing is brighter, and hovering a tick shows its caption.
@@ -443,13 +443,11 @@ button stays hidden when there would be fewer than two slides.
 A slide that holds one diagram and little else gives the diagram the whole
 screen. A slide's story starts playing as soon as the slide opens (unless the
 system asks for reduced motion); put `autoplay: false` in the note's front
-matter to start each one yourself. The right arrow, `j` and Page Down play the slide's story one step
-at a time and move to the next slide once it has finished; the left arrow,
-`k` and Page Up go back the same way. To leave a slide before its story is
-over, press `n` or Shift+Page Down for the next slide, `b` or Shift+Page Up
-for the previous one. On a slide with a story, Space plays or pauses it, and
-elsewhere Space moves on. Home and End jump to the first and last slide, and
-a swipe changes slide on a phone.
+matter to start each one yourself. Space, `j` and Page Down play the slide's
+story one step at a time; Shift+Space, `k` and Page Up go back. The left and
+right arrows, `n` and `b`, side clicks and swipes outside diagrams change
+slides immediately, pausing a story still playing. Home and End jump to the
+first and last slide.
 
 A rail along the bottom edge has one segment per slide, with the heading as
 its tooltip; click a segment to jump there. The previous and next buttons in

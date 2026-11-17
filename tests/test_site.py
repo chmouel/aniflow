@@ -94,7 +94,7 @@ def test_gallery_and_template_editor(tmp_path):
                   }
                   if (!stage?.diagramPlay) return null;
                   const before = stage.diagramPlay.playing();
-                  document.dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true}));
+                  document.dispatchEvent(new KeyboardEvent('keydown', {key: ' ', bubbles: true}));
                   await new Promise(resolve => setTimeout(resolve, 100));
                   return {before, playing: stage.diagramPlay.playing(),
                     pictures: stage.closest('.mermaid-diagram').title};
@@ -102,6 +102,276 @@ def test_gallery_and_template_editor(tmp_path):
             )
             assert story and not story["before"] and story["playing"]
             assert "Pictures not shown" not in story["pictures"]
+            navigation = client.evaluate(
+                session,
+                """(() => {
+                  const stage = document.querySelector('.slide-on .diagram-stage');
+                  stage.dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true}));
+                  return {hash: location.hash, paused: !stage.diagramPlay.playing()};
+                })()""",
+            )
+            assert navigation == {"hash": "#slide=4", "paused": True}
+            assert (
+                client.evaluate(
+                    session,
+                    """(() => {
+                  document.dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowLeft', bubbles: true}));
+                  return location.hash;
+                })()""",
+                )
+                == "#slide=3"
+            )
+            steps = client.evaluate(
+                session,
+                """(() => {
+                  const stage = document.querySelector('.slide-on .diagram-stage');
+                  const play = stage.diagramPlay;
+                  stage.dispatchEvent(new KeyboardEvent('keydown', {key: ' ', bubbles: true}));
+                  const forward = play.playing();
+                  stage.dispatchEvent(new KeyboardEvent('keydown', {key: ' ', shiftKey: true, bubbles: true}));
+                  return {forward, back: !play.playing(), hash: location.hash};
+                })()""",
+            )
+            assert steps == {"forward": True, "back": True, "hash": "#slide=3"}
+            backwards = client.evaluate(
+                session,
+                """(() => {
+                  const stage = document.querySelector('.slide-on .diagram-stage');
+                  const play = stage.diagramPlay;
+                  stage.dispatchEvent(new KeyboardEvent('keydown', {key: ' ', bubbles: true}));
+                  stage.dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowLeft', bubbles: true}));
+                  return {hash: location.hash, paused: !play.playing()};
+                })()""",
+            )
+            assert backwards == {"hash": "#slide=2", "paused": True}
+            client.evaluate(
+                session,
+                """(async () => {
+                  location.hash = '#slide=3';
+                  for (let n = 0; n < 40 && !document.querySelector('.slide-on .diagram-stage'); n++)
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                })()""",
+            )
+
+            client.send(
+                "Emulation.setDeviceMetricsOverride",
+                {"width": 430, "height": 900, "deviceScaleFactor": 1, "mobile": True},
+                session,
+            )
+            client.send(
+                "Emulation.setTouchEmulationEnabled",
+                {"enabled": True, "maxTouchPoints": 2},
+                session,
+            )
+            client.evaluate(
+                session,
+                "document.querySelector('.slide-on .diagram-stage').diagramPlay.restore(1, null)",
+            )
+
+            def tap(x, y):
+                client.send(
+                    "Input.dispatchTouchEvent",
+                    {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]},
+                    session,
+                )
+                client.send(
+                    "Input.dispatchTouchEvent",
+                    {"type": "touchEnd", "touchPoints": []},
+                    session,
+                )
+
+            client.evaluate(
+                session,
+                """(() => {
+                  window.touchForward = document.querySelector('.slide-on .diagram-stage').diagramPlay;
+                  document.dispatchEvent(new KeyboardEvent('keydown', {key: ' ', bubbles: true}));
+                })()""",
+            )
+            assert client.evaluate(session, "window.touchForward.playing()")
+            tap(400, 450)
+            assert (
+                client.evaluate(
+                    session,
+                    """(async () => {
+                  for (let n = 0; n < 40 && location.hash !== '#slide=4'; n++)
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                  return location.hash;
+                })()""",
+                )
+                == "#slide=4"
+            )
+            assert client.evaluate(session, "!window.touchForward.playing()")
+            client.evaluate(session, "location.hash = '#slide=3'")
+            client.evaluate(
+                session,
+                """(async () => {
+                  for (let n = 0; n < 40 && !document.querySelector('.slide-on .diagram-stage'); n++)
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                  document.querySelector('.slide-on .diagram-stage').diagramPlay.restore(1, null);
+                })()""",
+            )
+            play_button = client.evaluate(
+                session,
+                """(() => {
+                  const r = document.querySelector('.slide-on .play-toggle').getBoundingClientRect();
+                  return {x: r.x + r.width / 2, y: r.y + r.height / 2};
+                })()""",
+            )
+            tap(play_button["x"], play_button["y"])
+            assert client.evaluate(
+                session,
+                """(async () => {
+                  const play = document.querySelector('.slide-on .diagram-stage').diagramPlay;
+                  for (let n = 0; n < 40 && !play.playing(); n++)
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                  return play.playing();
+                })()""",
+            )
+            client.evaluate(
+                session,
+                "window.touchStory = document.querySelector('.slide-on .diagram-stage').diagramPlay",
+            )
+            tap(30, 450)
+            assert (
+                client.evaluate(
+                    session,
+                    """(async () => {
+                  for (let n = 0; n < 40 && location.hash !== '#slide=2'; n++)
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                  return location.hash;
+                })()""",
+                )
+                == "#slide=2"
+            )
+            assert client.evaluate(session, "!window.touchStory.playing()")
+            client.evaluate(session, "location.hash = '#slide=3'")
+            client.evaluate(
+                session,
+                """(async () => {
+                  for (let n = 0; n < 40 && !document.querySelector('.slide-on .diagram-stage'); n++)
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                })()""",
+            )
+            client.send(
+                "Input.dispatchTouchEvent",
+                {"type": "touchStart", "touchPoints": [{"x": 400, "y": 450}]},
+                session,
+            )
+            client.send(
+                "Input.dispatchTouchEvent",
+                {"type": "touchMove", "touchPoints": [{"x": 340, "y": 450}]},
+                session,
+            )
+            client.send(
+                "Input.dispatchTouchEvent",
+                {"type": "touchEnd", "touchPoints": []},
+                session,
+            )
+            assert client.evaluate(
+                session,
+                "!document.querySelector('.slide-on .diagram-stage').diagramPlay.playing() && location.hash === '#slide=3'",
+            )
+            client.send("Emulation.clearDeviceMetricsOverride", session=session)
+            client.send(
+                "Emulation.setTouchEmulationEnabled", {"enabled": False}, session
+            )
+            client.evaluate(
+                session,
+                """(async () => {
+                  location.hash = '#slide=1';
+                  for (let n = 0; n < 40 && !document.querySelector('.slide-on .slide-cover-title'); n++)
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                })()""",
+            )
+
+            def click(x, y):
+                for kind in ("mousePressed", "mouseReleased"):
+                    client.send(
+                        "Input.dispatchMouseEvent",
+                        {
+                            "type": kind,
+                            "x": x,
+                            "y": y,
+                            "button": "left",
+                            "clickCount": 1,
+                        },
+                        session,
+                    )
+
+            click(1300, 450)
+            assert client.evaluate(session, "location.hash") == "#slide=2"
+            click(100, 450)
+            assert client.evaluate(session, "location.hash") == "#slide=1"
+
+            client.evaluate(
+                session,
+                """(async () => {
+                  location.hash = '#slide=3';
+                  for (let n = 0; n < 40 && !document.querySelector('.slide-on .diagram-stage'); n++)
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                  window.mouseStory = document.querySelector('.slide-on .diagram-stage').diagramPlay;
+                  window.mouseStory.restore(1, null);
+                  document.dispatchEvent(new KeyboardEvent('keydown', {key: ' ', bubbles: true}));
+                })()""",
+            )
+            assert client.evaluate(session, "window.mouseStory.playing()")
+            click(1300, 450)
+            assert client.evaluate(session, "location.hash") == "#slide=4"
+            assert client.evaluate(session, "!window.mouseStory.playing()")
+
+            navigate("gallery/view.html?deck=showcase#slide=4")
+            reveals = client.evaluate(
+                session,
+                """(async () => {
+                  for (let n = 0; n < 100 && !document.body.classList.contains('presenting'); n++)
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                  document.dispatchEvent(new KeyboardEvent('keydown', {key: ' ', bubbles: true}));
+                  const forward = location.hash;
+                  document.dispatchEvent(new KeyboardEvent('keydown', {key: ' ', shiftKey: true, bubbles: true}));
+                  return {forward, back: location.hash};
+                })()""",
+            )
+            assert reveals == {"forward": "#slide=4&step=1", "back": "#slide=4"}
+            client.evaluate(
+                session,
+                """(() => {
+                  const open = window.open;
+                  window.open = (...args) => (window.testPresenter = open(...args));
+                })()""",
+            )
+            client.send(
+                "Input.dispatchKeyEvent",
+                {
+                    "type": "keyDown",
+                    "key": "s",
+                    "code": "KeyS",
+                    "windowsVirtualKeyCode": 83,
+                },
+                session,
+            )
+            client.send(
+                "Input.dispatchKeyEvent",
+                {
+                    "type": "keyUp",
+                    "key": "s",
+                    "code": "KeyS",
+                    "windowsVirtualKeyCode": 83,
+                },
+                session,
+            )
+            presenter = client.evaluate(
+                session,
+                """(async () => {
+                  for (let n = 0; n < 40 && !window.testPresenter?.document.querySelector('[data-go="1"]'); n++)
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                  const button = window.testPresenter?.document.querySelector('[data-go="1"]');
+                  if (!button) return null;
+                  button.click();
+                  return location.hash;
+                })()""",
+            )
+            assert presenter == "#slide=5"
+            client.evaluate(session, "window.testPresenter.close()")
 
             navigate("try/?template=keynote")
             state = client.evaluate(

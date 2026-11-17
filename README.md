@@ -40,8 +40,8 @@ aniflow .
 ```
 
 Edit `talk.md`, open it in aniflow and press Present. Each `##` heading starts
-a slide; arrow keys walk through reveals and animated diagrams. A deck can
-start as simply as:
+a slide; Space walks through reveals and animated diagrams, while the left and
+right arrows change slides. A deck can start as simply as:
 
 ```markdown
 ---

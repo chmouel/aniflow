@@ -152,8 +152,8 @@ picture stays. Viewers can step with the arrow keys, change speed, click a
 box to spotlight it and its neighbours, draw on the diagram, and save a PNG,
 GIF or video.
 
-The Present button turns a document into slides, one per `##` section, and
-the arrow keys play a diagram's story before moving to the next slide. See
+The Present button turns a document into slides, one per `##` section. Space
+steps through a diagram's story; the left and right arrows change slides. See
 Slides below.
 
 A link like `#diagram=2&story=1&step=3&focus=A,B` opens the second diagram
@@ -276,14 +276,14 @@ whatever the slide holds.
 
 ### Presenting
 
-Keys: arrows, Space/Shift+Space, `j`/`k` and PageDown/PageUp step through
-reveals, code steps and the diagram story, then move on, even with a diagram
-focused. A click on the right half of the screen goes forward and on the left
-half back, like an e-book, diagrams included; links, buttons and the diagram
-tools still work, and a drag still pans; `n`/`b` jump a whole slide;
-Home/End; `o` shows every slide as a grid; `s` opens the presenter window
-with the current and next slide, notes, a timer and the clock, kept in sync
-with the main window; `l` turns on a laser pointer; Escape leaves. The link
+Keys: Space/Shift+Space, up/down arrows, `j`/`k` and PageDown/PageUp step
+through reveals, code steps and the diagram story, then move on, even with a
+diagram focused. Left/right arrows, `n`/`b`, side clicks and swipes outside
+diagrams change slides immediately, pausing a story still playing. Links,
+buttons and the diagram tools still work, and a drag still pans. Home/End jump
+to the first or last slide; `o` shows every slide as a grid; `s` opens the
+presenter window with the current and next slide, notes, a timer and the clock,
+kept in sync with the main window; `l` turns on a laser pointer; Escape leaves. The link
 keeps `#slide=N&step=K`.
 
 ### Checks and export
