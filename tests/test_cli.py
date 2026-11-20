@@ -213,16 +213,17 @@ def test_brand_names_the_page_and_the_tab(local_docs, aniflow_servers):
     assert b'class="aniflow-brand brand-name"' in body
     assert b"aniflow-letters" not in body
     assert b'<link rel="icon" href="data:image/svg+xml,' in body
+    assert b'<span class="brand-mark" aria-hidden="true">C</span>' in body
+    assert b'<span class="brand-word">ChmouzFlow</span>' in body
     _, _, page_body = request("/pub/files/guides/start.md")
     assert b'class="aniflow-brand brand-name"' in page_body
-    assert b">ChmouzFlow</span>" in page_body
 
 
 def test_brand_is_escaped(local_docs, aniflow_servers):
     request = aniflow_servers(local_docs, name='<b>&"x')
     _, _, body = request("/files/")
     assert b"<b>" not in body.replace(b"<body", b"")
-    assert b'&lt;b&gt;&amp;&quot;x' in body
+    assert b"&lt;b&gt;&amp;&quot;x" in body
 
 
 def test_no_comments_hides_the_review_ui(local_docs, aniflow_servers):
