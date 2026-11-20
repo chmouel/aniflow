@@ -8,8 +8,11 @@ import json
 import os
 import re
 import secrets
+import shutil
 import socket
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 import webbrowser
@@ -229,6 +232,69 @@ def may_write(root: Path, path: Path, session: dict | None) -> bool:
             return True
         folder = folder.parent
     return False
+
+
+def magick_command() -> list[str] | None:
+    """ImageMagick 7's `magick`, or IM6's `convert`, when installed."""
+    if found := shutil.which("magick"):
+        return [found]
+    if found := shutil.which("convert"):
+        return [found]
+    return None
+
+
+# The ImageMagick coder for each accepted suffix; GIF is left alone to keep animations.
+MAGICK_CODERS = {".png": "png", ".jpg": "jpeg", ".webp": "webp"}
+IMAGE_MAX_SIDE = 2560
+
+
+def tidy_image(raw: bytes, suffix: str) -> bytes:
+    """Strip metadata (GPS and camera details), fix the rotation, shrink anything over
+    IMAGE_MAX_SIDE and recompress, when ImageMagick is installed; without it the bytes
+    come back untouched. ImageMagick reads untrusted data here, so the input format is
+    forced to the one the magic bytes showed and its resources are capped. A failure
+    raises ValueError, so the upload is refused rather than stored unprocessed."""
+    coder = MAGICK_CODERS.get(suffix)
+    tool = magick_command()
+    if coder is None or tool is None:
+        return raw
+    with tempfile.TemporaryDirectory(prefix="aniflow-img-") as scratch:
+        source = Path(scratch) / f"in{suffix}"
+        result = Path(scratch) / f"out{suffix}"
+        source.write_bytes(raw)
+        limits = ["-limit", "memory", "128MiB", "-limit", "map", "256MiB"]
+        limits += ["-limit", "disk", "1GiB", "-limit", "area", "128MP"]
+        limits += ["-limit", "time", "15"]
+        quality = ["-quality", "85"] if coder in ("jpeg", "webp") else []
+        command = [
+            *tool,
+            *limits,
+            f"{coder}:{source}",
+            "-auto-orient",
+            "-strip",
+            "-resize",
+            f"{IMAGE_MAX_SIDE}x{IMAGE_MAX_SIDE}>",
+            *quality,
+            f"{coder}:{result}",
+        ]
+        try:
+            subprocess.run(
+                command,
+                cwd=scratch,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=20,
+                check=True,
+                env={"PATH": os.environ.get("PATH", ""), "MAGICK_TMPDIR": scratch},
+            )
+            data = result.read_bytes()
+        except (OSError, subprocess.SubprocessError) as error:
+            raise ValueError("could not process the image") from error
+    mime = next(name for name, ending in IMAGE_TYPES.items() if ending == suffix)
+    if image_suffix(mime, data) != suffix:
+        raise ValueError("could not process the image")
+    return data
 
 
 def image_suffix(content_type: str, data: bytes) -> str | None:
@@ -1326,6 +1392,11 @@ refuse the change when someone edited the note in between.
             self.send_json(
                 {"error": "upload a PNG, JPEG, WebP or GIF image"}, status=415
             )
+            return
+        try:
+            raw = tidy_image(raw, suffix)
+        except ValueError as error:
+            self.send_json({"error": str(error)}, status=415)
             return
         images_dir = folder / "images"
         if images_dir.is_symlink():

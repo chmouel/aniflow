@@ -1,9 +1,11 @@
+import base64
 import http.client
 import io
 import json
 import re
 import shutil
 import sqlite3
+import subprocess
 import sys
 import threading
 import time
@@ -942,12 +944,64 @@ def test_mkdir_and_rename_note_rules(github, local_docs, aniflow_servers):
     assert status == 400
 
 
+@pytest.mark.skipif(cli.magick_command() is None, reason="ImageMagick is not installed")
+def test_uploaded_images_lose_metadata_and_shrink(
+    github, local_docs, aniflow_servers, tmp_path
+):
+    photo = tmp_path / "photo.jpg"
+    subprocess.run(
+        [
+            *cli.magick_command(),
+            "-size",
+            "3200x1600",
+            "xc:skyblue",
+            "-set",
+            "comment",
+            "secret-camera-note",
+            str(photo),
+        ],
+        check=True,
+    )
+    raw = photo.read_bytes()
+    assert b"secret-camera-note" in raw
+    request = folders_server(local_docs, aniflow_servers)
+    alice = sign_in(request, "alice")
+    status, _, body = request(
+        "/notes/upload/alice",
+        method="POST",
+        headers={"Cookie": alice, "Content-Type": "image/jpeg"},
+        body=raw,
+    )
+    assert status == 201
+    stored = (local_docs / "alice" / json.loads(body)["path"]).read_bytes()
+    assert b"secret-camera-note" not in stored
+    width = subprocess.run(
+        [*cli.magick_command(), "identify", "-format", "%w", "-"]
+        if cli.magick_command()[0].endswith("magick")
+        else ["identify", "-format", "%w", "-"],
+        input=stored,
+        capture_output=True,
+        check=True,
+    ).stdout
+    assert int(width) == cli.IMAGE_MAX_SIDE
+    # A file that only pretends to be a JPEG is refused, not stored.
+    status, _, _ = request(
+        "/notes/upload/alice",
+        method="POST",
+        headers={"Cookie": alice, "Content-Type": "image/jpeg"},
+        body=b"\xff\xd8\xff" + b"not really a jpeg" * 10,
+    )
+    assert status == 415
+
+
 def test_image_upload_validates_auth_magic_and_symlinks(
     github, local_docs, aniflow_servers
 ):
     request = folders_server(local_docs, aniflow_servers)
     alice, bob = sign_in(request, "alice"), sign_in(request, "bob")
-    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+    png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+    )
     # Unauthenticated -> 401
     status, _, _ = request(
         "/notes/upload/alice",
@@ -983,7 +1037,7 @@ def test_image_upload_validates_auth_magic_and_symlinks(
     made = json.loads(body)
     assert made["path"].startswith("images/") and made["path"].endswith(".png")
     assert made["markdown"] == f"![]({made['path']})"
-    assert (local_docs / "alice" / made["path"]).read_bytes() == png
+    assert (local_docs / "alice" / made["path"]).read_bytes().startswith(b"\x89PNG")
     # Symlinked images/ directory -> 404
     (local_docs / "bob" / "images").symlink_to(local_docs / "alice")
     status, _, _ = request(
