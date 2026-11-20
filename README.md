@@ -115,16 +115,27 @@ the Markdown beside the live page. Everyone reads everything; a folder is
 writable by all members once it holds a `.aniflow-shared` file
 (`touch notes/team/.aniflow-shared`), which the web cannot create.
 
-Scripts and agents write with an API token, made under **API tokens** in the
-account menu (shown once, 90 days, revocable). It carries exactly its owner's
-rights:
+Scripts and agents can use the built-in client with an API token, made under
+**API tokens** in the account menu (shown once, 90 days, revocable):
 
 ```sh
-curl -X PUT -H "Authorization: Bearer $ANIFLOW_TOKEN" --data-binary @plan.md \
-  https://notes.example.com/api/notes/<login>/plan.md
-curl https://notes.example.com/api/notes/<login>/plan.md      # read, no token
-curl -X DELETE -H "Authorization: Bearer $ANIFLOW_TOKEN" \
-  https://notes.example.com/api/notes/<login>/plan.md
+aniflow login https://share.chmouel.com/pub   # any page URL works; prompts for token
+aniflow whoami
+aniflow ls                                    # your folder (or `aniflow ls /`)
+aniflow search "kueue"                        # search filenames and note text
+aniflow push plan.md                          # -> <your-folder>/plan.md
+aniflow push plan.md pac/plan.md              # -> shared folder pac/
+aniflow pull pac/plan.md                      # stdout (or pass a dest file; full URLs work)
+aniflow comments pac/plan.md                  # review comments as a prompt
+aniflow rm pac/old.md
+```
+
+Every remote command accepts `--json` for agents and `--if-match` on `push`/`rm`
+for safe updates. Install the bundled agent skills (`aniflow-diagrams` and
+`aniflow-notes`) with:
+
+```sh
+aniflow skill install                         # into ~/.agents/skills (--claude or --project)
 ```
 
 `aniflow --revoke-tokens LOGIN` revokes all of someone's tokens from the

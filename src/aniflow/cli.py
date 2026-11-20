@@ -20,7 +20,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
-from aniflow import export, oauth, page, tokens, web
+from aniflow import client, export, oauth, page, tokens, web
 from aniflow.brand import BRAND_CSS, DEFAULT, favicon, masthead
 from aniflow.themes import THEME_READER_CSS, theme_script, theme_select
 from aniflow.ui import (
@@ -771,8 +771,15 @@ class Handler(web.Handler):
             self.send_json({"error": "not found"}, status=404)
             return
         if method == "GET":
-            path = local_path(root, key)
-            if path is None or not path.is_file() or not web.is_markdown(path.name):
+            key = key.strip("/")
+            path = root if not key else local_path(root, key)
+            if path is None:
+                self.send_json({"error": "not found"}, status=404)
+                return
+            if path.is_dir():
+                self.api_list(path)
+                return
+            if not path.is_file() or not web.is_markdown(path.name):
                 self.send_json({"error": "not found"}, status=404)
                 return
             data = path.read_bytes()
@@ -844,6 +851,135 @@ class Handler(web.Handler):
             status=200 if current else 201,
             headers={"ETag": f'"{version}"'},
         )
+
+    def api_me(self) -> None:
+        """GET /api/me: who the Bearer token belongs to, their folder and shared folders."""
+        if self.server.tokens is None:
+            self.send_json({"error": "not found"}, status=404)
+            return
+        who = self.bearer()
+        if who is None:
+            self.send_json(
+                {"error": "send an API token: Authorization: Bearer aniflow_..."},
+                status=401,
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+            return
+        root = self.server.root
+        shared = []
+        for child in sorted(root.iterdir(), key=lambda p: p.name.lower()):
+            if child.name.startswith(".") or not child.is_dir():
+                continue
+            try:
+                child.resolve().relative_to(root)
+            except (OSError, ValueError):
+                continue
+            if (child / SHARED_MARK).is_file():
+                shared.append(child.name)
+        self.send_json(
+            {
+                "id": who["id"],
+                "login": who["login"],
+                "admin": bool(who.get("admin")),
+                "folder": who["login"].lower(),
+                "shared": shared,
+            }
+        )
+
+    def api_list(self, folder: Path) -> None:
+        """JSON listing of subfolders and Markdown notes inside folder."""
+        root = self.server.root
+        folders, notes = [], []
+        for child in folder.iterdir():
+            if child.name.startswith("."):
+                continue
+            try:
+                child.resolve().relative_to(root)
+                stat = child.stat()
+            except (OSError, ValueError):
+                continue
+            rel = child.relative_to(root).as_posix()
+            if child.is_dir():
+                folders.append(
+                    {
+                        "name": child.name,
+                        "path": rel,
+                        "shared": (child / SHARED_MARK).is_file(),
+                    }
+                )
+            elif child.is_file() and web.is_markdown(child.name):
+                notes.append(
+                    {
+                        "name": child.name,
+                        "path": rel,
+                        "url": file_url(root, child, self.server.base),
+                        "size": stat.st_size,
+                        "modified": stat.st_mtime,
+                    }
+                )
+        folders.sort(key=lambda item: item["name"].casefold())
+        notes.sort(key=lambda item: item["name"].casefold())
+        rel_folder = "" if folder == root else folder.relative_to(root).as_posix()
+        self.send_json({"folder": rel_folder, "folders": folders, "notes": notes})
+
+    def api_search(self, query_string: str) -> None:
+        """GET /api/search?q=QUERY[&folder=FOLDER]: case-insensitive search in filenames and text."""
+        if self.server.tokens is None:
+            self.send_json({"error": "not found"}, status=404)
+            return
+        params = parse_qs(query_string)
+        needle = ((params.get("q") or [""])[-1]).strip()
+        if not needle:
+            self.send_json({"error": "pass a search query in ?q=..."}, status=400)
+            return
+        folder_key = ((params.get("folder") or [""])[-1]).strip("/")
+        root = self.server.root
+        start = root if not folder_key else local_path(root, folder_key)
+        if start is None or not start.is_dir():
+            self.send_json({"error": "folder not found"}, status=404)
+            return
+        low = needle.casefold()
+        results: list[dict[str, object]] = []
+        queue = [start]
+        while queue and len(results) < 50:
+            current = queue.pop(0)
+            try:
+                children = sorted(current.iterdir(), key=lambda p: p.name.casefold())
+            except OSError:
+                continue
+            for child in children:
+                if child.name.startswith(".") or child.is_symlink():
+                    continue
+                try:
+                    child.resolve().relative_to(root)
+                except (OSError, ValueError):
+                    continue
+                if child.is_dir():
+                    queue.append(child)
+                elif child.is_file() and web.is_markdown(child.name):
+                    rel = child.relative_to(root).as_posix()
+                    matches: list[dict[str, object]] = []
+                    try:
+                        text = child.read_text("utf-8", errors="replace")
+                    except OSError:
+                        continue
+                    for lineno, line in enumerate(text.splitlines(), 1):
+                        if low in line.casefold():
+                            matches.append({"line": lineno, "text": line.strip()[:200]})
+                            if len(matches) >= 3:
+                                break
+                    if matches or low in rel.casefold():
+                        results.append(
+                            {
+                                "path": rel,
+                                "name": child.name,
+                                "url": file_url(root, child, self.server.base),
+                                "matches": matches,
+                            }
+                        )
+                        if len(results) >= 50:
+                            break
+        self.send_json({"query": needle, "results": results})
 
     def change_tokens(self, action: str) -> None:
         """POST /tokens/create {name} or /tokens/revoke {id}, from the signed-in page."""
@@ -1186,8 +1322,14 @@ refuse the change when someone edited the note in between.
             return
         if self.send_asset(path):
             return
-        if path.startswith("/api/notes/"):
-            self.api_note("GET", unquote(path.removeprefix("/api/notes/")))
+        if path == "/api/me":
+            self.api_me()
+            return
+        if path == "/api/search":
+            self.api_search(parsed.query)
+            return
+        if path == "/api/notes" or path.startswith("/api/notes/"):
+            self.api_note("GET", unquote(path.removeprefix("/api/notes").lstrip("/")))
             return
         if path == "/tokens":
             self.tokens_page()
@@ -1303,8 +1445,11 @@ refuse the change when someone edited the note in between.
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] in client.COMMANDS:
+        raise SystemExit(client.main(sys.argv[1:]))
     parser = argparse.ArgumentParser(
-        description="Present Markdown, play diagrams and browse local documents."
+        description="Present Markdown, play diagrams and browse local documents.",
+        epilog="remote client & skills: aniflow {login,whoami,ls,search,push,pull,rm,comments,skill} -h",
     )
     parser.add_argument(
         "directory",

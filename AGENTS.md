@@ -87,9 +87,11 @@ the wheel, so `uvx --from git+...` works without Node.
   sign-in with `templates/welcome.md`; `editor_page()` shows the Markdown in
   a textarea beside the reader, which `EDITOR_JS` updates through
   `window.aniflowReader` (set by `BOOT_JS`). `/tokens` lists, makes and
-  revokes your API tokens; `/api/notes/<path>` is GET (open, with an ETag),
-  PUT and DELETE (`Authorization: Bearer`, the owner's rights, `If-Match`).
-  `aniflow --revoke-tokens LOGIN|ID` is the operator's way out.
+  revokes your API tokens; `/api/me` reports the token's owner and shared
+  folders; `/api/notes[/<path>]` lists folders/notes or reads/writes/deletes
+  one (`Authorization: Bearer`, the owner's rights, `If-Match`); `/api/search`
+  searches filenames and Markdown text. `aniflow --revoke-tokens LOGIN|ID` is
+  the operator's way out.
   With `--allow-host` and comments on, `main()` refuses to start without
   `--github-oauth`, so a missing client id cannot open the comments to all.
 - `src/aniflow/web.py`: `Handler`, a `BaseHTTPRequestHandler` with the
@@ -110,6 +112,14 @@ the wheel, so `uvx --from git+...` works without Node.
   session lives in the cookie alone, scoped to the base path, `HttpOnly`,
   `SameSite=Lax`, `Secure` when the proxy reports https. `next_path()` keeps
   the way back inside the base, so the callback cannot be an open redirect.
+- `src/aniflow/client.py`: the remote CLI (`login`, `whoami`, `ls`,
+  `search`, `push`, `pull`, `rm`, `comments`) and bundled agent skill
+  manager (`skill list|install|show|remove`). Config lives at
+  `$XDG_CONFIG_HOME/aniflow/config.json` (`0600`), with `ANIFLOW_URL`,
+  `ANIFLOW_TOKEN` and `ANIFLOW_FOLDER` overrides. Any pasted page URL is
+  accepted and normalized to the server base (and note commands accept full
+  pasted note URLs too). `skills/` is bundled into the wheel under
+  `aniflow/skills/`.
 - `src/aniflow/tokens.py`: personal API tokens in SQLite
   (`$XDG_CACHE_HOME/aniflow/tokens.db`): `aniflow_` + 256 random bits, kept
   only as a sha256, 90 days, 10 live per member, `create()` serialized by

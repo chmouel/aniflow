@@ -33,6 +33,9 @@ aniflow = "aniflow.cli:main"
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.6"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"skills" = "aniflow/skills"
+
 [tool.hatch.build.targets.sdist]
 include = ["src", "js", "js-test", "contrib", "skills", "docs", "tests", "build.mjs", "package.json", "package-lock.json", "README.md", "LICENSE"]
 
