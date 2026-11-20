@@ -13,6 +13,9 @@ export function diagramComments(stage, svg, after, about) {
   const last = Number(about.lineEnd) || 0;
   if (!url || !base || !last) return null;
   const max = host.commentMax;
+  const gated = Boolean(host.commentsSignin);
+  const me = host.commentsMe;
+  const mine = (comment) => !gated || (me && comment.author_id === me.id);
   const nodes = diagramNodes(svg);
   const names = new Map([...nodes].map(([name, group]) => [group, name]));
   const links = diagramLinks(svg, nodes, about.edges);
@@ -248,11 +251,25 @@ export function diagramComments(stage, svg, after, about) {
     draft = null;
     choose([]);
   }
+  function signInLink(label) {
+    const link = make('a', 'review-signin', label);
+    link.href = host.commentsSignin + '?next=' + encodeURIComponent(location.pathname + location.search + location.hash);
+    return link;
+  }
+
   function compose(target) {
     closeDraft();
     const box = make('section', 'diagram-note draft');
     const top = make('header');
     top.append(make('span', 'diagram-note-new', 'New'), make('span', 'diagram-note-what', describe(target)));
+    if (gated && !me) {
+      box.append(top, make('p', 'diagram-note-body', 'Sign in with GitHub to comment on ' + describe(target) + '.'), signInLink('Sign in'));
+      draft = { target: target, element: box };
+      choose(target.parts);
+      draw();
+      box.scrollIntoView({ block: 'nearest' });
+      return;
+    }
     const { form, area } = editor('', 'Comment on ' + describe(target), 'Comment', async (text) => {
       const named = { kind: target.kind, id: target.id, label: target.label, diagram: about.index };
       await send('add', '', { start: target.line, end: target.line, body: text, target: named });
@@ -279,6 +296,7 @@ export function diagramComments(stage, svg, after, about) {
     when.dateTime = stamp.toISOString();
     when.title = stamp.toLocaleString();
     meta.append(when);
+    if (comment.author) meta.append(make('span', 'review-author', comment.author));
     if (comment.outdated) {
       const tag = make('span', 'diagram-note-outdated', 'Outdated');
       tag.title = 'The diagram changed here after this comment. It was written on:\n' + comment.quote.join('\n');
@@ -288,7 +306,7 @@ export function diagramComments(stage, svg, after, about) {
     const edit = make('button', '', 'Edit');
     const remove = make('button', '', 'Delete');
     actions.append(edit, remove);
-    meta.append(actions);
+    if (mine(comment)) meta.append(actions);
     const body = make('p', 'diagram-note-body', comment.body);
     item.append(meta, body);
     edit.addEventListener('click', () => {

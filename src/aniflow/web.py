@@ -216,7 +216,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         if error:
             self.send_json(
-                {"error": error}, status=404 if error == "not found" else 400
+                {"error": error},
+                status={"not found": 404, "not yours": 403}.get(error, 400),
             )
             return
         self.send_json(view)
@@ -263,9 +264,9 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def send_bytes(
-        self, body: bytes, content_type: str, headers: dict[str, str]
+        self, body: bytes, content_type: str, headers: dict[str, str], status: int = 200
     ) -> None:
-        self.send_response(200)
+        self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         for name, value in headers.items():

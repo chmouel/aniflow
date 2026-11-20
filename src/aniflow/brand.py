@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 import html
-from urllib.parse import quote
-
-DEFAULT = "aniflow"
 
 BRAND_CSS = """
   .aniflow-brand {
@@ -27,18 +24,6 @@ BRAND_CSS = """
     .aniflow-brand .brand-star { transition:transform .4s; }
     .aniflow-brand:hover svg { filter:drop-shadow(0 0 9px color-mix(in srgb, var(--aniflow-pink) 26%, transparent)); }
     .aniflow-brand:hover .brand-star { transform:rotate(90deg); }
-  }
-  /* A server started with --brand trades the wordmark for its own name. */
-  .aniflow-brand.brand-name { text-decoration:none; }
-  .aniflow-brand.brand-name span {
-    display:inline-block; font-size:clamp(2.1rem, 6.2vw, 4.2rem); font-weight:800;
-    line-height:1.05; letter-spacing:-.02em; padding-block:.1em;
-    background:linear-gradient(96deg, var(--aniflow-ice) 6%, var(--aniflow-cyan) 38%, var(--aniflow-violet) 68%, var(--aniflow-pink) 96%);
-    -webkit-background-clip:text; background-clip:text; color:transparent;
-  }
-  @media (prefers-reduced-motion:no-preference) {
-    .aniflow-brand.brand-name span { transition:filter .2s; }
-    .aniflow-brand.brand-name:hover span { filter:drop-shadow(0 0 10px color-mix(in srgb, var(--aniflow-pink) 30%, transparent)); }
   }
 """
 
@@ -111,28 +96,6 @@ BRAND = """
 """
 
 
-def brand(base: str = "", name: str = "") -> str:
-    """The masthead, linking to the file browser under base. A server started with
-    --brand shows that name as a wordmark in the same colours instead of the logo."""
-    if name and name != DEFAULT:
-        return (
-            f'<a class="aniflow-brand brand-name" href="{html.escape(base)}/files/" '
-            f'aria-label="{html.escape(name)}: browse files"><span>{html.escape(name)}</span></a>'
-        )
+def brand(base: str = "") -> str:
+    """The masthead, linking to the file browser under base."""
     return BRAND.replace('href="/files/"', f'href="{html.escape(base)}/files/"')
-
-
-def favicon(name: str = "") -> str:
-    """A tab icon holding the first letter of name, or the empty one aniflow ships with."""
-    letter = name.strip()[:1]
-    if not letter:
-        return "data:,"
-    svg = (
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
-        '<rect width="64" height="64" rx="14" fill="#13102c"/>'
-        '<text x="32" y="45" text-anchor="middle" font-family="system-ui,sans-serif" '
-        'font-size="38" font-weight="700" fill="#2feaff">'
-        f"{html.escape(letter)}"
-        "</text></svg>"
-    )
-    return "data:image/svg+xml," + quote(svg, safe="")

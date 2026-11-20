@@ -12,11 +12,23 @@ export function initReview() {
     }
     const coarse = matchMedia('(pointer: coarse)');
     const commentMax = host.commentMax;
+    // Sign-in is on when the server offers it: writing then needs an account, and only
+    // the account that wrote a comment may change it.
+    const gated = Boolean(host.commentsSignin);
+    const me = host.commentsMe;
+    const mine = (comment) => !gated || (me && comment.author_id === me.id);
+    function signInLink(label) {
+      const link = make('a', 'review-signin', label);
+      const back = location.pathname + location.search + location.hash;
+      link.href = host.commentsSignin + '?next=' + encodeURIComponent(back);
+      return link;
+    }
     const badge = host.reviewToggle.querySelector('.count');
     const dockText = host.dock.querySelector('.review-dock-text');
     const commentButton = host.dock.querySelector('[data-review="comment"]');
     const clearButton = host.dock.querySelector('[data-review="clear"]');
     const copyButton = host.dock.querySelector('[data-review="copy"]');
+    const session = make('span', 'review-session');
     const gutter = document.createElement('div');
     gutter.className = 'review-gutter';
     let reviewing = false;
@@ -231,6 +243,11 @@ export function initReview() {
       commentButton.hidden = !selection || Boolean(composer);
       clearButton.hidden = !selection;
       copyButton.hidden = Boolean(selection) || !count;
+      session.textContent = '';
+      if (gated) {
+        if (me) session.append(make('span', '', me.login), signInLink('Sign out'));
+        else session.append(signInLink('Sign in to comment'));
+      }
     }
 
     // The last mapped block or code line at or before the line: comments and the form go after it.
@@ -323,6 +340,16 @@ export function initReview() {
       const mark = spot(target.end);
       if (!mark) return;
       const holder = make('div', 'review-composer');
+      if (gated && !me) {
+        holder.append(
+          make('p', 'review-composer-title', 'Sign in to comment on ' + range(target.start, target.end).toLowerCase()),
+          signInLink('Sign in with GitHub'),
+        );
+        insertAt(slot(mark, target.start), holder);
+        composer = holder;
+        updateDock();
+        return;
+      }
       holder.append(make('p', 'review-composer-title', 'Comment on ' + range(target.start, target.end).toLowerCase()));
       const { form, area } = editor('', 'Comment on ' + range(target.start, target.end).toLowerCase(), 'Comment', async (text) => {
         await post('add', '', { start: target.start, end: target.end, body: text });
@@ -353,7 +380,10 @@ export function initReview() {
       const edit = make('button', '', 'Edit');
       const remove = make('button', '', 'Delete');
       tools.append(edit, remove);
-      head.append(where, when, tools);
+      head.append(where, when);
+      if (comment.author) head.append(make('span', 'review-author', comment.author));
+      if (mine(comment)) head.append(tools);
+      edit.hidden = remove.hidden = false;
       item.append(head);
       if (comment.outdated) {
         item.append(make('p', 'review-note', 'These lines changed after the comment. It was written on:'));
@@ -470,6 +500,7 @@ export function initReview() {
     });
     commentButton.addEventListener('click', compose);
     clearButton.addEventListener('click', clear);
+    copyButton.after(session);
     host.dock.querySelector('[data-review="done"]').addEventListener('click', leave);
     copyButton.addEventListener('click', async () => {
       const done = promptText ? await copyText(promptText) : false;

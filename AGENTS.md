@@ -64,8 +64,9 @@ the wheel, so `uvx --from git+...` works without Node.
   prefix, and a request that still has the prefix is accepted as well, so
   the proxy may strip it or not. `--no-comments` drops the review UI and
   answers 404 on the comment routes, for a read-only public deployment.
-  `--brand NAME` puts that name in the bar, the masthead and the tab icon
-  (`brand.brand()`, `brand.favicon()`) instead of the aniflow wordmark.
+  `--github-oauth CLIENT_ID` turns on sign-in: writes then need a session
+  (`ANIFLOW_GITHUB_SECRET`, `ANIFLOW_SIGNIN_SECRET`), a comment belongs to
+  the account that wrote it, and `--comments-admin LOGIN` may change any.
 - `src/aniflow/web.py`: `Handler`, a `BaseHTTPRequestHandler` with the
   request checks (`request_allowed()`, `host_allowed()`,
   `origin_allowed()`; `allowed_hosts()` and `allowed_origins()` are for a
@@ -78,6 +79,12 @@ the wheel, so `uvx --from git+...` works without Node.
   `BOOT_JS` reads `#markdown-source` and `#aniflow-options`, merges
   `window.aniflowPage` (hooks an embedding app sets in an earlier script)
   and calls `Aniflow.reader`.
+- `src/aniflow/oauth.py`: GitHub sign-in for the comment routes, `SignIn`:
+  the authorize redirect, the code exchange and the `user` lookup (`urllib`,
+  `TIMEOUT`), and the HMAC-sealed cookies in `seal`/`unseal`/`cookie`. A
+  session lives in the cookie alone, scoped to the base path, `HttpOnly`,
+  `SameSite=Lax`, `Secure` when the proxy reports https. `next_path()` keeps
+  the way back inside the base, so the callback cannot be an open redirect.
 - `src/aniflow/comments.py`: the review comments model: `view()`,
   `change()`, `anchor()`, `prompt()`, `in_lines()`, `target_valid()` and the
   limits. Storage is a JSON file the caller chooses.
@@ -278,7 +285,11 @@ Keep these when changing code.
 - SVG is served with `vector_headers` (a `sandbox` CSP) everywhere, HTML
   files with `sandbox allow-scripts allow-forms`.
 - Comment text and every walkthrough label reach the page through
-  `textContent`, never as HTML. Comment storage sits outside the served
+  `textContent`, never as HTML.
+- With sign-in on, a comment carries its author's GitHub id and only that
+  account, or the admin, may edit or delete it. The session cookie is
+  sealed with `ANIFLOW_SIGNIN_SECRET`, so a forged or edited cookie signs
+  nobody in. Comment storage sits outside the served
   folder.
 - `/vendor/`, `/static/` and `/icons/` serve fixed names only, never a path
   joined from the request.

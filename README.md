@@ -78,9 +78,7 @@ Behind a reverse proxy that serves it at a path, start it with `--base /pub`:
 the prefix then goes into every URL it writes, so a Caddy `handle /pub/*` or an
 ingress path rule reaches the pages, stylesheets and icons. `--no-comments`
 turns the review UI and the comment routes off, which is what a public reader
-wants since comments are written to a cache directory. `--brand ChmouzFlow`
-replaces the aniflow wordmark with that name in the bar, the masthead and the
-tab icon.
+wants since comments are written to a cache directory.
 
 Demo & help opens a playable diagram first, followed by a walkthrough from
 your first Markdown file to pictures, several stories and exports. It ships
@@ -90,7 +88,15 @@ Use Comments on any page, including the demo, to comment on source lines or
 on a box or arrow in a diagram, edit or delete feedback, and copy it with the
 quoted text for a coding agent. Comments are kept in `$XDG_CACHE_HOME/aniflow`
 (usually `~/.cache/aniflow`), one file per served folder and document.
-Reading and commenting leave your source files untouched. Refresh the browser
+Reading and commenting leave your source files untouched.
+
+Serving a folder to other people, start the server with `--github-oauth
+CLIENT_ID`, an OAuth app whose callback is `<public-url>/auth/github/callback`,
+and the two secrets in `ANIFLOW_GITHUB_SECRET` and `ANIFLOW_SIGNIN_SECRET`.
+Reading stays open; writing needs a GitHub account, a comment belongs to the
+account that wrote it, and `--comments-admin LOGIN` may edit anyone's. Add
+`--base /pub` to mount all of it under a path, or `--no-comments` to turn the
+comments off altogether. Refresh the browser
 after saving changes to a document.
 
 ## Write a walkthrough

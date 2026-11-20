@@ -12,12 +12,13 @@ import sys
 import webbrowser
 import zlib
 from datetime import UTC, datetime
+from http.cookies import CookieError, SimpleCookie
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
-from aniflow import export, page, web
-from aniflow.brand import BRAND_CSS, DEFAULT, brand, favicon
+from aniflow import export, oauth, page, web
+from aniflow.brand import BRAND_CSS, brand
 from aniflow.themes import THEME_READER_CSS, theme_script, theme_select
 from aniflow.ui import (
     DIRECTORY_CSS,
@@ -117,9 +118,7 @@ def breadcrumbs(root: Path, path: Path, base: str = "") -> list[tuple[str, str]]
     ]
 
 
-def directory_page(
-    root: Path, path: Path, base: str = "", brand_name: str = DEFAULT
-) -> tuple[bytes, str]:
+def directory_page(root: Path, path: Path, base: str = "") -> tuple[bytes, str]:
     entries = []
     for child in path.iterdir():
         try:
@@ -202,14 +201,14 @@ def directory_page(
     body = f"""<!doctype html>
 <html lang="en" data-theme-default="auto"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="light dark"><title>{html.escape(title)} · {html.escape(brand_name)}</title>
-<link rel="icon" href="{html.escape(favicon(brand_name))}">{theme_script(nonce)}
+<meta name="color-scheme" content="light dark"><title>{html.escape(title)} · aniflow</title>
+<link rel="icon" href="data:,">{theme_script(nonce)}
 <link rel="stylesheet" href="{base}/vendor/github-markdown.css">
 <link rel="stylesheet" href="{base}/static/page.css">
 <style>{THEME_READER_CSS}{BRAND_CSS}{UI_CSS}{DIRECTORY_CSS}</style>
-</head><body class="aniflow-local aniflow-browser"><header class="bar"><a href="{base}{FILES}">{html.escape(brand_name)}</a><span class="name">{title}</span>
+</head><body class="aniflow-local aniflow-browser"><header class="bar"><a href="{base}{FILES}">aniflow</a><span class="name">{title}</span>
 <nav><a href="{base}/help">Demo &amp; help</a>{theme_select(nonce)}</nav></header>
-<main class="browser-shell"><div class="browser-masthead">{brand(base, brand_name)}
+<main class="browser-shell"><div class="browser-masthead">{brand(base)}
 <a class="browser-demo" href="{base}/help"><span class="demo-play" aria-hidden="true"></span>
 <span><strong>Try animated diagrams</strong><span>Play the demo, then make your own.</span></span>{NEXT_ICON}</a></div>
 <nav class="browser-trail" aria-label="Folders"><ol>{trail}</ol></nav>
@@ -227,7 +226,8 @@ def reader_page(
     comments: str,
     crumbs: list[tuple[str, str]] | None = None,
     base: str = "",
-    brand_name: str = DEFAULT,
+    session: dict | None = None,
+    signin: bool = False,
 ) -> tuple[bytes, str]:
     """A markdown file in the reader, with links kept under root_url."""
     nonce = secrets.token_urlsafe(16)
@@ -262,14 +262,19 @@ def reader_page(
         nonce=nonce,
         back=back,
         options=page.reader_options(
-            comments=comments, review_name="Comments", root=root_url, base=base
+            comments=comments,
+            review_name="Comments",
+            root=root_url,
+            base=base,
+            signin=base + "/auth/github/start" if signin else "",
+            signout=base + "/auth/logout" if signin else "",
+            me=session,
         ),
         base=base,
         actions=actions,
         theme=True,
         trail=trail,
-        top=brand(base, brand_name),
-        favicon=favicon(brand_name),
+        top=brand(base),
         style=BRAND_CSS + UI_CSS,
         body_class="aniflow-local",
         after=f'<script nonce="{nonce}">{UI_JS}</script>',
@@ -284,12 +289,12 @@ class Server(ThreadingHTTPServer):
         root: Path,
         base: str = "",
         comments: bool = True,
-        name: str = DEFAULT,
+        signin: oauth.SignIn | None = None,
     ):
         self.root = root.resolve()
         self.base = base
         self.comments = comments
-        self.name = name
+        self.signin = signin
         identity = hashlib.sha256(os.fsencode(self.root)).hexdigest()
         cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
         self.comments_root = cache / "aniflow" / "comments" / identity
@@ -324,11 +329,115 @@ class Handler(web.Handler):
         digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
         return path, self.server.comments_root / f"{digest}.json"
 
-    def redirect(self, location: str) -> None:
+    def redirect(self, location: str, cookies: list[str] | None = None) -> None:
         self.send_response(302)
         self.send_header("Location", location)
+        for value in cookies or []:
+            self.send_header("Set-Cookie", value)
         self.send_header("Content-Length", "0")
         self.end_headers()
+
+    def cookie(self, name: str) -> str:
+        jar = SimpleCookie()
+        try:
+            jar.load(self.headers.get("Cookie") or "")
+        except CookieError:
+            return ""
+        morsel = jar.get(name)
+        return morsel.value if morsel else ""
+
+    def secure(self) -> bool:
+        """Whether the browser reached this page over https, as the proxy reports."""
+        return self.headers.get("X-Forwarded-Proto", "").strip().lower() == "https"
+
+    def session(self) -> dict | None:
+        """Who is asking, when the server offers GitHub sign-in and they signed in."""
+        signin = self.server.signin
+        return signin.session(self.cookie(oauth.SESSION_COOKIE)) if signin else None
+
+    def signin_route(self, path: str, parsed: object) -> None:
+        """The three routes of the GitHub sign-in: start, callback and sign out."""
+        signin = self.server.signin
+        if signin is None:
+            self.send_error(404)
+            return
+        base = self.server.base
+        state_cookie = self.cookie(oauth.STATE_COOKIE)
+        if path == "/auth/logout":
+            self.redirect(
+                self.server.url(FILES),
+                [
+                    oauth.cookie(
+                        oauth.SESSION_COOKIE,
+                        "",
+                        path=signin.path,
+                        max_age=0,
+                        secure=self.secure(),
+                    )
+                ],
+            )
+            return
+        if path == "/auth/github/start":
+            host = self.headers.get("Host") or ""
+            origin, secure = oauth.origin_of(
+                host, self.headers.get("X-Forwarded-Proto", "")
+            )
+            wanted = (parse_qs(parsed.query).get("next") or [""])[-1]
+            url, state = signin.start(origin, base, wanted)
+            self.redirect(
+                url,
+                [
+                    oauth.cookie(
+                        oauth.STATE_COOKIE,
+                        state,
+                        path=signin.path,
+                        max_age=oauth.STATE_TTL,
+                        secure=secure,
+                    )
+                ],
+            )
+            return
+        query = parse_qs(parsed.query)
+        target = signin.target(state_cookie, base)
+        try:
+            session = signin.finish(
+                (query.get("code") or [""])[-1],
+                (query.get("state") or [""])[-1],
+                state_cookie,
+                signin.redirect_uri(
+                    oauth.origin_of(
+                        self.headers.get("Host") or "",
+                        self.headers.get("X-Forwarded-Proto", ""),
+                    )[0],
+                    base,
+                ),
+            )
+        except oauth.SignInFailed as error:
+            self.send_bytes(
+                f"aniflow: sign-in failed: {error}\n".encode(),
+                "text/plain; charset=utf-8",
+                {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+                status=400,
+            )
+            return
+        self.redirect(
+            target,
+            [
+                oauth.cookie(
+                    oauth.SESSION_COOKIE,
+                    oauth.seal(session, signin.secret),
+                    path=signin.path,
+                    secure=self.secure(),
+                ),
+                oauth.cookie(
+                    oauth.STATE_COOKIE,
+                    "",
+                    path=signin.path,
+                    max_age=0,
+                    secure=self.secure(),
+                ),
+            ],
+        )
 
     def under_base(self, path: str) -> str:
         """path with the base prefix removed, so a proxy may forward it with or without it."""
@@ -365,9 +474,13 @@ class Handler(web.Handler):
                     [("Raw", base + "/help?raw=1")],
                     self.server.comments_url("help"),
                     base=base,
-                    brand_name=self.server.name,
+                    session=self.session(),
+                    signin=self.server.signin is not None,
                 )
                 self.send_html(body, page.reader_headers(nonce))
+            return
+        if path in ("/auth/github/start", "/auth/github/callback", "/auth/logout"):
+            self.signin_route(path, parsed)
             return
         if path.startswith("/comments/"):
             target = self.comment_target(path.removeprefix("/comments/"))
@@ -389,9 +502,7 @@ class Handler(web.Handler):
                         if not path.endswith("/"):
                             self.redirect(file_url(root, local, base))
                             return
-                        body, nonce = directory_page(
-                            root, local, base, self.server.name
-                        )
+                        body, nonce = directory_page(root, local, base)
                     elif web.is_markdown(local.name) and not raw:
                         body, nonce = reader_page(
                             base + FILES,
@@ -407,7 +518,8 @@ class Handler(web.Handler):
                             ),
                             breadcrumbs(root, local, base),
                             base=base,
-                            brand_name=self.server.name,
+                            session=self.session(),
+                            signin=self.server.signin is not None,
                         )
                     else:
                         self.send_local_file(local, raw=raw)
@@ -424,13 +536,31 @@ class Handler(web.Handler):
         parsed = urlsplit(self.path)
         path = self.under_base(parsed.path)
         if path.startswith("/comments/"):
+            session = self.session()
+            if self.server.signin is not None and session is None:
+                self.send_json(
+                    {
+                        "error": "sign in with GitHub to comment",
+                        "signin": self.server.url("/auth/github/start"),
+                    },
+                    status=401,
+                )
+                return
             _, _, key = path.removeprefix("/comments/").partition("/")
             target = self.comment_target(key)
             if target is None:
                 self.send_json({"error": "not found"}, status=404)
                 return
             local, storage = target
-            self.handle_comment(parsed._replace(path=path), local, storage)
+            who = session or {}
+            self.handle_comment(
+                parsed._replace(path=path),
+                local,
+                storage,
+                author=who.get("login", ""),
+                author_id=who.get("id", 0),
+                admin=who.get("admin", True),
+            )
             return
         self.send_response(405)
         self.send_header("Allow", "GET")
@@ -471,11 +601,17 @@ def main() -> None:
         help="do not offer review comments, for a read-only public deployment",
     )
     parser.add_argument(
-        "--brand",
-        metavar="NAME",
-        default=DEFAULT,
-        help="name to show in the bar, the masthead and the tab icon "
-        f"(default: {DEFAULT})",
+        "--github-oauth",
+        metavar="CLIENT_ID",
+        default=os.environ.get("ANIFLOW_GITHUB_CLIENT_ID", ""),
+        help="GitHub OAuth app the comment routes sign in with; the client secret and "
+        "the cookie key come from ANIFLOW_GITHUB_SECRET and ANIFLOW_SIGNIN_SECRET",
+    )
+    parser.add_argument(
+        "--comments-admin",
+        metavar="LOGIN",
+        default=os.environ.get("ANIFLOW_COMMENTS_ADMIN", ""),
+        help="GitHub login allowed to change anyone's comments (default: nobody)",
     )
     parser.add_argument(
         "--spec",
@@ -637,13 +773,29 @@ def main() -> None:
         base = path_prefix(args.base)
     except ValueError as error:
         parser.error(str(error))
+    signin = None
+    if args.github_oauth:
+        secret = os.environ.get("ANIFLOW_GITHUB_SECRET", "")
+        signing = os.environ.get("ANIFLOW_SIGNIN_SECRET", "")
+        if not secret or not signing:
+            parser.error(
+                "--github-oauth needs ANIFLOW_GITHUB_SECRET and ANIFLOW_SIGNIN_SECRET "
+                "in the environment"
+            )
+        signin = oauth.SignIn(
+            args.github_oauth,
+            secret,
+            signing,
+            path=base + "/",
+            admin=args.comments_admin,
+        )
     try:
         httpd = Server(
             (args.host, args.port),
             args.directory,
             base=base,
             comments=not args.no_comments,
-            name=args.brand.strip() or DEFAULT,
+            signin=signin,
         )
     except (OSError, OverflowError) as error:
         parser.error(str(error))

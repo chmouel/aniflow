@@ -47,6 +47,8 @@ def entry_valid(entry: object) -> bool:
         and ("target" not in entry or target_valid(entry["target"]))
         and isinstance(entry.get("id"), str)
         and isinstance(entry.get("body"), str)
+        and isinstance(entry.get("author", ""), str)
+        and isinstance(entry.get("author_id", 0), int)
         and isinstance(entry.get("quote"), list)
         and all(isinstance(line, str) for line in entry["quote"])
         and all(
@@ -108,7 +110,16 @@ def anchor(entry: dict, lines: list[str]) -> dict:
     start, end, quoted = entry["start"], entry["end"], entry["quote"]
     shown = {
         key: entry[key]
-        for key in ("id", "body", "quote", "target", "created", "updated")
+        for key in (
+            "id",
+            "body",
+            "quote",
+            "target",
+            "created",
+            "updated",
+            "author",
+            "author_id",
+        )
         if key in entry
     }
     if lines[start - 1 : end] == quoted:
@@ -192,10 +203,16 @@ def change(
     data: object,
     storage: Path,
     *,
+    author: str = "",
+    author_id: int = 0,
+    admin: bool = False,
     create_parents: bool = True,
     allowed: Callable[[Path], bool] | None = None,
 ) -> str | None:
-    """Add, edit or delete a comment. Returns an error message, or None when done."""
+    """Add, edit or delete a comment. Returns an error message, or None when done.
+
+    author and author_id name who is asking: a comment belongs to the account that wrote
+    it, and only that account, or admin, may change it afterwards."""
     if action != "delete":
         if not isinstance(data, dict) or not isinstance(data.get("body"), str):
             return "body must be a string"
@@ -235,6 +252,10 @@ def change(
             }
             if target is not None:
                 entry["target"] = target
+            if author:
+                entry["author"] = author
+            if author_id:
+                entry["author_id"] = author_id
             entries.append(entry)
         else:
             index = next(
@@ -247,6 +268,8 @@ def change(
             )
             if index is None:
                 return "not found"
+            if not admin and entries[index].get("author_id", 0) != author_id:
+                return "not yours"
             if action == "delete":
                 del entries[index]
             else:

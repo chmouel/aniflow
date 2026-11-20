@@ -4,10 +4,13 @@ import re
 import shutil
 import sys
 import threading
+import time
+import urllib.parse
+from urllib.parse import urlsplit
 
 import pytest
 
-from aniflow import cli, comments, page, web
+from aniflow import cli, comments, oauth, page, web
 
 
 def test_init_creates_selected_template_without_overwriting(
@@ -110,7 +113,13 @@ def aniflow_servers(tmp_path, monkeypatch):
             connection = http.client.HTTPConnection(*httpd.server_address, timeout=5)
             connection.request(method, path, body=body, headers=headers or {})
             response = connection.getresponse()
-            result = response.status, dict(response.getheaders()), response.read()
+            headers = {}
+            for name, value in response.getheaders():
+                if name == "Set-Cookie":
+                    headers.setdefault("Set-Cookie", []).append(value)
+                else:
+                    headers[name] = value
+            result = response.status, headers, response.read()
             connection.close()
             return result
 
@@ -205,26 +214,6 @@ def test_base_also_answers_prefix_free_paths(local_docs, aniflow_servers):
     assert request("/public/files/")[0] == 404
 
 
-def test_brand_names_the_page_and_the_tab(local_docs, aniflow_servers):
-    request = aniflow_servers(local_docs, base="/pub", name="ChmouzFlow")
-    _, _, body = request("/pub/files/")
-    assert b"\xc2\xb7 ChmouzFlow</title>" in body
-    assert b'href="/pub/files/">ChmouzFlow</a>' in body
-    assert b'class="aniflow-brand brand-name"' in body
-    assert b"aniflow-letters" not in body
-    assert b'<link rel="icon" href="data:image/svg+xml,' in body
-    _, _, page_body = request("/pub/files/guides/start.md")
-    assert b'class="aniflow-brand brand-name"' in page_body
-    assert b">ChmouzFlow</span>" in page_body
-
-
-def test_brand_is_escaped(local_docs, aniflow_servers):
-    request = aniflow_servers(local_docs, name='<b>&"x')
-    _, _, body = request("/files/")
-    assert b"<b>" not in body.replace(b"<body", b"")
-    assert b'&lt;b&gt;&amp;&quot;x' in body
-
-
 def test_no_comments_hides_the_review_ui(local_docs, aniflow_servers):
     request = aniflow_servers(local_docs, comments=False)
     _, _, body = request("/files/guides/start.md")
@@ -265,6 +254,177 @@ def test_reader_path_sits_in_the_bar(aniflow_server):
     assert b'class="crumbs"' not in body
     _, _, help_body = aniflow_server("/help")
     assert b'<span class="name">aniflow help</span>' in help_body
+
+
+def cookie_wanted(headers, name):
+    for value in headers.get("Set-Cookie", []):
+        if value.startswith(name + "="):
+            return value.split(";", 1)[0]
+    return ""
+
+
+@pytest.fixture
+def github(monkeypatch):
+    """GitHub's two calls, answered without the network."""
+    accounts = {
+        "code-alice": (1, "alice"),
+        "code-bob": (2, "bob"),
+        "code-boss": (9, "boss"),
+    }
+
+    monkeypatch.setattr(oauth, "exchange", lambda code, *rest: "token-" + code)
+    monkeypatch.setattr(
+        oauth,
+        "user",
+        lambda token: {
+            "id": accounts[token.removeprefix("token-")][0],
+            "login": accounts[token.removeprefix("token-")][1],
+            "name": "",
+        },
+    )
+    return accounts
+
+
+def sign_in(request, who="alice"):
+    """Walk the redirect and the callback, and give back the session cookie it sets."""
+    status, headers, _ = request("/auth/github/start?next=/files/README.md")
+    assert status == 302 and headers["Location"].startswith(oauth.AUTHORIZE)
+    state = cookie_wanted(headers, oauth.STATE_COOKIE)
+    assert state
+    state_value = urllib.parse.parse_qs(urlsplit(headers["Location"]).query)["state"][0]
+    status, headers, _ = request(
+        f"/auth/github/callback?code=code-{who}&state={state_value}",
+        headers={"Cookie": state},
+    )
+    assert status == 302 and headers["Location"] == "/files/README.md"
+    return cookie_wanted(headers, oauth.SESSION_COOKIE)
+
+
+def signin_servers(local_docs, aniflow_servers):
+    return aniflow_servers(
+        local_docs,
+        signin=oauth.SignIn("client-id", "client-secret", "signing-key", admin="boss"),
+    )
+
+
+def test_oauth_cookies_are_signed_and_scoped():
+    sealed = oauth.seal({"login": "alice", "exp": 1}, "key")
+    assert oauth.unseal(sealed, "key") == {"login": "alice", "exp": 1}
+    assert oauth.unseal(sealed, "other") is None
+    assert oauth.unseal(sealed[:-1] + "x", "key") is None
+    header = oauth.cookie("aniflow-user", "v", path="/pub/", max_age=0, secure=True)
+    for wanted in ("Path=/pub/", "HttpOnly", "SameSite=Lax", "Secure", "Max-Age=0"):
+        assert wanted in header
+
+
+@pytest.mark.parametrize(
+    ("wanted", "expected"),
+    [
+        ("/pub/files/a.md", "/pub/files/a.md"),
+        ("/pub/", "/pub/"),
+        ("/files/a.md", "/pub/files/"),
+        ("//evil.example/x", "/pub/files/"),
+        ("https://evil.example/x", "/pub/files/"),
+        ("", "/pub/files/"),
+    ],
+)
+def test_signin_returns_only_inside_the_base(wanted, expected):
+    assert oauth.next_path(wanted, "/pub") == expected
+
+
+def test_signin_rejects_a_state_it_did_not_issue(github, local_docs, aniflow_servers):
+    request = signin_servers(local_docs, aniflow_servers)
+    status, headers, body = request(
+        "/auth/github/callback?code=code-alice&state=guessed",
+        headers={
+            "Cookie": oauth.STATE_COOKIE
+            + "="
+            + oauth.seal(
+                {"state": "other", "next": "/files/", "exp": time.time() + 60},
+                "signing-key",
+            )
+        },
+    )
+    assert status == 400 and b"sign-in failed" in body
+    assert not cookie_wanted(headers, oauth.SESSION_COOKIE)
+    # An expired state is no better.
+    status, _, _ = request(
+        "/auth/github/callback?code=code-alice&state=fine",
+        headers={
+            "Cookie": oauth.STATE_COOKIE
+            + "="
+            + oauth.seal(
+                {"state": "fine", "next": "/files/", "exp": time.time() - 1},
+                "signing-key",
+            )
+        },
+    )
+    assert status == 400
+
+
+def test_signed_out_reader_is_offered_a_sign_in(github, local_docs, aniflow_servers):
+    request = signin_servers(local_docs, aniflow_servers)
+    _, _, body = request("/files/README.md")
+    options = json_block(body, "aniflow-options")["comments"]
+    assert options["signin"] == "/auth/github/start"
+    assert options["signout"] == "/auth/logout"
+    assert "me" not in options
+    status, _, answer = request(
+        "/comments/add/file/README.md",
+        method="POST",
+        body='{"start":1,"end":1,"body":"hi"}',
+    )
+    assert status == 401
+    assert json.loads(answer)["signin"] == "/auth/github/start"
+
+
+def test_signed_in_reader_names_the_comment_author(github, local_docs, aniflow_servers):
+    request = signin_servers(local_docs, aniflow_servers)
+    cookie = sign_in(request)
+    session = {"Cookie": cookie}
+    _, _, body = request("/files/README.md", headers=session)
+    assert json_block(body, "aniflow-options")["comments"]["me"]["login"] == "alice"
+    status, _, answer = request(
+        "/comments/add/file/README.md",
+        method="POST",
+        headers={**session, "Content-Type": "application/json"},
+        body='{"start":1,"end":1,"body":"hi"}',
+    )
+    assert status == 200
+    comment = json.loads(answer)["comments"][0]
+    assert comment["author"] == "alice" and comment["author_id"] == 1
+    # Bob reads the comment but cannot touch it; Alice can; boss can.
+    bob = {"Cookie": sign_in(request, "bob")}
+    status, _, answer = request(
+        f"/comments/edit/file/README.md?id={comment['id']}",
+        method="POST",
+        headers={**bob, "Content-Type": "application/json"},
+        body='{"body":"mine now"}',
+    )
+    assert status == 403
+    status, _, answer = request(
+        f"/comments/edit/file/README.md?id={comment['id']}",
+        method="POST",
+        headers={**session, "Content-Type": "application/json"},
+        body='{"body":"edited"}',
+    )
+    assert status == 200 and json.loads(answer)["comments"][0]["body"] == "edited"
+    boss = {"Cookie": sign_in(request, "boss")}
+    status, _, _ = request(
+        f"/comments/delete/file/README.md?id={comment['id']}",
+        method="POST",
+        headers=boss,
+    )
+    assert status == 200
+
+
+def test_sign_out_clears_the_cookie(github, local_docs, aniflow_servers):
+    request = signin_servers(local_docs, aniflow_servers)
+    status, headers, _ = request("/auth/logout")
+    assert status == 302
+    assert "Max-Age=0" in cookie_wanted(headers, oauth.SESSION_COOKIE) or any(
+        "Max-Age=0" in value for value in headers["Set-Cookie"]
+    )
 
 
 def test_source_is_escaped_and_reread(aniflow_server, local_docs):

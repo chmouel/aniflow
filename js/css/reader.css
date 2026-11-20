@@ -144,6 +144,12 @@
   .reader .markdown-body .review-where { padding:0; border:0; background:none; color:var(--fgColor-accent); font:600 12.5px/1.4 var(--mono); cursor:pointer; }
   .reader .markdown-body .review-where:hover { text-decoration:underline; }
   .reader .markdown-body .review-tools { display:flex; gap:2px; margin-left:auto; }
+  /* Who wrote a comment, and the sign-in the review dock offers when nobody is. */
+  :is(.review-author, .diagram-note-meta .review-author) { color:var(--fgColor-muted); font-size:12px; font-weight:600; }
+  .review-author::before { content:'@'; opacity:.6; }
+  .review-session { display:inline-flex; align-items:center; gap:10px; color:var(--fgColor-muted); font-size:12px; }
+  .review-signin { display:inline-flex; align-items:center; min-height:32px; padding:0 12px; border:1px solid var(--borderColor-default); border-radius:8px; background:var(--bgColor-default); color:var(--fgColor-accent); font-size:13px; font-weight:600; text-decoration:none; }
+  .review-signin:hover { border-color:var(--fgColor-accent); }
   .reader .markdown-body .review-body { margin:0; color:var(--fgColor-default); white-space:pre-wrap; overflow-wrap:anywhere; }
   .reader .markdown-body .review-note { margin:0 0 6px; color:var(--fgColor-attention); font-size:13px; font-weight:600; }
   .reader .markdown-body .review-quote { margin:0 0 8px; padding:8px 10px; border:1px solid var(--borderColor-muted); border-radius:8px; background:var(--bgColor-default); color:var(--fgColor-muted); font:12.5px/1.5 var(--mono); white-space:pre-wrap; overflow-wrap:anywhere; }

@@ -312,6 +312,9 @@ function diagramComments(stage, svg, after, about) {
   const last = Number(about.lineEnd) || 0;
   if (!url || !base || !last) return null;
   const max = host.commentMax;
+  const gated = Boolean(host.commentsSignin);
+  const me = host.commentsMe;
+  const mine = (comment) => !gated || me && comment.author_id === me.id;
   const nodes = diagramNodes(svg);
   const names = new Map([...nodes].map(([name, group]) => [group, name]));
   const links = diagramLinks(svg, nodes, about.edges);
@@ -536,11 +539,24 @@ function diagramComments(stage, svg, after, about) {
     draft = null;
     choose([]);
   }
+  function signInLink(label) {
+    const link = make("a", "review-signin", label);
+    link.href = host.commentsSignin + "?next=" + encodeURIComponent(location.pathname + location.search + location.hash);
+    return link;
+  }
   function compose(target) {
     closeDraft();
     const box = make("section", "diagram-note draft");
     const top = make("header");
     top.append(make("span", "diagram-note-new", "New"), make("span", "diagram-note-what", describe(target)));
+    if (gated && !me) {
+      box.append(top, make("p", "diagram-note-body", "Sign in with GitHub to comment on " + describe(target) + "."), signInLink("Sign in"));
+      draft = { target, element: box };
+      choose(target.parts);
+      draw();
+      box.scrollIntoView({ block: "nearest" });
+      return;
+    }
     const { form, area } = editor("", "Comment on " + describe(target), "Comment", async (text) => {
       const named = { kind: target.kind, id: target.id, label: target.label, diagram: about.index };
       await send("add", "", { start: target.line, end: target.line, body: text, target: named });
@@ -566,6 +582,7 @@ function diagramComments(stage, svg, after, about) {
     when.dateTime = stamp.toISOString();
     when.title = stamp.toLocaleString();
     meta.append(when);
+    if (comment.author) meta.append(make("span", "review-author", comment.author));
     if (comment.outdated) {
       const tag = make("span", "diagram-note-outdated", "Outdated");
       tag.title = "The diagram changed here after this comment. It was written on:\n" + comment.quote.join("\n");
@@ -575,7 +592,7 @@ function diagramComments(stage, svg, after, about) {
     const edit = make("button", "", "Edit");
     const remove = make("button", "", "Delete");
     actions.append(edit, remove);
-    meta.append(actions);
+    if (mine(comment)) meta.append(actions);
     const body = make("p", "diagram-note-body", comment.body);
     item.append(meta, body);
     edit.addEventListener("click", () => {
@@ -3161,7 +3178,12 @@ function directoryUrl(value, root, base = "") {
 // js/reader/review.js
 function initReview() {
   if (host.commentsUrl && host.reviewToggle && host.dock) {
-    let make = function(tag, className, text) {
+    let signInLink = function(label) {
+      const link = make("a", "review-signin", label);
+      const back = location.pathname + location.search + location.hash;
+      link.href = host.commentsSignin + "?next=" + encodeURIComponent(back);
+      return link;
+    }, make = function(tag, className, text) {
       const element2 = document.createElement(tag);
       if (className) element2.className = className;
       if (text !== void 0) element2.textContent = text;
@@ -3305,6 +3327,11 @@ function initReview() {
       commentButton.hidden = !selection || Boolean(composer);
       clearButton.hidden = !selection;
       copyButton.hidden = Boolean(selection) || !count;
+      session.textContent = "";
+      if (gated) {
+        if (me) session.append(make("span", "", me.login), signInLink("Sign out"));
+        else session.append(signInLink("Sign in to comment"));
+      }
     }, spot = function(line) {
       let best = null;
       for (const mark of marks) if (mark.start <= line) best = mark;
@@ -3380,6 +3407,16 @@ function initReview() {
       const mark = spot(target.end);
       if (!mark) return;
       const holder = make("div", "review-composer");
+      if (gated && !me) {
+        holder.append(
+          make("p", "review-composer-title", "Sign in to comment on " + range(target.start, target.end).toLowerCase()),
+          signInLink("Sign in with GitHub")
+        );
+        insertAt(slot(mark, target.start), holder);
+        composer = holder;
+        updateDock();
+        return;
+      }
       holder.append(make("p", "review-composer-title", "Comment on " + range(target.start, target.end).toLowerCase()));
       const { form, area } = editor("", "Comment on " + range(target.start, target.end).toLowerCase(), "Comment", async (text) => {
         await post("add", "", { start: target.start, end: target.end, body: text });
@@ -3408,7 +3445,10 @@ function initReview() {
       const edit = make("button", "", "Edit");
       const remove = make("button", "", "Delete");
       tools.append(edit, remove);
-      head.append(where, when, tools);
+      head.append(where, when);
+      if (comment.author) head.append(make("span", "review-author", comment.author));
+      if (mine(comment)) head.append(tools);
+      edit.hidden = remove.hidden = false;
       item.append(head);
       if (comment.outdated) {
         item.append(make("p", "review-note", "These lines changed after the comment. It was written on:"));
@@ -3511,11 +3551,15 @@ function initReview() {
     }
     const coarse = matchMedia("(pointer: coarse)");
     const commentMax = host.commentMax;
+    const gated = Boolean(host.commentsSignin);
+    const me = host.commentsMe;
+    const mine = (comment) => !gated || me && comment.author_id === me.id;
     const badge = host.reviewToggle.querySelector(".count");
     const dockText = host.dock.querySelector(".review-dock-text");
     const commentButton = host.dock.querySelector('[data-review="comment"]');
     const clearButton = host.dock.querySelector('[data-review="clear"]');
     const copyButton = host.dock.querySelector('[data-review="copy"]');
+    const session = make("span", "review-session");
     const gutter = document.createElement("div");
     gutter.className = "review-gutter";
     let reviewing = false;
@@ -3578,6 +3622,7 @@ function initReview() {
     });
     commentButton.addEventListener("click", compose);
     clearButton.addEventListener("click", clear);
+    copyButton.after(session);
     host.dock.querySelector('[data-review="done"]').addEventListener("click", leave);
     copyButton.addEventListener("click", async () => {
       const done = promptText ? await copyText(promptText) : false;
@@ -4677,6 +4722,9 @@ function reader(options = {}) {
     commentsUrl: comments.url || "",
     commentMax: comments.max || 4e3,
     reviewName: comments.name || "Review",
+    commentsSignin: comments.signin || "",
+    commentsSignout: comments.signout || "",
+    commentsMe: comments.me || null,
     save: options.save || ((name, blob) => saveBlob(blob, name)),
     reviewToggle: element(options.reviewButton),
     dock: element(options.reviewDock),

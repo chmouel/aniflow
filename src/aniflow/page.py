@@ -56,13 +56,17 @@ def reader_options(
     review_name: str = "Review",
     root: str = "",
     base: str = "",
+    signin: str = "",
+    signout: str = "",
+    me: dict | None = None,
     breaks: bool = False,
     callouts: bool = False,
     mermaid: str = "",
 ) -> dict[str, object]:
     """The JSON half of Aniflow.reader()'s options. root keeps links and pictures inside
     that path; comments is the URL of the document's comments; base is the path prefix the
-    page is served under, which the built-in icons get too."""
+    page is served under, which the built-in icons get too; signin and signout are where a
+    reader signs in to comment and back out, me is who it already is."""
     options: dict[str, object] = {
         "mermaid": mermaid or base + "/vendor/mermaid.min.js",
         "breaks": breaks,
@@ -76,6 +80,16 @@ def reader_options(
             "max": COMMENT_MAX_CHARS,
             "name": review_name,
         }
+        if signin:
+            options["comments"]["signin"] = signin
+            options["comments"]["signout"] = signout
+        if me:
+            options["comments"]["me"] = {
+                "id": me.get("id"),
+                "login": me.get("login", ""),
+                "name": me.get("name", ""),
+                "admin": bool(me.get("admin")),
+            }
     if root:
         options["root"] = root
     return options
