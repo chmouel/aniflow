@@ -28,35 +28,17 @@ BRAND_CSS = """
     .aniflow-brand:hover svg { filter:drop-shadow(0 0 9px color-mix(in srgb, var(--aniflow-pink) 26%, transparent)); }
     .aniflow-brand:hover .brand-star { transform:rotate(90deg); }
   }
-  /* A server started with --brand trades the wordmark for its own name, with a
-     mark built from the same plate and the same colours. */
-  .aniflow-brand.brand-name {
-    display:flex; align-items:center; flex-wrap:wrap; text-decoration:none;
-    gap:clamp(.55rem, 1.8vw, 1rem);
-  }
-  .aniflow-brand.brand-name .brand-mark {
-    flex:0 0 auto; display:grid; place-items:center; border-radius:22%;
-    width:clamp(2.5rem, 6.5vw, 3.4rem); aspect-ratio:1;
-    font-size:clamp(1.25rem, 3.3vw, 1.8rem); font-weight:800; line-height:1;
-    color:var(--aniflow-ice);
-    background:radial-gradient(120% 120% at 28% 8%,
-      color-mix(in srgb, var(--aniflow-violet) 72%, var(--aniflow-night)) 0%,
-      var(--aniflow-night) 64%);
-    border:1px solid color-mix(in srgb, var(--aniflow-violet) 62%, transparent);
-    box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--aniflow-cyan) 18%, transparent),
-      0 0 22px color-mix(in srgb, var(--aniflow-pink) 16%, transparent);
-    text-shadow:0 0 14px color-mix(in srgb, var(--aniflow-cyan) 55%, transparent);
-  }
-  .aniflow-brand.brand-name .brand-word {
-    display:inline-block; font-size:clamp(1.9rem, 5.6vw, 3.8rem); font-weight:800;
+  /* A server started with --brand trades the wordmark for its own name. */
+  .aniflow-brand.brand-name { text-decoration:none; }
+  .aniflow-brand.brand-name span {
+    display:inline-block; font-size:clamp(2.1rem, 6.2vw, 4.2rem); font-weight:800;
     line-height:1.05; letter-spacing:-.02em; padding-block:.1em;
     background:linear-gradient(96deg, var(--aniflow-ice) 6%, var(--aniflow-cyan) 38%, var(--aniflow-violet) 68%, var(--aniflow-pink) 96%);
     -webkit-background-clip:text; background-clip:text; color:transparent;
   }
   @media (prefers-reduced-motion:no-preference) {
-    .aniflow-brand.brand-name .brand-mark, .aniflow-brand.brand-name .brand-word { transition:filter .2s; }
-    .aniflow-brand.brand-name:hover .brand-word { filter:drop-shadow(0 0 10px color-mix(in srgb, var(--aniflow-pink) 30%, transparent)); }
-    .aniflow-brand.brand-name:hover .brand-mark { filter:drop-shadow(0 0 12px color-mix(in srgb, var(--aniflow-cyan) 34%, transparent)); }
+    .aniflow-brand.brand-name span { transition:filter .2s; }
+    .aniflow-brand.brand-name:hover span { filter:drop-shadow(0 0 10px color-mix(in srgb, var(--aniflow-pink) 30%, transparent)); }
   }
 """
 
@@ -133,35 +115,24 @@ def brand(base: str = "", name: str = "") -> str:
     """The masthead, linking to the file browser under base. A server started with
     --brand shows that name as a wordmark in the same colours instead of the logo."""
     if name and name != DEFAULT:
-        shown = html.escape(name)
         return (
             f'<a class="aniflow-brand brand-name" href="{html.escape(base)}/files/" '
-            f'aria-label="{shown}: browse files">'
-            f'<span class="brand-mark" aria-hidden="true">{initial(name)}</span>'
-            f'<span class="brand-word">{shown}</span></a>'
+            f'aria-label="{html.escape(name)}: browse files"><span>{html.escape(name)}</span></a>'
         )
     return BRAND.replace('href="/files/"', f'href="{html.escape(base)}/files/"')
 
 
-def initial(name: str) -> str:
-    """The one letter the mark and the tab icon carry."""
-    return html.escape(name.strip()[:1].upper() or "?")
-
-
 def favicon(name: str = "") -> str:
     """A tab icon holding the first letter of name, or the empty one aniflow ships with."""
-    if not name.strip():
+    letter = name.strip()[:1]
+    if not letter:
         return "data:,"
     svg = (
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
-        '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">'
-        '<stop stop-color="#8572ff"/><stop offset="1" stop-color="#ff3bc8"/>'
-        "</linearGradient></defs>"
-        '<rect width="64" height="64" rx="15" fill="#13102c"/>'
-        '<rect x="1.5" y="1.5" width="61" height="61" rx="13.5" fill="none" stroke="url(#g)" stroke-width="2"/>'
+        '<rect width="64" height="64" rx="14" fill="#13102c"/>'
         '<text x="32" y="45" text-anchor="middle" font-family="system-ui,sans-serif" '
-        'font-size="37" font-weight="700" fill="#e7f8ff">'
-        f"{initial(name)}"
+        'font-size="38" font-weight="700" fill="#2feaff">'
+        f"{html.escape(letter)}"
         "</text></svg>"
     )
     return "data:image/svg+xml," + quote(svg, safe="")
