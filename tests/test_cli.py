@@ -553,6 +553,39 @@ def test_membership_answers(monkeypatch):
         oauth.member("t", "org")
 
 
+def test_bar_offers_github_sign_in_at_its_end(github, local_docs, aniflow_servers):
+    request = signin_servers(local_docs, aniflow_servers)
+    for path in ("/files/", "/files/README.md", "/help"):
+        _, _, body = request(path)
+        bar = body.split(b"</header>")[0]
+        assert bar.rstrip().endswith(b"</a></nav>"), path
+        assert b'class="account-signin"' in bar
+        assert b"Sign in" in bar
+    _, _, body = request("/files/README.md")
+    assert b'href="/auth/github/start?next=%2Ffiles%2FREADME.md"' in body
+    session = {"Cookie": sign_in(request)}
+    _, _, body = request("/files/", headers=session)
+    bar = body.split(b"</header>")[0]
+    assert b'<span class="account-login">alice</span>' in bar
+    assert b'src="https://avatars.githubusercontent.com/u/1?s=52"' in bar
+    assert b'href="/auth/logout?next=%2Ffiles%2F"' in bar
+    assert b'class="account-signin"' not in bar
+
+
+def test_bar_has_no_account_without_sign_in(aniflow_server):
+    _, _, body = aniflow_server("/files/")
+    bar = body.split(b'<header class="bar">')[1].split(b"</header>")[0]
+    assert b"account" not in bar and b"Sign in" not in bar
+
+
+def test_sign_out_returns_to_the_page(github, local_docs, aniflow_servers):
+    request = signin_servers(local_docs, aniflow_servers)
+    status, headers, _ = request("/auth/logout?next=/files/README.md")
+    assert status == 302 and headers["Location"] == "/files/README.md"
+    status, headers, _ = request("/auth/logout?next=https://evil.example/")
+    assert headers["Location"] == "/files/"
+
+
 def test_sign_out_clears_the_cookie(github, local_docs, aniflow_servers):
     request = signin_servers(local_docs, aniflow_servers)
     status, headers, _ = request("/auth/logout")

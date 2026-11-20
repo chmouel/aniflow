@@ -1,5 +1,6 @@
 """The aniflow pages' own look: the file browser and the bits around the reader."""
 
+GITHUB_MARK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>'
 FOLDER_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h3.6c.6 0 1.2.2 1.6.7L12 6h6.5A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5Z"/></svg>'
 NOTE_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M7 2.5h7.2c.5 0 1 .2 1.4.6l3.3 3.3c.4.4.6.9.6 1.4v11.7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-15a2 2 0 0 1 2-2ZM8.5 11h7v1.5h-7Zm0 3.5h7V16h-7Zm0-7h3.5V9H8.5Z"/><path fill="currentColor" opacity=".45" d="M14.5 2.6v3.4a1.5 1.5 0 0 0 1.5 1.5h3.4Z"/></svg>'
 SEARCH_ICON = '<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12.6 12.6l4.4 4.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>'
@@ -130,6 +131,17 @@ UI_CSS = """
   .aniflow-menu .menu-items { position:absolute; top:100%; right:0; min-width:170px; padding:6px; border:1px solid var(--borderColor-default); border-radius:10px; background:var(--bgColor-default); box-shadow:0 8px 24px color-mix(in srgb, var(--fgColor-default) 12%, transparent); }
   .aniflow-menu .menu-items a { display:block; padding:10px; border-radius:6px; }
   .aniflow-menu .menu-items a:hover { background:var(--bgColor-muted); text-decoration:none; }
+  /* The GitHub account, at the right end of the bar. */
+  .account-signin { display:inline-flex; align-items:center; gap:7px; padding:5px 11px; border:1px solid var(--borderColor-default); border-radius:999px; color:var(--fgColor-default) !important; font-weight:600; white-space:nowrap; }
+  .account-signin:hover { border-color:var(--fgColor-muted); background:var(--bgColor-default); text-decoration:none !important; }
+  .account-signin svg, .account .account-mark { width:16px; height:16px; fill:currentColor; flex-shrink:0; }
+  .aniflow-menu.account summary { display:flex; align-items:center; gap:8px; padding:3px 0; color:var(--fgColor-default); }
+  .account-avatar { width:26px; height:26px; border-radius:50%; border:1px solid var(--borderColor-default); background:var(--bgColor-muted); }
+  .account-login { max-width:12em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .account .menu-items { min-width:200px; }
+  .account .account-who { margin:0; padding:8px 10px 10px; border-bottom:1px solid var(--borderColor-muted); color:var(--fgColor-muted); font-size:13px; font-weight:400; }
+  .account .account-who b { color:var(--fgColor-default); }
+  @media (max-width:640px) { .account-login, .account-signin span { display:none; } }
   .aniflow-local .reader-help { white-space:nowrap; }
   .aniflow-help .aniflow-brand { width:min(260px, 62%); margin:0 0 14px; }
   .aniflow-help .reader .markdown-body h1 { font-size:clamp(1.8rem, 4vw, 2.5rem); }

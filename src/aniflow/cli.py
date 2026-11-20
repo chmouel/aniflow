@@ -23,6 +23,7 @@ from aniflow.themes import THEME_READER_CSS, theme_script, theme_select
 from aniflow.ui import (
     DIRECTORY_CSS,
     FOLDER_ICON,
+    GITHUB_MARK,
     NOTE_ICON,
     SEARCH_ICON,
     UI_CSS,
@@ -143,6 +144,27 @@ def breadcrumbs(root: Path, path: Path, base: str = "") -> list[tuple[str, str]]
     ]
 
 
+def account_menu(base: str, session: dict | None, here: str) -> str:
+    """The GitHub account at the end of the bar: a sign-in link back to here, or who is
+    signed in with a way out. Empty when the server has no sign-in."""
+    back = quote(here, safe="")
+    if not session:
+        return (
+            f'<a class="account-signin" href="{base}/auth/github/start?next={back}">'
+            f"{GITHUB_MARK}<span>Sign in</span></a>"
+        )
+    login = html.escape(session.get("login", ""))
+    avatar = f"https://avatars.githubusercontent.com/u/{int(session.get('id', 0))}?s=52"
+    return (
+        '<details class="aniflow-menu account"><summary>'
+        f'<img class="account-avatar" src="{avatar}" alt="">'
+        f'<span class="account-login">{login}</span></summary><div class="menu-items">'
+        f'<p class="account-who">Signed in as <b>{login}</b></p>'
+        f'<a href="https://github.com/{quote(session.get("login", ""))}">GitHub profile</a>'
+        f'<a href="{base}/auth/logout?next={back}">Sign out</a></div></details>'
+    )
+
+
 def directory_page(
     root: Path,
     path: Path,
@@ -150,6 +172,7 @@ def directory_page(
     brand_name: str = DEFAULT,
     logo: str = "",
     icon: str = "",
+    account: str = "",
 ) -> tuple[bytes, str]:
     entries = []
     for child in path.iterdir():
@@ -247,7 +270,7 @@ def directory_page(
 <link rel="stylesheet" href="{base}/static/page.css">
 <style>{THEME_READER_CSS}{BRAND_CSS}{UI_CSS}{DIRECTORY_CSS}</style>
 </head><body class="aniflow-local aniflow-browser"><header class="bar"><a href="{base}{FILES}">{html.escape(brand_name)}</a><span class="name">{title}</span>
-<nav><a href="{base}/help">Demo &amp; help</a>{theme_select(nonce)}</nav></header>
+<nav><a href="{base}/help">Demo &amp; help</a>{theme_select(nonce)}{account}</nav></header>
 <main class="browser-shell"><div class="browser-masthead">{masthead(base, brand_name, logo)}
 {demo}</div>
 <nav class="browser-trail" aria-label="Folders"><ol>{trail}</ol></nav>
@@ -270,6 +293,7 @@ def reader_page(
     brand_name: str = DEFAULT,
     logo: str = "",
     icon: str = "",
+    account: str = "",
 ) -> tuple[bytes, str]:
     """A markdown file in the reader, with links kept under root_url."""
     nonce = secrets.token_urlsafe(16)
@@ -316,6 +340,7 @@ def reader_page(
         actions=actions,
         theme=True,
         trail=trail,
+        account=account,
         top=masthead(base, brand_name, logo),
         favicon=favicon(brand_name, icon or logo),
         style=BRAND_CSS + UI_CSS,
@@ -422,6 +447,12 @@ class Handler(web.Handler):
         signin = self.server.signin
         return signin.session(self.cookie(oauth.SESSION_COOKIE)) if signin else None
 
+    def account(self) -> str:
+        """The bar's GitHub button for this request, when the server offers sign-in."""
+        if self.server.signin is None:
+            return ""
+        return account_menu(self.server.base, self.session(), self.path)
+
     def signin_route(self, path: str, parsed: object) -> None:
         """The three routes of the GitHub sign-in: start, callback and sign out."""
         signin = self.server.signin
@@ -431,8 +462,9 @@ class Handler(web.Handler):
         base = self.server.base
         state_cookie = self.cookie(oauth.STATE_COOKIE)
         if path == "/auth/logout":
+            wanted = (parse_qs(parsed.query).get("next") or [""])[-1]
             self.redirect(
-                self.server.url(FILES),
+                oauth.next_path(wanted, base),
                 [
                     oauth.cookie(
                         oauth.SESSION_COOKIE,
@@ -555,6 +587,7 @@ class Handler(web.Handler):
                     brand_name=self.server.brand_name,
                     logo=self.server.logo,
                     icon=self.server.icon,
+                    account=self.account(),
                 )
                 self.send_html(body, page.reader_headers(nonce))
             return
@@ -588,6 +621,7 @@ class Handler(web.Handler):
                             self.server.brand_name,
                             self.server.logo,
                             self.server.icon,
+                            self.account(),
                         )
                     elif web.is_markdown(local.name) and not raw:
                         body, nonce = reader_page(
@@ -609,6 +643,7 @@ class Handler(web.Handler):
                             brand_name=self.server.brand_name,
                             logo=self.server.logo,
                             icon=self.server.icon,
+                            account=self.account(),
                         )
                     else:
                         self.send_local_file(local, raw=raw)
