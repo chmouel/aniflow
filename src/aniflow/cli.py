@@ -18,7 +18,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from aniflow import export, oauth, page, web
-from aniflow.brand import BRAND_CSS, brand
+from aniflow.brand import BRAND_CSS, DEFAULT, favicon, masthead
 from aniflow.themes import THEME_READER_CSS, theme_script, theme_select
 from aniflow.ui import (
     DIRECTORY_CSS,
@@ -101,6 +101,26 @@ def path_prefix(value: str) -> str:
     return prefix
 
 
+# A logo dropped in the served folder is used without being named: the first of these.
+LOGO_NAMES = ("logo.svg", "logo.png")
+
+
+def logo_url(root: Path, value: str = "", base: str = "") -> str:
+    """Where the browser fetches the masthead logo: a path inside the served folder, an
+    https URL or a data: picture, and nothing else. Without a value, LOGO_NAMES at the top
+    of the folder are looked for, so dropping one there is enough."""
+    if not value:
+        value = next((name for name in LOGO_NAMES if (root / name).is_file()), "")
+        if not value:
+            return ""
+    if value.startswith(("data:image/", "https://")):
+        return value
+    path = local_path(root, value)
+    if path is None or not path.is_file():
+        raise ValueError(f"no logo at {value}")
+    return base + FILES + quote(path.relative_to(root).as_posix())
+
+
 def file_url(root: Path, path: Path, base: str = "") -> str:
     relative = path.relative_to(root).as_posix()
     if relative == ".":
@@ -118,7 +138,13 @@ def breadcrumbs(root: Path, path: Path, base: str = "") -> list[tuple[str, str]]
     ]
 
 
-def directory_page(root: Path, path: Path, base: str = "") -> tuple[bytes, str]:
+def directory_page(
+    root: Path,
+    path: Path,
+    base: str = "",
+    brand_name: str = DEFAULT,
+    logo: str = "",
+) -> tuple[bytes, str]:
     entries = []
     for child in path.iterdir():
         try:
@@ -201,14 +227,14 @@ def directory_page(root: Path, path: Path, base: str = "") -> tuple[bytes, str]:
     body = f"""<!doctype html>
 <html lang="en" data-theme-default="auto"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="light dark"><title>{html.escape(title)} · aniflow</title>
-<link rel="icon" href="data:,">{theme_script(nonce)}
+<meta name="color-scheme" content="light dark"><title>{html.escape(title)} · {html.escape(brand_name)}</title>
+<link rel="icon" href="{html.escape(favicon(brand_name, logo))}">{theme_script(nonce)}
 <link rel="stylesheet" href="{base}/vendor/github-markdown.css">
 <link rel="stylesheet" href="{base}/static/page.css">
 <style>{THEME_READER_CSS}{BRAND_CSS}{UI_CSS}{DIRECTORY_CSS}</style>
-</head><body class="aniflow-local aniflow-browser"><header class="bar"><a href="{base}{FILES}">aniflow</a><span class="name">{title}</span>
+</head><body class="aniflow-local aniflow-browser"><header class="bar"><a href="{base}{FILES}">{html.escape(brand_name)}</a><span class="name">{title}</span>
 <nav><a href="{base}/help">Demo &amp; help</a>{theme_select(nonce)}</nav></header>
-<main class="browser-shell"><div class="browser-masthead">{brand(base)}
+<main class="browser-shell"><div class="browser-masthead">{masthead(base, brand_name, logo)}
 <a class="browser-demo" href="{base}/help"><span class="demo-play" aria-hidden="true"></span>
 <span><strong>Try animated diagrams</strong><span>Play the demo, then make your own.</span></span>{NEXT_ICON}</a></div>
 <nav class="browser-trail" aria-label="Folders"><ol>{trail}</ol></nav>
@@ -228,6 +254,8 @@ def reader_page(
     base: str = "",
     session: dict | None = None,
     signin: bool = False,
+    brand_name: str = DEFAULT,
+    logo: str = "",
 ) -> tuple[bytes, str]:
     """A markdown file in the reader, with links kept under root_url."""
     nonce = secrets.token_urlsafe(16)
@@ -274,7 +302,8 @@ def reader_page(
         actions=actions,
         theme=True,
         trail=trail,
-        top=brand(base),
+        top=masthead(base, brand_name, logo),
+        favicon=favicon(brand_name, logo),
         style=BRAND_CSS + UI_CSS,
         body_class="aniflow-local",
         after=f'<script nonce="{nonce}">{UI_JS}</script>',
@@ -291,12 +320,17 @@ class Server(ThreadingHTTPServer):
         comments: bool = True,
         signin: oauth.SignIn | None = None,
         hosts: frozenset[str] = frozenset(),
+        brand_name: str = DEFAULT,
+        logo: str = "",
     ):
         self.root = root.resolve()
         self.base = base
         self.comments = comments
         self.signin = signin
         self.hosts = hosts
+        self.brand_name = brand_name
+        # A logo dropped in the served folder is picked up here, for every caller.
+        self.logo = logo or logo_url(self.root, "", base)
         identity = hashlib.sha256(os.fsencode(self.root)).hexdigest()
         cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
         self.comments_root = cache / "aniflow" / "comments" / identity
@@ -482,6 +516,8 @@ class Handler(web.Handler):
                     base=base,
                     session=self.session(),
                     signin=self.server.signin is not None,
+                    brand_name=self.server.brand_name,
+                    logo=self.server.logo,
                 )
                 self.send_html(body, page.reader_headers(nonce))
             return
@@ -508,7 +544,13 @@ class Handler(web.Handler):
                         if not path.endswith("/"):
                             self.redirect(file_url(root, local, base))
                             return
-                        body, nonce = directory_page(root, local, base)
+                        body, nonce = directory_page(
+                            root,
+                            local,
+                            base,
+                            self.server.brand_name,
+                            self.server.logo,
+                        )
                     elif web.is_markdown(local.name) and not raw:
                         body, nonce = reader_page(
                             base + FILES,
@@ -526,6 +568,8 @@ class Handler(web.Handler):
                             base=base,
                             session=self.session(),
                             signin=self.server.signin is not None,
+                            brand_name=self.server.brand_name,
+                            logo=self.server.logo,
                         )
                     else:
                         self.send_local_file(local, raw=raw)
@@ -612,6 +656,19 @@ def main() -> None:
         default=os.environ.get("ANIFLOW_GITHUB_CLIENT_ID", ""),
         help="GitHub OAuth app the comment routes sign in with; the client secret and "
         "the cookie key come from ANIFLOW_GITHUB_SECRET and ANIFLOW_SIGNIN_SECRET",
+    )
+    parser.add_argument(
+        "--brand",
+        metavar="NAME",
+        default=DEFAULT,
+        help=f"name in the bar, the masthead and the tab icon (default: {DEFAULT})",
+    )
+    parser.add_argument(
+        "--logo",
+        metavar="VALUE",
+        default="",
+        help="picture for the masthead and the tab icon: a path inside the served folder, "
+        "an https URL or a data: image (default: logo.svg or logo.png there, if any)",
     )
     parser.add_argument(
         "--allow-host",
@@ -804,6 +861,10 @@ def main() -> None:
             admin=args.comments_admin,
         )
     try:
+        logo = logo_url(args.directory, args.logo, base)
+    except ValueError as error:
+        parser.error(str(error))
+    try:
         httpd = Server(
             (args.host, args.port),
             args.directory,
@@ -813,6 +874,8 @@ def main() -> None:
             hosts=frozenset(
                 name.strip().lower() for name in args.allow_host if name.strip()
             ),
+            brand_name=args.brand.strip() or DEFAULT,
+            logo=logo,
         )
     except (OSError, OverflowError) as error:
         parser.error(str(error))

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+from urllib.parse import quote
 
 BRAND_CSS = """
   .aniflow-brand {
@@ -25,10 +26,27 @@ BRAND_CSS = """
     .aniflow-brand:hover svg { filter:drop-shadow(0 0 9px color-mix(in srgb, var(--aniflow-pink) 26%, transparent)); }
     .aniflow-brand:hover .brand-star { transform:rotate(90deg); }
   }
+  /* A name, a logo, or both: the same masthead without the aniflow wordmark. */
+  .aniflow-brand.brand-name {
+    display:flex; align-items:center; flex-wrap:wrap; text-decoration:none;
+    gap:clamp(.55rem, 1.8vw, 1rem);
+  }
+  .aniflow-brand .brand-logo {
+    display:block; height:clamp(2.6rem, 6vw, 3.6rem); width:auto;
+  }
+  .aniflow-brand .brand-word {
+    display:inline-block; font-size:clamp(1.9rem, 5.6vw, 3.8rem); font-weight:800;
+    line-height:1.05; letter-spacing:-.02em; padding-block:.1em;
+    background:linear-gradient(96deg, var(--aniflow-ice) 6%, var(--aniflow-cyan) 38%, var(--aniflow-violet) 68%, var(--aniflow-pink) 96%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  @media (prefers-reduced-motion:no-preference) {
+    .aniflow-brand .brand-logo, .aniflow-brand .brand-word { transition:filter .2s; }
+    .aniflow-brand:hover .brand-word { filter:drop-shadow(0 0 10px color-mix(in srgb, var(--aniflow-pink) 30%, transparent)); }
+  }
 """
 
-BRAND = """
-<a class="aniflow-brand" href="/files/" aria-label="aniflow: browse files">
+WORDMARK = """
 <svg viewBox="0 0 900 250" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
   <defs>
     <linearGradient id="aniflow-chrome" x1="0" y1="0" x2="0" y2="110" gradientUnits="userSpaceOnUse">
@@ -92,10 +110,49 @@ BRAND = """
   <path class="brand-star" d="M259 49 262 61 274 64 262 67 259 79 256 67 244 64 256 61Z"/>
   <path class="brand-star" d="M795 146 797 154 805 156 797 158 795 166 793 158 785 156 793 154Z"/>
 </svg>
-</a>
 """
 
 
-def brand(base: str = "") -> str:
-    """The masthead, linking to the file browser under base."""
-    return BRAND.replace('href="/files/"', f'href="{html.escape(base)}/files/"')
+DEFAULT = "aniflow"
+
+
+def masthead(base: str = "", name: str = DEFAULT, logo: str = "") -> str:
+    """The masthead, linking to the file browser: the aniflow wordmark, or the name and
+    logo the server was given."""
+    inner = ""
+    if logo:
+        inner += f'<img class="brand-logo" src="{html.escape(logo)}" alt="">'
+    inner += (
+        f'<span class="brand-word">{html.escape(name)}</span>'
+        if name != DEFAULT
+        else WORDMARK
+    )
+    plain = not logo and name == DEFAULT
+    label = f"{html.escape(name)}: browse files"
+    return (
+        f'<a class="aniflow-brand{" plain" if plain else " brand-name"}" '
+        f'href="{html.escape(base)}/files/" aria-label="{label}">{inner}</a>'
+    )
+
+
+def favicon(name: str = DEFAULT, logo: str = "") -> str:
+    """The tab icon: the logo when there is one, the name's first letter, or nothing."""
+    if logo:
+        return logo
+    letter = name.strip()[:1].upper()
+    if name == DEFAULT or not letter:
+        return "data:,"
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
+        '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">'
+        '<stop stop-color="#8572ff"/><stop offset="1" stop-color="#ff3bc8"/>'
+        "</linearGradient></defs>"
+        '<rect width="64" height="64" rx="15" fill="#13102c"/>'
+        '<rect x="1.5" y="1.5" width="61" height="61" rx="13.5" fill="none" '
+        'stroke="url(#g)" stroke-width="2"/>'
+        '<text x="32" y="45" text-anchor="middle" font-family="system-ui,sans-serif" '
+        'font-size="37" font-weight="700" fill="#e7f8ff">'
+        f"{html.escape(letter)}"
+        "</text></svg>"
+    )
+    return "data:image/svg+xml," + quote(svg, safe="")

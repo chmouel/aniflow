@@ -214,6 +214,42 @@ def test_base_also_answers_prefix_free_paths(local_docs, aniflow_servers):
     assert request("/public/files/")[0] == 404
 
 
+def test_brand_names_the_page_and_the_tab(local_docs, aniflow_servers):
+    request = aniflow_servers(local_docs, base="/pub", brand_name="Chmouel's Notes")
+    _, _, body = request("/pub/files/")
+    assert b"\xc2\xb7 Chmouel&#x27;s Notes</title>" in body
+    assert b'href="/pub/files/">Chmouel&#x27;s Notes</a>' in body
+    assert b'class="brand-word">Chmouel&#x27;s Notes</span>' in body
+    assert b"aniflow-letters" not in body
+    assert b'<link rel="icon" href="data:image/svg+xml,' in body
+    _, _, one = request("/pub/files/guides/start.md")
+    assert b'class="brand-word">Chmouel&#x27;s Notes</span>' in one
+
+
+def test_logo_replaces_the_wordmark(local_docs, aniflow_servers):
+    (local_docs / "logo.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"/>')
+    request = aniflow_servers(local_docs, base="/pub", brand_name="Chmouel's Notes")
+    assert cli.logo_url(local_docs, "", "/pub") == "/pub/files/logo.svg"
+    _, _, body = request("/pub/files/")
+    assert b'<img class="brand-logo" src="/pub/files/logo.svg" alt="">' in body
+    assert b'<link rel="icon" href="/pub/files/logo.svg">' in body
+    assert b"aniflow-letters" not in body
+
+
+def test_logo_must_stay_inside_the_folder(local_docs):
+    with pytest.raises(ValueError):
+        cli.logo_url(local_docs, "../secret.svg", "/pub")
+    with pytest.raises(ValueError):
+        cli.logo_url(local_docs, "/etc/passwd", "/pub")
+    assert cli.logo_url(local_docs, "https://example.com/a.svg", "/pub") == (
+        "https://example.com/a.svg"
+    )
+    assert cli.logo_url(local_docs, "data:image/svg+xml,<svg/>", "") == (
+        "data:image/svg+xml,<svg/>"
+    )
+    assert cli.logo_url(local_docs, "", "") == ""
+
+
 def test_no_comments_hides_the_review_ui(local_docs, aniflow_servers):
     request = aniflow_servers(local_docs, comments=False)
     _, _, body = request("/files/guides/start.md")

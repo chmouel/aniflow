@@ -64,6 +64,10 @@ the wheel, so `uvx --from git+...` works without Node.
   prefix, and a request that still has the prefix is accepted as well, so
   the proxy may strip it or not. `--no-comments` drops the review UI and
   answers 404 on the comment routes, for a read-only public deployment.
+  `--brand NAME` puts that name in the bar, the masthead and the tab icon, and
+  `--logo VALUE` (a path inside the served folder, an https URL or a data:
+  image; `logo.svg`/`logo.png` there are picked up on their own) puts a
+  picture beside it. `logo_url()` refuses a path that leaves the folder.
   `--allow-host NAME` adds a host name to answer for, and a POST's Origin only
   has to match its host, since a TLS proxy terminates the scheme before it
   arrives.
@@ -98,7 +102,9 @@ the wheel, so `uvx --from git+...` works without Node.
 - `src/aniflow/themes.py`: `THEMES`, `READER_THEMES`, the theme CSS and
   `theme_script(nonce, key)`, which applies the choice kept in localStorage
   under `key` (`aniflow-theme` here; an embedding app passes its own).
-- `src/aniflow/brand.py`, `ui.py`: the aniflow logo and the file browser.
+- `src/aniflow/brand.py`, `ui.py`: the aniflow wordmark (`WORDMARK`),
+  `masthead()` which trades it for a name or a logo, `favicon()` for the tab
+  icon, and the file browser.
 - `src/aniflow/help.md`: the `/help` demo and walkthrough.
 - `src/aniflow/spec.md`: the walkthrough syntax reference for agents.
   Update it with every change to the `%%` syntax, picture rules or built-in

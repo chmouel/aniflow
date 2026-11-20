@@ -90,6 +90,11 @@ quoted text for a coding agent. Comments are kept in `$XDG_CACHE_HOME/aniflow`
 (usually `~/.cache/aniflow`), one file per served folder and document.
 Reading and commenting leave your source files untouched.
 
+Name the reader after the notes it serves with `--brand "My Notes"` and point
+`--logo` at a picture (a path inside the served folder, an https URL or a
+`data:` image); a `logo.svg` or `logo.png` at the top of the folder is picked
+up without a flag, and the two replace the aniflow wordmark and tab icon.
+
 Serving a folder to other people, start the server with `--github-oauth
 CLIENT_ID`, an OAuth app whose callback is `<public-url>/auth/github/callback`,
 and the two secrets in `ANIFLOW_GITHUB_SECRET` and `ANIFLOW_SIGNIN_SECRET`.
