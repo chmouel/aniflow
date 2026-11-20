@@ -74,73 +74,61 @@ aniflow binds to `127.0.0.1` by default; use `--host` to change that. It only
 reads files from the chosen directory, leaving out hidden paths and symlinks
 that lead outside it. It needs Python 3.12 or newer and nothing else.
 
-Behind a reverse proxy that serves it at a path, start it with `--base /pub`:
-the prefix then goes into every URL it writes, so a Caddy `handle /pub/*` or an
-ingress path rule reaches the pages, stylesheets and icons. `--no-comments`
-turns the review UI and the comment routes off, which is what a public reader
-wants since comments are written to a cache directory.
-
 Demo & help opens a playable diagram first, followed by a walkthrough from
 your first Markdown file to pictures, several stories and exports. It ships
 with aniflow and works even when you serve an empty folder.
 
 Use Comments on any page, including the demo, to comment on source lines or
-on a box or arrow in a diagram, edit or delete feedback, and copy it with the
-quoted text for a coding agent. Comments are kept in `$XDG_CACHE_HOME/aniflow`
-(usually `~/.cache/aniflow`), one file per served folder and document.
-Reading and commenting leave your source files untouched.
+on a box or arrow in a diagram, reply in a thread, edit or delete feedback,
+and copy it with the quoted text for a coding agent. Comments show in a
+margin beside the text when there is room, or inline under the lines. They
+are kept in `$XDG_CACHE_HOME/aniflow` (usually `~/.cache/aniflow`), one file
+per served folder and document. Reading and commenting leave your source
+files untouched. Refresh the browser after saving changes to a document.
 
-Name the reader after the notes it serves with `--brand "My Notes"` and point
-`--logo` at a picture (a path inside the served folder, an https URL or a
-`data:` image); a `logo.svg` or `logo.png` at the top of the folder is picked
-up without a flag, and the two replace the aniflow wordmark and tab icon. The tab
-icon can be its own picture: `--favicon`, or `favicon.svg`, `favicon.png` or
-`favicon.ico` at the top of the folder. Pictures dropped there show up on the
-next page load, without a restart. The demo card only shows in an empty folder.
+## Host it for a team
 
-Serving a folder to other people, start the server with `--github-oauth
-CLIENT_ID`, an OAuth app whose callback is `<public-url>/auth/github/callback`,
-and the two secrets in `ANIFLOW_GITHUB_SECRET` and `ANIFLOW_SIGNIN_SECRET`.
-Reading stays open; writing needs a GitHub account, a comment belongs to the
-account that wrote it, and `--comments-admin LOGIN` may edit anyone's.
-`--github-org ORG` keeps the sign-in to members of a GitHub organisation;
-if the organisation restricts OAuth apps, an owner has to approve yours. Add
-`--base /pub` to mount all of it under a path, or `--no-comments` to turn the
-comments off altogether.
+You can put aniflow behind a reverse proxy to publish a shared folder of
+notes.
 
-With `--user-folders` as well, the people who sign in write too: each gets a
-folder named after their GitHub login, with a welcome note showing the
-Markdown and the diagrams, and an **Edit** button on their notes that opens
-the Markdown beside the live page. Everyone reads everything; a folder is
-writable by all members once it holds a `.aniflow-shared` file
-(`touch notes/team/.aniflow-shared`), which the web cannot create.
+- `--base /pub` prefixes every generated URL so Caddy or an ingress can mount
+  the reader under a path, and `--allow-host notes.example.com` lets it answer
+  for the forwarded hostname.
+- `--brand "Team Notes"`, `--logo`, and `--favicon` replace the aniflow
+  wordmark and tab icon. Dropping `logo.svg`/`logo.png` or
+  `favicon.svg`/`favicon.png`/`favicon.ico` at the top of the folder works
+  without flags and takes effect on the next page load.
+- `--no-comments` turns off the review UI and comment routes for a static
+  public site.
+- `--github-oauth CLIENT_ID` requires GitHub sign-in to write comments
+  (reading stays open), using `ANIFLOW_GITHUB_SECRET` and
+  `ANIFLOW_SIGNIN_SECRET` from the environment. Add `--github-org ORG` to
+  restrict sign-in to active members of a GitHub organisation, and
+  `--comments-admin LOGIN` to let an admin moderate any comment.
+- `--user-folders` gives each signed-in member a `<login>/` folder with a
+  starter note and a split-pane web editor (**Edit**, **New note**, **Delete**).
+  Everyone reads everything. Any folder containing a `.aniflow-shared` file
+  (`touch notes/team/.aniflow-shared`) is writable by all signed-in members.
 
-Scripts and agents can use the built-in client with an API token, made under
-**API tokens** in the account menu (shown once, 90 days, revocable):
+Signed-in members can create 90-day API tokens under **API tokens** in the
+account menu and manage notes from the command line or a coding agent:
 
 ```sh
-aniflow login https://share.chmouel.com/pub   # any page URL works; prompts for token
+aniflow login https://notes.example.com/pub   # any page URL works; prompts for token
 aniflow whoami
 aniflow ls                                    # your folder (or `aniflow ls /`)
 aniflow search "kueue"                        # search filenames and note text
 aniflow push plan.md                          # -> <your-folder>/plan.md
-aniflow push plan.md pac/plan.md              # -> shared folder pac/
-aniflow pull pac/plan.md                      # stdout (or pass a dest file; full URLs work)
-aniflow comments pac/plan.md                  # review comments as a prompt
-aniflow rm pac/old.md
+aniflow push plan.md team/plan.md             # -> shared folder team/
+aniflow pull team/plan.md                     # stdout (or pass a path; full URLs work)
+aniflow comments team/plan.md                 # review comments as a prompt
+aniflow rm team/old.md
 ```
 
-Every remote command accepts `--json` for agents and `--if-match` on `push`/`rm`
-for safe updates. Install the bundled agent skills (`aniflow-diagrams` and
-`aniflow-notes`) with:
-
-```sh
-aniflow skill install                         # into ~/.agents/skills (--claude or --project)
-```
-
-`aniflow --revoke-tokens LOGIN` revokes all of someone's tokens from the
-server's shell. Refresh the browser
-after saving changes to a document.
+Every remote command accepts `--json` for scripts and agents, and `push`/`rm`
+accept `--if-match` with a note's ETag to guard against overwriting a
+concurrent edit. Run `aniflow --revoke-tokens LOGIN` on the server to revoke
+all of a member's tokens.
 
 ## Write a walkthrough
 
@@ -173,9 +161,13 @@ the link can read it. Local pictures don't come along; the command names
 the ones that won't show.
 
 Coding agents that support skills (Claude Code, Copilot CLI, Codex and the
-like) can use [`skills/aniflow-diagrams`](skills/aniflow-diagrams/SKILL.md):
-copy or link that folder into the agent's skills directory and it will draw
-walkthroughs that look good.
+like) can use the bundled [`aniflow-diagrams`](skills/aniflow-diagrams/SKILL.md)
+and [`aniflow-notes`](skills/aniflow-notes/SKILL.md) skills. Install or update
+them with:
+
+```sh
+aniflow skill install            # into ~/.agents/skills (--claude or --project)
+```
 
 ## Export a diagram to GIF or MP4
 
