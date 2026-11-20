@@ -568,6 +568,58 @@ EDITOR_JS = """
     area.focus();
     area.dispatchEvent(new Event('input'));
   });
+  async function uploadImage(file) {
+    if (!file || !data.upload) return;
+    const token = '![Uploading image ' + Math.random().toString(36).slice(2, 8) + '…]()';
+    const start = area.selectionStart;
+    const before = area.value.slice(0, start);
+    const gap = !before || before.endsWith('\\n\\n') ? '' : before.endsWith('\\n') ? '\\n' : '\\n\\n';
+    area.setRangeText(gap + token + '\\n', start, area.selectionEnd, 'end');
+    area.focus();
+    say('Uploading image…');
+    try {
+      const response = await fetch(data.upload, {
+        method: 'POST',
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        body: file,
+      });
+      const answer = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(answer.error || response.statusText);
+      const pos = area.value.indexOf(token);
+      if (pos !== -1) area.setRangeText(answer.markdown, pos, pos + token.length, 'end');
+      else area.setRangeText('\\n' + answer.markdown + '\\n', area.value.length, area.value.length, 'end');
+      area.dispatchEvent(new Event('input'));
+      say('Uploaded image');
+    } catch (error) {
+      const pos = area.value.indexOf(token);
+      if (pos !== -1) area.setRangeText('', pos, pos + token.length, 'preserve');
+      say(error.message || 'Upload failed', true);
+    }
+  }
+  const imageInput = document.getElementById('editor-image-file');
+  document.getElementById('editor-image')?.addEventListener('click', () => imageInput?.click());
+  imageInput?.addEventListener('change', () => {
+    const file = imageInput.files?.[0];
+    imageInput.value = '';
+    if (file) uploadImage(file);
+  });
+  area.addEventListener('paste', (event) => {
+    const item = [...(event.clipboardData?.items || [])].find((i) => i.type.startsWith('image/'));
+    if (!item) return;
+    const file = item.getAsFile();
+    if (!file) return;
+    event.preventDefault();
+    uploadImage(file);
+  });
+  area.addEventListener('dragover', (event) => {
+    if ([...(event.dataTransfer?.types || [])].includes('Files')) event.preventDefault();
+  });
+  area.addEventListener('drop', (event) => {
+    const file = [...(event.dataTransfer?.files || [])].find((f) => f.type.startsWith('image/'));
+    if (!file) return;
+    event.preventDefault();
+    uploadImage(file);
+  });
   document.getElementById('editor-delete')?.addEventListener('click', async () => {
     if (!confirm('Delete ' + data.name + '? This cannot be undone.')) return;
     try {

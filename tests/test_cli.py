@@ -865,6 +865,59 @@ def test_concurrent_writes_at_one_version_do_not_both_land(
     assert save(request, alice, "alice/race.md", "from the editor", version)[0] == 409
 
 
+def test_image_upload_validates_auth_magic_and_symlinks(
+    github, local_docs, aniflow_servers
+):
+    request = folders_server(local_docs, aniflow_servers)
+    alice, bob = sign_in(request, "alice"), sign_in(request, "bob")
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+    # Unauthenticated -> 401
+    status, _, _ = request(
+        "/notes/upload/alice",
+        method="POST",
+        headers={"Content-Type": "image/png"},
+        body=png,
+    )
+    assert status == 401
+    # Wrong user's folder -> 403
+    status, _, _ = request(
+        "/notes/upload/alice",
+        method="POST",
+        headers={"Cookie": bob, "Content-Type": "image/png"},
+        body=png,
+    )
+    assert status == 403
+    # Spoofed magic bytes or SVG -> 415
+    status, _, _ = request(
+        "/notes/upload/alice",
+        method="POST",
+        headers={"Cookie": alice, "Content-Type": "image/png"},
+        body=b"<svg/>",
+    )
+    assert status == 415
+    # Valid PNG -> 201 and stored under alice/images/
+    status, _, body = request(
+        "/notes/upload/alice",
+        method="POST",
+        headers={"Cookie": alice, "Content-Type": "image/png"},
+        body=png,
+    )
+    assert status == 201
+    made = json.loads(body)
+    assert made["path"].startswith("images/") and made["path"].endswith(".png")
+    assert made["markdown"] == f"![]({made['path']})"
+    assert (local_docs / "alice" / made["path"]).read_bytes() == png
+    # Symlinked images/ directory -> 404
+    (local_docs / "bob" / "images").symlink_to(local_docs / "alice")
+    status, _, _ = request(
+        "/notes/upload/bob",
+        method="POST",
+        headers={"Cookie": bob, "Content-Type": "image/png"},
+        body=png,
+    )
+    assert status == 404
+
+
 def test_a_link_inside_a_folder_cannot_reach_another(
     github, local_docs, aniflow_servers
 ):

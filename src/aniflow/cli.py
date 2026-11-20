@@ -160,6 +160,13 @@ def breadcrumbs(root: Path, path: Path, base: str = "") -> list[tuple[str, str]]
 # and a folder holding this hidden file (and everything under it) is open to all of them.
 SHARED_MARK = ".aniflow-shared"
 NOTE_MAX_BYTES = 1024**2
+IMAGE_MAX_BYTES = 10 * 1024**2
+IMAGE_TYPES = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+}
 # Every write of a note, from the editor or the API, checks its version and writes under
 # this lock, so two saves opened at the same version cannot both land.
 NOTES_LOCK = threading.Lock()
@@ -222,6 +229,50 @@ def may_write(root: Path, path: Path, session: dict | None) -> bool:
             return True
         folder = folder.parent
     return False
+
+
+def image_suffix(content_type: str, data: bytes) -> str | None:
+    """Validate an uploaded raster image by both Content-Type and magic bytes."""
+    mime = content_type.split(";", 1)[0].strip().lower()
+    suffix = IMAGE_TYPES.get(mime)
+    if suffix == ".png" and data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+    if suffix == ".jpg" and data.startswith(b"\xff\xd8\xff"):
+        return ".jpg"
+    if (
+        suffix == ".webp"
+        and len(data) >= 12
+        and data[:4] == b"RIFF"
+        and data[8:12] == b"WEBP"
+    ):
+        return ".webp"
+    if suffix == ".gif" and data[:6] in (b"GIF87a", b"GIF89a"):
+        return ".gif"
+    return None
+
+
+def upload_folder(root: Path, key: str) -> Path | None:
+    """A writable subfolder under root for uploaded images (never root itself, no symlinks)."""
+    relative = Path(key.strip("/"))
+    if not relative.parts or relative.is_absolute() or "\\" in key or "\x00" in key:
+        return None
+    if any(part in (".", "..") or part.startswith(".") for part in relative.parts):
+        return None
+    current = root
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            return None
+    try:
+        existing = current
+        while not existing.exists():
+            existing = existing.parent
+        existing.resolve().relative_to(root)
+        if current.exists() and not current.is_dir():
+            return None
+    except (OSError, ValueError, RuntimeError):
+        return None
+    return current
 
 
 def note_version(path: Path) -> str:
@@ -554,17 +605,22 @@ def editor_page(
     text = note.read_text("utf-8", errors="replace") if exists else f"# {note.stem}\n\n"
     key = quote(note.relative_to(root).as_posix())
     folder = file_url(root, note.parent, base) if note.parent.is_dir() else base + FILES
+    folder_rel = quote(note.parent.relative_to(root).as_posix())
     data = {
         "name": note.name,
         "exists": exists,
         "version": note_version(note),
         "save": f"{base}/notes/save/{key}",
         "remove": f"{base}/notes/delete/{key}",
+        "upload": f"{base}/notes/upload/{folder_rel}",
         "folder": folder,
         "example": DIAGRAM_EXAMPLE,
     }
     controls = (
         '<span class="editor-status" id="editor-status" role="status"></span>'
+        '<button type="button" id="editor-image" title="Upload an image (or paste/drop)">'
+        "Image</button>"
+        '<input type="file" id="editor-image-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>'
         '<button type="button" id="editor-diagram" title="Insert an animated diagram">'
         "Insert diagram</button>"
         + (
@@ -1119,6 +1175,61 @@ refuse the change when someone edited the note in between.
         )
         self.send_html(body, page.reader_headers(nonce))
 
+    def upload_image(self, key: str) -> None:
+        """POST /notes/upload/<folder>: save a pasted or chosen raster image next to the notes."""
+        if not self.server.user_folders or self.server.signin is None:
+            self.send_json({"error": "not found"}, status=404)
+            return
+        session = self.session()
+        if session is None:
+            self.send_json({"error": "sign in with GitHub to upload"}, status=401)
+            return
+        folder = upload_folder(self.server.root, unquote(key))
+        if folder is None:
+            self.send_json({"error": "not a folder this server writes"}, status=404)
+            return
+        if not may_write(self.server.root, folder / "probe.md", session):
+            self.send_json({"error": "this folder is not yours"}, status=403)
+            return
+        raw = self.read_body(IMAGE_MAX_BYTES)
+        if raw is None or not raw:
+            self.send_json({"error": "images must be under 10 MB"}, status=413)
+            return
+        suffix = image_suffix(self.headers.get("Content-Type") or "", raw)
+        if suffix is None:
+            self.send_json(
+                {"error": "upload a PNG, JPEG, WebP or GIF image"}, status=415
+            )
+            return
+        images_dir = folder / "images"
+        if images_dir.is_symlink():
+            self.send_json({"error": "not a folder this server writes"}, status=404)
+            return
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+        name = f"{stamp}-{secrets.token_hex(4)}{suffix}"
+        target = images_dir / name
+        tmp = images_dir / f".{name}.{secrets.token_hex(4)}.part"
+        try:
+            images_dir.mkdir(parents=True, exist_ok=True)
+            tmp.write_bytes(raw)
+            os.replace(tmp, target)
+        except OSError as error:
+            self.send_json(
+                {"error": f"could not save image: {error.strerror}"}, status=500
+            )
+            return
+        finally:
+            tmp.unlink(missing_ok=True)
+        rel = f"images/{name}"
+        self.send_json(
+            {
+                "path": rel,
+                "markdown": f"![]({rel})",
+                "url": file_url(self.server.root, target, self.server.base),
+            },
+            status=201,
+        )
+
     def change_note(self, path: str) -> None:
         """POST /notes/save/<path> or /notes/delete/<path>, from the editor."""
         if not self.server.user_folders or self.server.signin is None:
@@ -1426,6 +1537,9 @@ refuse the change when someone edited the note in between.
             return
         parsed = urlsplit(self.path)
         path = self.under_base(parsed.path)
+        if path.startswith("/notes/upload/"):
+            self.upload_image(path.removeprefix("/notes/upload/"))
+            return
         if path.startswith(("/notes/save/", "/notes/delete/")):
             self.change_note(path)
             return
