@@ -11,6 +11,8 @@ DIRECTORY_CSS = """
   .aniflow-browser .browser-shell { width:min(100%, 1120px); margin:0 auto; padding:34px 40px 80px; }
   .aniflow-browser .browser-masthead { display:flex; align-items:center; justify-content:space-between; gap:32px; padding-bottom:30px; margin-bottom:28px; border-bottom:1px solid var(--borderColor-default); }
   .aniflow-browser .aniflow-brand { width:330px; max-width:48%; margin:0; flex-shrink:0; }
+  /* 330px is the aniflow wordmark's size; a name and a logo take what they need. */
+  .aniflow-browser .aniflow-brand.brand-name { width:auto; max-width:100%; flex-shrink:1; }
   .aniflow-browser .browser-demo { display:flex; align-items:center; gap:14px; color:var(--fgColor-default); text-decoration:none; }
   .aniflow-browser .browser-demo strong { display:block; margin-bottom:4px; font-size:15px; font-weight:650; }
   .aniflow-browser .browser-demo strong + span { display:block; font-size:13px; color:var(--fgColor-muted); }
@@ -96,7 +98,7 @@ DIRECTORY_CSS = """
   @media (max-width:499px) {
     .aniflow-browser .browser-shell { padding:24px 16px 48px; }
     .aniflow-browser .browser-masthead { gap:18px; margin-bottom:22px; padding-bottom:22px; }
-    .aniflow-browser .aniflow-brand { max-width:62%; }
+    .aniflow-browser .aniflow-brand:not(.brand-name) { max-width:62%; }
     .aniflow-browser .browser-demo { gap:8px; }
     .aniflow-browser .browser-demo strong { max-width:5.5em; font-size:11px; }
     .aniflow-browser .demo-play { flex-basis:28px; height:28px; }

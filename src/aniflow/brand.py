@@ -35,7 +35,8 @@ BRAND_CSS = """
     display:block; height:clamp(2.6rem, 6vw, 3.6rem); width:auto;
   }
   .aniflow-brand .brand-word {
-    display:inline-block; font-size:clamp(1.9rem, 5.6vw, 3.8rem); font-weight:800;
+    display:inline-block; min-width:0; text-wrap:balance;
+    font-size:clamp(1.6rem, 5.6vw, 3.4rem); font-weight:800;
     line-height:1.05; letter-spacing:-.02em; padding-block:.1em;
     background:linear-gradient(96deg, var(--aniflow-ice) 6%, var(--aniflow-cyan) 38%, var(--aniflow-violet) 68%, var(--aniflow-pink) 96%);
     -webkit-background-clip:text; background-clip:text; color:transparent;
