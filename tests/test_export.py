@@ -50,7 +50,9 @@ def test_chrome_falls_back_to_the_installed_browsers(monkeypatch):
     assert export.chrome() is None
 
 
-def test_command_carries_the_export_flags(tmp_path):
+def test_command_carries_the_export_flags(tmp_path, monkeypatch):
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("ANIFLOW_CHROME_NO_SANDBOX", raising=False)
     profile = tmp_path / "profile"
     command = export.command("/usr/bin/chrome", "http://127.0.0.1:9/doc/x", profile)
     assert command[0] == "/usr/bin/chrome"
@@ -63,6 +65,10 @@ def test_command_carries_the_export_flags(tmp_path):
     ):
         assert flag in command
     assert ("--no-sandbox" in command) is (os.geteuid() == 0)
+    monkeypatch.setenv("CI", "true")
+    assert "--no-sandbox" in export.command(
+        "/usr/bin/chrome", "http://127.0.0.1:9/doc/x", profile
+    )
 
 
 def test_bare_mermaid_is_fenced_and_markdown_is_left_alone():

@@ -193,7 +193,11 @@ def chrome() -> str | None:
 def command(browser: str, url: str, profile: Path) -> list[str]:
     """The Chrome command line for one export; --no-sandbox only where Chrome needs it."""
     flags = list(CHROME_FLAGS)
-    if hasattr(os, "geteuid") and os.geteuid() == 0:
+    if (
+        (hasattr(os, "geteuid") and os.geteuid() == 0)
+        or os.environ.get("CI")
+        or os.environ.get("ANIFLOW_CHROME_NO_SANDBOX")
+    ):
         flags.append("--no-sandbox")
     return [browser, *flags, f"--user-data-dir={profile}", url]
 
