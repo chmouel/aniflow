@@ -1,6 +1,9 @@
 """The aniflow pages' own look: the file browser and the bits around the reader."""
 
 GITHUB_MARK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>'
+FOLDER_MENU_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" d="M2 4.2A1.2 1.2 0 0 1 3.2 3h2.7l1.3 1.5h5.6A1.2 1.2 0 0 1 14 5.7v6.1a1.2 1.2 0 0 1-1.2 1.2H3.2A1.2 1.2 0 0 1 2 11.8Z"/></svg>'
+KEY_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="5.5" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.4"/><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M8.5 8H14M12 8v2.2M14 8v1.6"/></svg>'
+SIGNOUT_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M6.5 2.5H3.8A1.3 1.3 0 0 0 2.5 3.8v8.4a1.3 1.3 0 0 0 1.3 1.3h2.7M10.5 11.2 13.7 8l-3.2-3.2M13.5 8H6"/></svg>'
 FOLDER_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h3.6c.6 0 1.2.2 1.6.7L12 6h6.5A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5Z"/></svg>'
 NOTE_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M7 2.5h7.2c.5 0 1 .2 1.4.6l3.3 3.3c.4.4.6.9.6 1.4v11.7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-15a2 2 0 0 1 2-2ZM8.5 11h7v1.5h-7Zm0 3.5h7V16h-7Zm0-7h3.5V9H8.5Z"/><path fill="currentColor" opacity=".45" d="M14.5 2.6v3.4a1.5 1.5 0 0 0 1.5 1.5h3.4Z"/></svg>'
 SEARCH_ICON = '<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12.6 12.6l4.4 4.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>'
@@ -121,28 +124,53 @@ DIRECTORY_CSS = """
 UI_CSS = """
   .aniflow-local .bar { z-index:6; }
   .aniflow-local.presenting .aniflow-brand { display:none; }
-  .aniflow-local .bar nav { align-items:center; gap:12px; }
-  .aniflow-local .bar nav .review-toggle { gap:6px; min-height:36px; padding:6px 8px; }
-  .aniflow-local .bar nav select { min-height:36px; }
+  .aniflow-local .bar nav { align-items:center; gap:10px; }
+  .aniflow-local .bar nav .review-toggle { gap:6px; min-height:34px; padding:5px 8px; }
+  .aniflow-local .bar nav select { min-height:34px; }
+  .aniflow-local .reader-edit { display:inline-flex; align-items:center; min-height:32px; padding:0 12px; border:1px solid color-mix(in srgb, var(--fgColor-accent) 45%, var(--borderColor-default)); border-radius:999px; background:color-mix(in srgb, var(--fgColor-accent) 10%, transparent); color:var(--fgColor-accent); font-size:13px; font-weight:600; white-space:nowrap; }
+  .aniflow-local .reader-edit:hover { background:color-mix(in srgb, var(--fgColor-accent) 18%, transparent); text-decoration:none; }
   .aniflow-menu { position:relative; }
-  .aniflow-menu summary { padding:8px 0; color:var(--fgColor-accent); font-weight:600; cursor:pointer; list-style:none; }
+  .aniflow-menu summary { display:inline-flex; align-items:center; gap:6px; min-height:34px; padding:4px 8px; border-radius:8px; color:var(--fgColor-muted); font-weight:600; cursor:pointer; list-style:none; white-space:nowrap; }
+  .aniflow-menu summary:hover { color:var(--fgColor-default); background:color-mix(in srgb, var(--fgColor-default) 6%, transparent); }
+  .aniflow-menu summary:focus-visible { outline:2px solid var(--fgColor-accent); outline-offset:2px; }
   .aniflow-menu summary::-webkit-details-marker { display:none; }
-  .aniflow-menu summary::after { content:'⌄'; padding-left:5px; }
-  .aniflow-menu .menu-items { position:absolute; top:100%; right:0; min-width:170px; padding:6px; border:1px solid var(--borderColor-default); border-radius:10px; background:var(--bgColor-default); box-shadow:0 8px 24px color-mix(in srgb, var(--fgColor-default) 12%, transparent); }
-  .aniflow-menu .menu-items a { display:block; padding:10px; border-radius:6px; }
+  .aniflow-menu summary::after { content:''; width:6px; height:6px; margin-left:1px; border-right:1.6px solid currentColor; border-bottom:1.6px solid currentColor; transform:translateY(-2px) rotate(45deg); opacity:.7; transition:transform .15s ease; }
+  .aniflow-menu[open] > summary::after { transform:translateY(1px) rotate(225deg); }
+  .aniflow-menu .menu-items { position:absolute; top:calc(100% + 8px); right:0; z-index:20; min-width:190px; max-width:calc(100vw - 24px); padding:6px; border:1px solid var(--borderColor-default); border-radius:12px; background:var(--bgColor-default); box-shadow:0 12px 32px color-mix(in srgb, var(--fgColor-default) 14%, transparent), 0 2px 6px color-mix(in srgb, var(--fgColor-default) 6%, transparent); }
+  .aniflow-menu .menu-items a { display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:8px; color:var(--fgColor-default); font-size:14px; font-weight:500; text-decoration:none; white-space:nowrap; }
   .aniflow-menu .menu-items a:hover { background:var(--bgColor-muted); text-decoration:none; }
+  .aniflow-menu .menu-items a:focus-visible { outline:2px solid var(--fgColor-accent); outline-offset:-2px; }
+  .aniflow-menu .menu-items a svg { width:16px; height:16px; flex-shrink:0; color:var(--fgColor-muted); fill:currentColor; }
+  .aniflow-menu .menu-sep { height:1px; margin:6px 4px; border:0; background:var(--borderColor-muted); }
   /* The GitHub account, at the right end of the bar. */
-  .account-signin { display:inline-flex; align-items:center; gap:7px; padding:5px 11px; border:1px solid var(--borderColor-default); border-radius:999px; color:var(--fgColor-default) !important; font-weight:600; white-space:nowrap; }
-  .account-signin:hover { border-color:var(--fgColor-muted); background:var(--bgColor-default); text-decoration:none !important; }
-  .account-signin svg, .account .account-mark { width:16px; height:16px; fill:currentColor; flex-shrink:0; }
-  .aniflow-menu.account summary { display:flex; align-items:center; gap:8px; padding:3px 0; color:var(--fgColor-default); }
-  .account-avatar { width:26px; height:26px; border-radius:50%; border:1px solid var(--borderColor-default); background:var(--bgColor-muted); }
-  .account-login { max-width:12em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .account .menu-items { min-width:200px; }
-  .account .account-who { margin:0; padding:8px 10px 10px; border-bottom:1px solid var(--borderColor-muted); color:var(--fgColor-muted); font-size:13px; font-weight:400; }
-  .account .account-who b { color:var(--fgColor-default); }
-  @media (max-width:640px) { .account-login, .account-signin span { display:none; } }
-  .aniflow-local .reader-help { white-space:nowrap; }
+  .account-signin { display:inline-flex; align-items:center; gap:7px; min-height:34px; padding:0 12px; border:1px solid var(--borderColor-default); border-radius:999px; background:var(--bgColor-default); color:var(--fgColor-default) !important; font-size:13px; font-weight:600; white-space:nowrap; }
+  .account-signin:hover { border-color:var(--fgColor-muted); background:var(--bgColor-muted); text-decoration:none !important; }
+  .account-signin svg { width:16px; height:16px; fill:currentColor; flex-shrink:0; }
+  .aniflow-menu.account summary { padding:3px 10px 3px 4px; border:1px solid var(--borderColor-default); border-radius:999px; background:var(--bgColor-default); color:var(--fgColor-default); font-size:13px; }
+  .aniflow-menu.account summary:hover, .aniflow-menu.account[open] > summary { border-color:var(--fgColor-muted); background:var(--bgColor-muted); }
+  .account-avatar { width:26px; height:26px; border-radius:50%; border:1px solid var(--borderColor-muted); background:var(--bgColor-muted); flex-shrink:0; }
+  .account-login { max-width:11em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .account .menu-items { min-width:228px; }
+  .account .account-who { display:flex; align-items:center; gap:10px; margin:0 0 6px; padding:8px 10px 10px; border-bottom:1px solid var(--borderColor-muted); color:var(--fgColor-muted); font-size:12px; line-height:1.35; }
+  .account .account-who img { width:32px; height:32px; border-radius:50%; border:1px solid var(--borderColor-muted); background:var(--bgColor-muted); flex-shrink:0; }
+  .account .account-who b { display:block; color:var(--fgColor-default); font-size:14px; font-weight:650; }
+  .account .menu-items a.menu-signout { color:var(--fgColor-muted); }
+  .account .menu-items a.menu-signout:hover { color:var(--fgColor-danger); background:color-mix(in srgb, var(--fgColor-danger) 10%, transparent); }
+  .account .menu-items a.menu-signout:hover svg { color:var(--fgColor-danger); }
+  @media (prefers-reduced-motion:no-preference) {
+    .aniflow-menu[open] > .menu-items { animation:aniflow-pop .12s ease-out; transform-origin:top right; }
+    @keyframes aniflow-pop { from { opacity:0; transform:translateY(-4px) scale(.98); } to { opacity:1; transform:none; } }
+  }
+  @media (max-width:640px) {
+    .account-login, .account-signin span { display:none; }
+    .account-signin { padding:0 9px; }
+    .aniflow-menu.account summary { padding:3px; gap:0; }
+    .aniflow-menu.account summary::after { display:none; }
+    .aniflow-local .bar nav .review-toggle > span:not(.count) { display:none; }
+    .aniflow-menu .menu-items a { min-height:42px; }
+  }
+  .aniflow-local .reader-help { white-space:nowrap; color:var(--fgColor-muted); font-weight:600; }
+  .aniflow-local .reader-help:hover { color:var(--fgColor-default); }
   .aniflow-help .aniflow-brand { width:min(260px, 62%); margin:0 0 14px; }
   .aniflow-help .reader .markdown-body h1 { font-size:clamp(1.8rem, 4vw, 2.5rem); }
   .aniflow-help .reader .aniflow-demo { margin:20px 0 28px; }
@@ -160,10 +188,12 @@ UI_CSS = """
   @media (min-width:1240px) { .aniflow-help .reader .help-step-picker { display:none; } }
   @media (max-width:1239px) { .aniflow-help #toc { display:none; } }
   @media (max-width:599px) {
-    .aniflow-local .bar { display:grid; grid-template-columns:auto minmax(0,1fr); gap:2px 12px; padding-top:5px; padding-bottom:5px; }
-    .aniflow-local .bar > nav { grid-column:1 / -1; justify-content:space-between; gap:8px; }
+    .aniflow-local .bar { display:grid; grid-template-columns:auto minmax(0,1fr); gap:4px 10px; padding-top:6px; padding-bottom:6px; }
+    .aniflow-local .bar > nav { grid-column:1 / -1; justify-content:flex-end; gap:6px; }
+    .aniflow-local .bar > nav .reader-edit { margin-right:auto; }
     .aniflow-local .bar nav select { max-width:110px; }
     .aniflow-local .bar .name { font-size:12px; }
+    .aniflow-local .reader-help { display:none; }
     .aniflow-local .aniflow-brand { margin-bottom:20px; }
     .aniflow-help .aniflow-brand { margin-bottom:10px; }
     .aniflow-local .mermaid-diagram .diagram-tools { position:static; flex-wrap:wrap; justify-content:flex-end; width:100%; gap:4px; margin-bottom:12px; }
@@ -220,10 +250,22 @@ UI_JS = """
       time.title = date.toLocaleString();
     }
   }
-  const menu = document.querySelector('.aniflow-menu');
-  if (menu) {
-    document.addEventListener('click', event => { if (!menu.contains(event.target)) menu.open = false; });
-    menu.addEventListener('keydown', event => { if (event.key === 'Escape') { menu.open = false; menu.querySelector('summary').focus(); } });
+  const menus = [...document.querySelectorAll('.aniflow-menu')];
+  if (menus.length) {
+    for (const menu of menus) {
+      menu.addEventListener('toggle', () => {
+        if (menu.open) for (const other of menus) if (other !== menu) other.open = false;
+      });
+      menu.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && menu.open) {
+          menu.open = false;
+          menu.querySelector('summary').focus();
+        }
+      });
+    }
+    document.addEventListener('click', event => {
+      for (const menu of menus) if (menu.open && !menu.contains(event.target)) menu.open = false;
+    });
   }
   const copy = document.querySelector('[data-review="copy"]');
   if (copy) copy.textContent = 'Copy feedback';

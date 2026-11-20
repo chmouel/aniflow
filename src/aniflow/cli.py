@@ -28,10 +28,13 @@ from aniflow.ui import (
     EDITOR_CSS,
     EDITOR_JS,
     FOLDER_ICON,
+    FOLDER_MENU_ICON,
     GITHUB_MARK,
+    KEY_ICON,
     NEW_NOTE_JS,
     NOTE_ICON,
     SEARCH_ICON,
+    SIGNOUT_ICON,
     TOKENS_CSS,
     TOKENS_JS,
     UI_CSS,
@@ -275,20 +278,25 @@ def account_menu(
             f"{GITHUB_MARK}<span>Sign in</span></a>"
         )
     login = html.escape(session.get("login", ""))
-    avatar = f"https://avatars.githubusercontent.com/u/{int(session.get('id', 0))}?s=52"
+    avatar = f"https://avatars.githubusercontent.com/u/{int(session.get('id', 0))}?s=64"
     return (
         '<details class="aniflow-menu account"><summary>'
         f'<img class="account-avatar" src="{avatar}" alt="">'
         f'<span class="account-login">{login}</span></summary><div class="menu-items">'
-        f'<p class="account-who">Signed in as <b>{login}</b></p>'
+        f'<div class="account-who"><img src="{avatar}" alt="">'
+        f"<span>Signed in as <b>{login}</b></span></div>"
         + (
-            f'<a href="{base}{FILES}{quote(session.get("login", "").lower())}/">My folder</a>'
-            f'<a href="{base}/tokens">API tokens</a>'
+            f'<a href="{base}{FILES}{quote(session.get("login", "").lower())}/">'
+            f"{FOLDER_MENU_ICON}My folder</a>"
+            f'<a href="{base}/tokens">{KEY_ICON}API tokens</a>'
             if folders
             else ""
         )
-        + f'<a href="https://github.com/{quote(session.get("login", ""))}">GitHub profile</a>'
-        f'<a href="{base}/auth/logout?next={back}">Sign out</a></div></details>'
+        + f'<a href="https://github.com/{quote(session.get("login", ""))}" rel="noopener">'
+        f"{GITHUB_MARK}GitHub profile</a>"
+        '<hr class="menu-sep">'
+        f'<a class="menu-signout" href="{base}/auth/logout?next={back}">'
+        f"{SIGNOUT_ICON}Sign out</a></div></details>"
     )
 
 
@@ -551,7 +559,7 @@ def editor_page(
         body_class="aniflow-local aniflow-editing",
         after=(
             f'<script type="application/json" id="aniflow-editor">{page.json_script(data)}</script>'
-            f'<script nonce="{nonce}">{EDITOR_JS}</script>'
+            f'<script nonce="{nonce}">{UI_JS}{EDITOR_JS}</script>'
         ),
     )
     return body, nonce
@@ -937,7 +945,7 @@ refuse the change when someone edited the note in between.
             body_class="aniflow-local",
             after=(
                 f'<script type="application/json" id="aniflow-tokens">{page.json_script(data)}</script>'
-                f'<script nonce="{nonce}">{TOKENS_JS}</script>'
+                f'<script nonce="{nonce}">{UI_JS}{TOKENS_JS}</script>'
             ),
         )
         self.send_html(body, page.reader_headers(nonce))

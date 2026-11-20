@@ -568,7 +568,7 @@ def test_bar_offers_github_sign_in_at_its_end(github, local_docs, aniflow_server
     _, _, body = request("/files/", headers=session)
     bar = body.split(b"</header>")[0]
     assert b'<span class="account-login">alice</span>' in bar
-    assert b'src="https://avatars.githubusercontent.com/u/1?s=52"' in bar
+    assert b'src="https://avatars.githubusercontent.com/u/1?s=64"' in bar
     assert b'href="/auth/logout?next=%2Ffiles%2F"' in bar
     assert b'class="account-signin"' not in bar
 
@@ -705,7 +705,7 @@ def test_editor_and_its_links(github, local_docs, aniflow_servers):
     # Edit on your notes, New note in your folder, My folder in the account menu.
     _, _, body = request("/files/alice/welcome.md", headers={"Cookie": alice})
     assert b'href="/files/alice/welcome.md?edit">Edit</a>' in body
-    assert b'href="/files/alice/">My folder</a>' in body
+    assert b'href="/files/alice/"' in body and b"My folder</a>" in body
     _, _, body = request("/files/alice/welcome.md", headers={"Cookie": bob})
     assert b">Edit</a>" not in body
     _, _, body = request("/files/alice/", headers={"Cookie": alice})
