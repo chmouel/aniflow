@@ -37,6 +37,7 @@ from aniflow.ui import (
     SIGNOUT_ICON,
     TOKENS_CSS,
     TOKENS_JS,
+    TRASH_ICON,
     UI_CSS,
     UI_JS,
     human_size,
@@ -439,6 +440,7 @@ def reader_page(
     icon: str = "",
     account: str = "",
     edit: str = "",
+    delete: dict[str, str] | None = None,
 ) -> tuple[bytes, str]:
     """A markdown file in the reader, with links kept under root_url. edit is the editor's
     URL, for a note the reader may change."""
@@ -453,6 +455,16 @@ def reader_page(
         for label, href in links
         if label != "Help"
     )
+    if delete:
+        menu_links += (
+            '<hr class="menu-sep">'
+            f'<button type="button" class="menu-danger"'
+            f' data-delete-url="{html.escape(delete["url"])}"'
+            f' data-version="{html.escape(delete["version"])}"'
+            f' data-folder="{html.escape(delete["folder"])}"'
+            f' data-name="{html.escape(delete["name"])}">'
+            f"{TRASH_ICON}Delete</button>"
+        )
     edit_link = (
         f'<a class="reader-edit" href="{html.escape(edit)}">Edit</a>' if edit else ""
     )
@@ -1205,6 +1217,8 @@ refuse the change when someone edited the note in between.
                             new_note=local != root and self.writable(local / "new.md"),
                         )
                     elif web.is_markdown(local.name) and not raw:
+                        can_write = self.writable(local)
+                        relative = quote(local.relative_to(root).as_posix())
                         body, nonce = reader_page(
                             base + FILES,
                             local.name,
@@ -1214,9 +1228,7 @@ refuse the change when someone edited the note in between.
                                 ("Help", base + "/help"),
                                 ("Raw", file_url(root, local, base) + "?raw=1"),
                             ],
-                            self.server.comments_url(
-                                "file/" + quote(local.relative_to(root).as_posix())
-                            ),
+                            self.server.comments_url("file/" + relative),
                             breadcrumbs(root, local, base),
                             base=base,
                             session=self.session(),
@@ -1226,8 +1238,16 @@ refuse the change when someone edited the note in between.
                             icon=self.server.icon,
                             account=self.account(),
                             edit=file_url(root, local, base) + "?edit"
-                            if self.writable(local)
+                            if can_write
                             else "",
+                            delete={
+                                "url": f"{base}/notes/delete/{relative}",
+                                "version": note_version(local),
+                                "folder": file_url(root, local.parent, base),
+                                "name": local.name,
+                            }
+                            if can_write
+                            else None,
                         )
                     else:
                         self.send_local_file(local, raw=raw)

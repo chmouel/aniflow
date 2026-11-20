@@ -702,12 +702,14 @@ def test_editor_and_its_links(github, local_docs, aniflow_servers):
     assert status == 200 and b'id="editor-text"' in body and b"# new" in body
     assert b'id="editor-delete"' not in body
     assert request("/files/alice/new.md?edit", headers={"Cookie": bob})[0] == 403
-    # Edit on your notes, New note in your folder, My folder in the account menu.
+    # Edit and Delete on your notes, New note in your folder, My folder in the account menu.
     _, _, body = request("/files/alice/welcome.md", headers={"Cookie": alice})
     assert b'href="/files/alice/welcome.md?edit">Edit</a>' in body
+    assert b'data-delete-url="/notes/delete/alice/welcome.md"' in body
     assert b'href="/files/alice/"' in body and b"My folder</a>" in body
     _, _, body = request("/files/alice/welcome.md", headers={"Cookie": bob})
     assert b">Edit</a>" not in body
+    assert b"data-delete-url=" not in body
     _, _, body = request("/files/alice/", headers={"Cookie": alice})
     assert b'id="new-note"' in body
     _, _, body = request("/files/alice/", headers={"Cookie": bob})

@@ -4,6 +4,7 @@ GITHUB_MARK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0c4.42 0 
 FOLDER_MENU_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" d="M2 4.2A1.2 1.2 0 0 1 3.2 3h2.7l1.3 1.5h5.6A1.2 1.2 0 0 1 14 5.7v6.1a1.2 1.2 0 0 1-1.2 1.2H3.2A1.2 1.2 0 0 1 2 11.8Z"/></svg>'
 KEY_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="5.5" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.4"/><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M8.5 8H14M12 8v2.2M14 8v1.6"/></svg>'
 SIGNOUT_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M6.5 2.5H3.8A1.3 1.3 0 0 0 2.5 3.8v8.4a1.3 1.3 0 0 0 1.3 1.3h2.7M10.5 11.2 13.7 8l-3.2-3.2M13.5 8H6"/></svg>'
+TRASH_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M2.5 4.2h11M6 4.2V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.2M4 4.2l.7 8.6a1.2 1.2 0 0 0 1.2 1.2h4.2a1.2 1.2 0 0 0 1.2-1.2l.7-8.6"/></svg>'
 FOLDER_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h3.6c.6 0 1.2.2 1.6.7L12 6h6.5A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5Z"/></svg>'
 NOTE_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M7 2.5h7.2c.5 0 1 .2 1.4.6l3.3 3.3c.4.4.6.9.6 1.4v11.7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-15a2 2 0 0 1 2-2ZM8.5 11h7v1.5h-7Zm0 3.5h7V16h-7Zm0-7h3.5V9H8.5Z"/><path fill="currentColor" opacity=".45" d="M14.5 2.6v3.4a1.5 1.5 0 0 0 1.5 1.5h3.4Z"/></svg>'
 SEARCH_ICON = '<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12.6 12.6l4.4 4.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>'
@@ -137,10 +138,13 @@ UI_CSS = """
   .aniflow-menu summary::after { content:''; width:6px; height:6px; margin-left:1px; border-right:1.6px solid currentColor; border-bottom:1.6px solid currentColor; transform:translateY(-2px) rotate(45deg); opacity:.7; transition:transform .15s ease; }
   .aniflow-menu[open] > summary::after { transform:translateY(1px) rotate(225deg); }
   .aniflow-menu .menu-items { position:absolute; top:calc(100% + 8px); right:0; z-index:20; min-width:190px; max-width:calc(100vw - 24px); padding:6px; border:1px solid var(--borderColor-default); border-radius:12px; background:var(--bgColor-default); box-shadow:0 12px 32px color-mix(in srgb, var(--fgColor-default) 14%, transparent), 0 2px 6px color-mix(in srgb, var(--fgColor-default) 6%, transparent); }
-  .aniflow-menu .menu-items a { display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:8px; color:var(--fgColor-default); font-size:14px; font-weight:500; text-decoration:none; white-space:nowrap; }
-  .aniflow-menu .menu-items a:hover { background:var(--bgColor-muted); text-decoration:none; }
-  .aniflow-menu .menu-items a:focus-visible { outline:2px solid var(--fgColor-accent); outline-offset:-2px; }
-  .aniflow-menu .menu-items a svg { width:16px; height:16px; flex-shrink:0; color:var(--fgColor-muted); fill:currentColor; }
+  .aniflow-menu .menu-items :is(a, button) { display:flex; align-items:center; gap:10px; width:100%; padding:9px 10px; border:0; border-radius:8px; background:none; color:var(--fgColor-default); font:500 14px/1.4 inherit; text-align:left; text-decoration:none; white-space:nowrap; cursor:pointer; }
+  .aniflow-menu .menu-items :is(a, button):hover { background:var(--bgColor-muted); text-decoration:none; }
+  .aniflow-menu .menu-items :is(a, button):focus-visible { outline:2px solid var(--fgColor-accent); outline-offset:-2px; }
+  .aniflow-menu .menu-items :is(a, button) svg { width:16px; height:16px; flex-shrink:0; color:var(--fgColor-muted); fill:currentColor; }
+  .aniflow-menu .menu-items :is(a.menu-signout, button.menu-danger) { color:var(--fgColor-muted); }
+  .aniflow-menu .menu-items :is(a.menu-signout, button.menu-danger):hover { color:var(--fgColor-danger); background:color-mix(in srgb, var(--fgColor-danger) 10%, transparent); }
+  .aniflow-menu .menu-items :is(a.menu-signout, button.menu-danger):hover svg { color:var(--fgColor-danger); }
   .aniflow-menu .menu-sep { height:1px; margin:6px 4px; border:0; background:var(--borderColor-muted); }
   /* The GitHub account, at the right end of the bar. */
   .account-signin { display:inline-flex; align-items:center; gap:7px; min-height:34px; padding:0 12px; border:1px solid var(--borderColor-default); border-radius:999px; background:var(--bgColor-default); color:var(--fgColor-default) !important; font-size:13px; font-weight:600; white-space:nowrap; }
@@ -154,9 +158,6 @@ UI_CSS = """
   .account .account-who { display:flex; align-items:center; gap:10px; margin:0 0 6px; padding:8px 10px 10px; border-bottom:1px solid var(--borderColor-muted); color:var(--fgColor-muted); font-size:12px; line-height:1.35; }
   .account .account-who img { width:32px; height:32px; border-radius:50%; border:1px solid var(--borderColor-muted); background:var(--bgColor-muted); flex-shrink:0; }
   .account .account-who b { display:block; color:var(--fgColor-default); font-size:14px; font-weight:650; }
-  .account .menu-items a.menu-signout { color:var(--fgColor-muted); }
-  .account .menu-items a.menu-signout:hover { color:var(--fgColor-danger); background:color-mix(in srgb, var(--fgColor-danger) 10%, transparent); }
-  .account .menu-items a.menu-signout:hover svg { color:var(--fgColor-danger); }
   @media (prefers-reduced-motion:no-preference) {
     .aniflow-menu[open] > .menu-items { animation:aniflow-pop .12s ease-out; transform-origin:top right; }
     @keyframes aniflow-pop { from { opacity:0; transform:translateY(-4px) scale(.98); } to { opacity:1; transform:none; } }
@@ -167,7 +168,7 @@ UI_CSS = """
     .aniflow-menu.account summary { padding:3px; gap:0; }
     .aniflow-menu.account summary::after { display:none; }
     .aniflow-local .bar nav .review-toggle > span:not(.count) { display:none; }
-    .aniflow-menu .menu-items a { min-height:42px; }
+    .aniflow-menu .menu-items :is(a, button) { min-height:42px; }
   }
   .aniflow-local .reader-help { white-space:nowrap; color:var(--fgColor-muted); font-weight:600; }
   .aniflow-local .reader-help:hover { color:var(--fgColor-default); }
@@ -265,6 +266,26 @@ UI_JS = """
     }
     document.addEventListener('click', event => {
       for (const menu of menus) if (menu.open && !menu.contains(event.target)) menu.open = false;
+    });
+  }
+  const remove = document.querySelector('button[data-delete-url]');
+  if (remove) {
+    remove.addEventListener('click', async () => {
+      if (!confirm('Delete ' + remove.dataset.name + '? This cannot be undone.')) return;
+      remove.disabled = true;
+      try {
+        const response = await fetch(remove.dataset.deleteUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ version: remove.dataset.version }),
+        });
+        const answer = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(answer.error || response.statusText);
+        location.href = remove.dataset.folder;
+      } catch (error) {
+        remove.disabled = false;
+        alert('Could not delete: ' + (error.message || error));
+      }
     });
   }
   const copy = document.querySelector('[data-review="copy"]');
