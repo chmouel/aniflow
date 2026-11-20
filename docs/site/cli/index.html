@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en" data-mode="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Remote CLI &amp; agent skills · aniflow</title>
+<meta name="description" content="Upload, pull, search, and review hosted aniflow notes from the command line or a coding agent, and install bundled skills.">
+<meta property="og:title" content="aniflow CLI &amp; agent skills">
+<meta property="og:description" content="Publish, search, pull, and review Markdown notes from scripts and coding agents.">
+<meta property="og:image" content="https://chmouel.github.io/aniflow/img/hosting-browser.png">
+<link rel="icon" href="../img/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../site.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to the content</a>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="../"><img src="../img/logo.svg" width="190" height="53" alt="aniflow"></a>
+    <nav aria-label="Site sections">
+      <a href="../">Home</a>
+      <a href="../hosting/">Hosting</a>
+      <a href="../cli/" aria-current="page">CLI</a>
+      <a href="../gallery/">Gallery</a>
+      <a href="../try/">Try it</a>
+      <a href="https://github.com/chmouel/aniflow">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="content">
+<section class="land-hero">
+  <div class="wrap">
+    <div class="hero-text">
+      <h1>Manage notes from your terminal or coding agent.</h1>
+      <div>
+        <p class="lede">Sign in once with a personal API token, then push, pull, search, and read review comments on hosted notes. Every command supports <code>--json</code> and accepts full pasted URLs.</p>
+        <div class="actions">
+          <a class="button" href="../hosting/">Host a server</a>
+          <a class="button ghost" href="https://github.com/chmouel/aniflow/blob/main/docs/cli.md">CLI reference</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="login" aria-labelledby="login-title">
+  <div class="wrap split">
+    <div class="prose">
+      <h2 id="login-title">Sign in with any pasted URL</h2>
+      <p>Create a 90-day token under <strong>API tokens</strong> in your account menu on the hosted site. Run <code>aniflow login</code> and paste any URL from the site (a note, <code>/files/</code>, <code>/tokens</code>, or just the host). aniflow strips it to the server base, verifies the token, learns your default folder and shared folders, and saves <code>~/.config/aniflow/config.json</code> with mode <code>0600</code>.</p>
+      <p>Tokens are stored only as SHA-256 hashes on the server and carry the exact same folder permissions as your browser session.</p>
+    </div>
+    <div>
+      <pre class="cmd"><span class="c"># install the CLI</span>
+uv tool install git+https://github.com/chmouel/aniflow
+
+<span class="c"># paste any page URL; prompts for the API token</span>
+aniflow login https://notes.example.com/pub/files/team/plan.md
+
+<span class="c"># check active account, default folder and shared folders</span>
+aniflow whoami --json</pre>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="notes" aria-labelledby="notes-title">
+  <div class="wrap split">
+    <div class="prose">
+      <h2 id="notes-title">Push, pull, search and review</h2>
+      <p>Pass shorthand paths like <code>plan.md</code> (goes into your folder), <code>team/plan.md</code> (goes into a shared folder), or paste a full browser URL straight into <code>pull</code>, <code>push</code>, <code>comments</code>, <code>ls</code>, or <code>rm</code>.</p>
+      <p>When editing an existing note from a script or agent, pull with <code>--json</code> to grab its <code>version</code> and pass <code>--if-match</code> on <code>push</code> so a concurrent edit is never overwritten.</p>
+    </div>
+    <div>
+      <pre class="cmd"><span class="c"># list and search</span>
+aniflow ls                                 <span class="c"># your folder</span>
+aniflow ls /                               <span class="c"># all folders</span>
+aniflow search "kueue"                     <span class="c"># filenames + content</span>
+
+<span class="c"># upload, download, update safely, delete</span>
+aniflow push plan.md                       <span class="c"># -&gt; &lt;login&gt;/plan.md</span>
+aniflow push plan.md team/plan.md
+cat draft.md | aniflow push - team/draft.md --json
+
+ver=$(aniflow pull team/plan.md --json | jq -r .version)
+aniflow push plan.md team/plan.md --if-match "$ver"
+
+<span class="c"># read review comments as an agent-ready prompt</span>
+aniflow comments team/plan.md
+aniflow rm team/old.md</pre>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="skills" aria-labelledby="skills-title">
+  <div class="wrap split">
+    <div class="prose">
+      <h2 id="skills-title">Bundled coding-agent skills</h2>
+      <p>aniflow ships two skills inside the package: <code>aniflow-diagrams</code> (writing animated Mermaid walkthroughs and slide decks) and <code>aniflow-notes</code> (using the CLI above to publish, search, edit, and address review comments).</p>
+      <p>Install them into <code>~/.agents/skills</code>, <code>~/.claude/skills</code>, or the current project with one command. Existing symlinks are left untouched so local dev checkouts stay intact.</p>
+    </div>
+    <div>
+      <pre class="cmd"><span class="c"># list bundled skills and install status</span>
+aniflow skill list
+
+<span class="c"># install or update all bundled skills</span>
+aniflow skill install                      <span class="c"># ~/.agents/skills</span>
+aniflow skill install --claude             <span class="c"># ~/.claude/skills</span>
+aniflow skill install --project            <span class="c"># ./.agents/skills</span>
+
+<span class="c"># print or remove one</span>
+aniflow skill show aniflow-notes
+aniflow skill remove aniflow-notes</pre>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>aniflow is released under the Apache 2.0 licence. It bundles Mermaid, markdown-it, DOMPurify and icons from Lucide, under their own licences.</p>
+  </div>
+</footer>
+</body>
+</html>

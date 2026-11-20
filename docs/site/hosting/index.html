@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en" data-mode="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Host for a team · aniflow</title>
+<meta name="description" content="Publish a shared Markdown notes site behind Caddy or Docker with GitHub OAuth, margin comments, web editing, and per-user folders.">
+<meta property="og:title" content="Host aniflow for a team">
+<meta property="og:description" content="Shared Markdown notes with GitHub OAuth, margin comments, and a live web editor.">
+<meta property="og:image" content="https://chmouel.github.io/aniflow/img/hosting-comments.png">
+<link rel="icon" href="../img/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../site.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to the content</a>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="../"><img src="../img/logo.svg" width="190" height="53" alt="aniflow"></a>
+    <nav aria-label="Site sections">
+      <a href="../">Home</a>
+      <a href="../hosting/" aria-current="page">Hosting</a>
+      <a href="../cli/">CLI</a>
+      <a href="../gallery/">Gallery</a>
+      <a href="../try/">Try it</a>
+      <a href="https://github.com/chmouel/aniflow">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="content">
+<section class="land-hero">
+  <div class="wrap">
+    <div class="hero-text">
+      <h1>Share a folder of notes with your team.</h1>
+      <div>
+        <p class="lede">Put aniflow behind Caddy or Docker. Everyone reads plain Markdown files; GitHub sign-in unlocks margin comments, threaded replies, a live web editor, and API tokens.</p>
+        <div class="actions">
+          <a class="button" href="../cli/">CLI &amp; agents</a>
+          <a class="button ghost" href="https://github.com/chmouel/aniflow/blob/main/docs/hosting.md">Full reference</a>
+        </div>
+      </div>
+    </div>
+    <figure class="browser">
+      <span class="bar">notes.example.com/pub/files/</span>
+      <img src="../img/hosting-browser.png" width="1400" height="880" alt="Branded dark-mode aniflow folder browser showing Team Notes with a custom logo and shared folders.">
+      <figcaption>Custom branding with <code>--brand</code> and a dropped-in <code>logo.svg</code> and <code>favicon.svg</code>.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="block" id="comments" aria-labelledby="comments-title">
+  <div class="wrap split">
+    <div class="prose">
+      <h2 id="comments-title">Margin comments and replies</h2>
+      <p>Turn on Comments on any note to highlight lines and leave feedback. On wide screens, threads sit in a margin beside the text, Google Docs style; on narrow screens or when you toggle inline, they sit directly under their lines.</p>
+      <p>Each comment supports one-level replies, carries its author's GitHub avatar, and can be copied as a quoted prompt for a coding agent. Comments are stored separately under <code>$XDG_CACHE_HOME/aniflow</code> so your Markdown files stay clean.</p>
+    </div>
+    <figure class="browser">
+      <span class="bar">notes.example.com/pub/files/team/release-flow.md</span>
+      <img loading="lazy" src="../img/hosting-comments.png" width="1440" height="900" alt="A rendered note with an animated diagram and a margin comment card with a reply thread.">
+    </figure>
+  </div>
+</section>
+
+<section class="block" id="editor" aria-labelledby="editor-title">
+  <div class="wrap split">
+    <div class="prose">
+      <h2 id="editor-title">Per-user folders and live editing</h2>
+      <p>Add <code>--user-folders</code> and every signed-in member gets their own <code>&lt;login&gt;/</code> folder on first login with a starter note. Press <strong>Edit</strong> on a note or <strong>New note</strong> in a folder to write Markdown beside a live preview, insert an animated diagram with one click, and save with Ctrl+S.</p>
+      <p>Everyone reads everything. Members can write only in their own folder, or in any folder where you drop a hidden <code>.aniflow-shared</code> file from the server shell. Saves check a content hash under a lock so concurrent edits never overwrite each other.</p>
+    </div>
+    <figure class="browser">
+      <span class="bar">notes.example.com/pub/files/team/release-flow.md?edit</span>
+      <img loading="lazy" src="../img/hosting-editor.png" width="1440" height="900" alt="Split-pane Markdown editor with live rendered Mermaid diagram preview on the right.">
+    </figure>
+  </div>
+</section>
+
+<section class="block" id="setup" aria-labelledby="setup-title">
+  <div class="wrap split">
+    <div class="prose">
+      <h2 id="setup-title">Reverse proxy, OAuth and Docker</h2>
+      <p>Pass <code>--base /pub</code> to mount under a subpath and <code>--allow-host</code> for the public hostname. Gate writes with a GitHub OAuth App (<code>--github-oauth</code>) and limit sign-in to active members of a GitHub organisation with <code>--github-org</code>.</p>
+      <p>aniflow ships its built JS, CSS, icons, and skills inside the Python wheel, so the Docker image needs only Python.</p>
+      <div class="links">
+        <a href="https://github.com/chmouel/aniflow/blob/main/docs/hosting.md">Complete hosting guide</a>
+        <a href="../cli/">Remote CLI &amp; API tokens</a>
+      </div>
+    </div>
+    <div>
+      <pre class="cmd"><span class="c"># Caddy route under /pub/</span>
+notes.example.com {
+  handle /pub { redir * /pub/ 308 }
+  handle /pub/* { reverse_proxy localhost:8099 }
+}
+
+<span class="c"># Start aniflow for a GitHub organisation</span>
+export ANIFLOW_GITHUB_CLIENT_ID=...
+export ANIFLOW_GITHUB_SECRET=...
+export ANIFLOW_SIGNIN_SECRET=$(openssl rand -base64 48)
+export ANIFLOW_GITHUB_ORGS=my-org
+export ANIFLOW_COMMENTS_ADMIN=alice
+
+aniflow /notes --host 0.0.0.0 --port 8080 \
+  --base /pub --allow-host notes.example.com \
+  --brand "Team Notes" --user-folders
+
+<span class="c"># Mark a shared team folder writable by all members</span>
+touch /notes/team/.aniflow-shared</pre>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>aniflow is released under the Apache 2.0 licence. It bundles Mermaid, markdown-it, DOMPurify and icons from Lucide, under their own licences.</p>
+  </div>
+</footer>
+</body>
+</html>
