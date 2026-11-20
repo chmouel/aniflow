@@ -31,6 +31,14 @@ export function initReview() {
     const session = make('span', 'review-session');
     const gutter = document.createElement('div');
     gutter.className = 'review-gutter';
+    // Comments either sit under their lines (as on GitHub) or in a column beside the text
+    // (as in Google Docs). The margin needs room to the right; without it they go inline.
+    const LAYOUT_KEY = 'aniflow-comments-layout';
+    const MARGIN_WIDTH = 300;
+    const margin = document.createElement('div');
+    margin.className = 'review-margin';
+    let layout = localStorage.getItem(LAYOUT_KEY) === 'inline' ? 'inline' : 'side';
+    let side = false;
     let reviewing = false;
     let view = { lines: 0, comments: [] };
     let promptText = '';
@@ -160,8 +168,17 @@ export function initReview() {
       place();
     }
 
+    function roomForMargin() {
+      const right = host.article.getBoundingClientRect().right;
+      return right + MARGIN_WIDTH + 40 <= document.documentElement.clientWidth;
+    }
+
     function place() {
       if (!reviewing) return;
+      if ((layout === 'side' && roomForMargin()) !== side) {
+        drawThreads();
+        return;
+      }
       const top = host.article.getBoundingClientRect().top;
       for (const mark of marks) {
         if (mark.code) continue;
@@ -177,6 +194,7 @@ export function initReview() {
         mark.button.style.top = (box.top - top + offset) + 'px';
       }
       drawBands();
+      arrange();
     }
 
     const inside = (mark) => Boolean(selection) && mark.start <= selection.end && mark.end >= selection.start;
@@ -330,6 +348,7 @@ export function initReview() {
     function closeComposer() {
       if (composer) composer.remove();
       composer = null;
+      arrange();
       updateDock();
     }
 
@@ -340,12 +359,13 @@ export function initReview() {
       const mark = spot(target.end);
       if (!mark) return;
       const holder = make('div', 'review-composer');
+      holder.anchorEnd = target.end;
       if (gated && !me) {
         holder.append(
           make('p', 'review-composer-title', 'Sign in to comment on ' + range(target.start, target.end).toLowerCase()),
           signInLink('Sign in with GitHub'),
         );
-        insertAt(slot(mark, target.start), holder);
+        put(holder, target.start);
         composer = holder;
         updateDock();
         return;
@@ -358,7 +378,7 @@ export function initReview() {
         notify('Comment added');
       }, closeComposer);
       holder.append(form);
-      insertAt(slot(mark, target.start), holder);
+      put(holder, target.start);
       composer = holder;
       updateDock();
       area.focus({ preventScroll: true });
@@ -434,6 +454,17 @@ export function initReview() {
 
     function drawThreads() {
       for (const old of host.article.querySelectorAll('.review-thread')) old.remove();
+      for (const old of margin.querySelectorAll('.review-thread')) old.remove();
+      side = layout === 'side' && roomForMargin();
+      host.article.classList.toggle('review-side', side);
+      document.body.classList.toggle('review-side', side);
+      layoutButton.hidden = !roomForMargin();
+      layoutButton.textContent = side ? 'Show inline' : 'Show in margin';
+      if (composer) put(composer, composer.anchorStart);
+      if (!side) {
+        margin.remove();
+        host.article.style.minHeight = '';
+      }
       const groups = [];
       for (const comment of view.comments) {
         const mark = spot(comment.end);
@@ -448,8 +479,60 @@ export function initReview() {
       for (const group of groups.sort((a, b) => b.end - a.end)) {
         const thread = make('div', 'review-thread');
         for (const comment of group.comments) thread.append(card(comment));
-        insertAt(group.where, thread);
+        if (side) {
+          thread.anchorStart = Math.min(...group.comments.map((comment) => comment.start));
+          thread.anchorEnd = group.end;
+          linkLines(thread);
+          margin.append(thread);
+        } else {
+          insertAt(group.where, thread);
+        }
       }
+      arrange();
+    }
+
+    // Where a line starts, in the article's coordinates: what the margin lines up with.
+    function topOf(line) {
+      const mark = spot(line);
+      if (!mark) return 0;
+      const box = (mark.code ? mark.button : mark.element).getBoundingClientRect();
+      return box.top - host.article.getBoundingClientRect().top;
+    }
+
+    // Each margin item goes level with its first line, or just under the one above it when
+    // they would overlap, as Google Docs stacks its comments.
+    function arrange() {
+      if (!side) return;
+      if (!margin.isConnected) host.article.append(margin);
+      const items = [...margin.children].map((element) => ({ element, want: topOf(element.anchorStart) }));
+      let floor = 0;
+      for (const { element, want } of items.sort((a, b) => a.want - b.want)) {
+        sizes.observe(element);
+        const top = Math.max(want, floor);
+        element.style.top = top + 'px';
+        floor = top + element.offsetHeight + 12;
+      }
+      host.article.style.minHeight = floor ? floor + 'px' : '';
+    }
+
+    // Hovering a margin thread lights the lines it is about.
+    function linkLines(element) {
+      const lit = () => marks.filter((mark) => !mark.code && mark.start <= element.anchorEnd && mark.end >= element.anchorStart);
+      element.addEventListener('pointerenter', () => { for (const mark of lit()) mark.element.classList.add('review-linked'); });
+      element.addEventListener('pointerleave', () => { for (const mark of lit()) mark.element.classList.remove('review-linked'); });
+    }
+
+    // The composer goes where the comment will be: in the margin, or under its lines.
+    function put(holder, start) {
+      holder.anchorStart = start;
+      if (side) {
+        holder.anchorEnd = holder.anchorEnd || start;
+        margin.append(holder);
+        arrange();
+        return;
+      }
+      const mark = spot(holder.anchorEnd || start);
+      if (mark) insertAt(slot(mark, start), holder);
     }
 
     function enter() {
@@ -470,6 +553,12 @@ export function initReview() {
       remember();
       gutter.remove();
       for (const element of host.article.querySelectorAll('.code-gutter, .code-band, .review-thread')) element.remove();
+      margin.remove();
+      margin.replaceChildren();
+      host.article.style.minHeight = '';
+      host.article.classList.remove('review-side');
+      document.body.classList.remove('review-side');
+      for (const element of host.article.querySelectorAll('.review-linked')) element.classList.remove('review-linked');
       for (const element of host.article.querySelectorAll('.review-selected')) element.classList.remove('review-selected');
       marks = [];
       host.article.classList.remove('reviewing');
@@ -501,6 +590,17 @@ export function initReview() {
     commentButton.addEventListener('click', compose);
     clearButton.addEventListener('click', clear);
     copyButton.after(session);
+    const layoutButton = make('button', '', 'Show inline');
+    layoutButton.title = 'Comments beside the text, or under the lines they are about';
+    layoutButton.addEventListener('click', () => {
+      layout = side ? 'inline' : 'side';
+      localStorage.setItem(LAYOUT_KEY, layout);
+      closeComposer();
+      drawThreads();
+    });
+    host.dock.querySelector('[data-review="done"]').before(layoutButton);
+    // A thread that grows (an edit form, a longer comment) pushes the ones under it down.
+    const sizes = new ResizeObserver(() => arrange());
     host.dock.querySelector('[data-review="done"]').addEventListener('click', leave);
     copyButton.addEventListener('click', async () => {
       const done = promptText ? await copyText(promptText) : false;

@@ -177,7 +177,11 @@ An `aniflow_lines` core rule copies markdown-it's `token.map` onto blocks as
 blocks. YAML front matter at line 1 is claimed by `aniflow_frontmatter` and
 drawn as a `dl.frontmatter` panel. The review button turns on a line gutter
 built from those attributes; picking lines sets `#Lx-Ly`. Comments are
-fetched from and posted to `host.commentsUrl` and drawn with `textContent`.
+fetched from and posted to `host.commentsUrl` and drawn with `textContent`,
+either under their lines or, when there is room to the right of the article,
+in a `.review-margin` column level with them (`arrange()` stacks overlapping
+threads); the dock toggles the two and localStorage `aniflow-comments-layout`
+keeps the choice.
 On read, `comments.anchor()` keeps a comment whose lines still equal its
 `quote`, moves it to the single other place the quote appears, or marks it
 `outdated`.

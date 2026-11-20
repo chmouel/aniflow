@@ -3261,8 +3261,15 @@ function initReview() {
       }
       host.article.append(gutter);
       place();
+    }, roomForMargin = function() {
+      const right = host.article.getBoundingClientRect().right;
+      return right + MARGIN_WIDTH + 40 <= document.documentElement.clientWidth;
     }, place = function() {
       if (!reviewing) return;
+      if ((layout === "side" && roomForMargin()) !== side) {
+        drawThreads();
+        return;
+      }
       const top = host.article.getBoundingClientRect().top;
       for (const mark of marks) {
         if (mark.code) continue;
@@ -3276,6 +3283,7 @@ function initReview() {
         mark.button.style.top = box.top - top + offset + "px";
       }
       drawBands();
+      arrange();
     }, drawBands = function() {
       for (const band of host.article.querySelectorAll(".code-band")) band.remove();
       const spans = /* @__PURE__ */ new Map();
@@ -3399,6 +3407,7 @@ function initReview() {
     }, closeComposer = function() {
       if (composer) composer.remove();
       composer = null;
+      arrange();
       updateDock();
     }, compose = function() {
       if (!selection) return;
@@ -3407,12 +3416,13 @@ function initReview() {
       const mark = spot(target.end);
       if (!mark) return;
       const holder = make("div", "review-composer");
+      holder.anchorEnd = target.end;
       if (gated && !me) {
         holder.append(
           make("p", "review-composer-title", "Sign in to comment on " + range(target.start, target.end).toLowerCase()),
           signInLink("Sign in with GitHub")
         );
-        insertAt(slot(mark, target.start), holder);
+        put(holder, target.start);
         composer = holder;
         updateDock();
         return;
@@ -3425,7 +3435,7 @@ function initReview() {
         notify("Comment added");
       }, closeComposer);
       holder.append(form);
-      insertAt(slot(mark, target.start), holder);
+      put(holder, target.start);
       composer = holder;
       updateDock();
       area.focus({ preventScroll: true });
@@ -3497,6 +3507,17 @@ function initReview() {
       return item;
     }, drawThreads = function() {
       for (const old of host.article.querySelectorAll(".review-thread")) old.remove();
+      for (const old of margin.querySelectorAll(".review-thread")) old.remove();
+      side = layout === "side" && roomForMargin();
+      host.article.classList.toggle("review-side", side);
+      document.body.classList.toggle("review-side", side);
+      layoutButton.hidden = !roomForMargin();
+      layoutButton.textContent = side ? "Show inline" : "Show in margin";
+      if (composer) put(composer, composer.anchorStart);
+      if (!side) {
+        margin.remove();
+        host.article.style.minHeight = "";
+      }
       const groups = [];
       for (const comment of view.comments) {
         const mark = spot(comment.end);
@@ -3510,8 +3531,51 @@ function initReview() {
       for (const group of groups.sort((a, b) => b.end - a.end)) {
         const thread = make("div", "review-thread");
         for (const comment of group.comments) thread.append(card(comment));
-        insertAt(group.where, thread);
+        if (side) {
+          thread.anchorStart = Math.min(...group.comments.map((comment) => comment.start));
+          thread.anchorEnd = group.end;
+          linkLines(thread);
+          margin.append(thread);
+        } else {
+          insertAt(group.where, thread);
+        }
       }
+      arrange();
+    }, topOf = function(line) {
+      const mark = spot(line);
+      if (!mark) return 0;
+      const box = (mark.code ? mark.button : mark.element).getBoundingClientRect();
+      return box.top - host.article.getBoundingClientRect().top;
+    }, arrange = function() {
+      if (!side) return;
+      if (!margin.isConnected) host.article.append(margin);
+      const items = [...margin.children].map((element2) => ({ element: element2, want: topOf(element2.anchorStart) }));
+      let floor = 0;
+      for (const { element: element2, want } of items.sort((a, b) => a.want - b.want)) {
+        sizes.observe(element2);
+        const top = Math.max(want, floor);
+        element2.style.top = top + "px";
+        floor = top + element2.offsetHeight + 12;
+      }
+      host.article.style.minHeight = floor ? floor + "px" : "";
+    }, linkLines = function(element2) {
+      const lit = () => marks.filter((mark) => !mark.code && mark.start <= element2.anchorEnd && mark.end >= element2.anchorStart);
+      element2.addEventListener("pointerenter", () => {
+        for (const mark of lit()) mark.element.classList.add("review-linked");
+      });
+      element2.addEventListener("pointerleave", () => {
+        for (const mark of lit()) mark.element.classList.remove("review-linked");
+      });
+    }, put = function(holder, start) {
+      holder.anchorStart = start;
+      if (side) {
+        holder.anchorEnd = holder.anchorEnd || start;
+        margin.append(holder);
+        arrange();
+        return;
+      }
+      const mark = spot(holder.anchorEnd || start);
+      if (mark) insertAt(slot(mark, start), holder);
     }, enter = function() {
       reviewing = true;
       host.article.classList.add("reviewing");
@@ -3528,6 +3592,12 @@ function initReview() {
       remember();
       gutter.remove();
       for (const element2 of host.article.querySelectorAll(".code-gutter, .code-band, .review-thread")) element2.remove();
+      margin.remove();
+      margin.replaceChildren();
+      host.article.style.minHeight = "";
+      host.article.classList.remove("review-side");
+      document.body.classList.remove("review-side");
+      for (const element2 of host.article.querySelectorAll(".review-linked")) element2.classList.remove("review-linked");
       for (const element2 of host.article.querySelectorAll(".review-selected")) element2.classList.remove("review-selected");
       marks = [];
       host.article.classList.remove("reviewing");
@@ -3562,6 +3632,12 @@ function initReview() {
     const session = make("span", "review-session");
     const gutter = document.createElement("div");
     gutter.className = "review-gutter";
+    const LAYOUT_KEY = "aniflow-comments-layout";
+    const MARGIN_WIDTH = 300;
+    const margin = document.createElement("div");
+    margin.className = "review-margin";
+    let layout = localStorage.getItem(LAYOUT_KEY) === "inline" ? "inline" : "side";
+    let side = false;
     let reviewing = false;
     let view = { lines: 0, comments: [] };
     let promptText = "";
@@ -3623,6 +3699,16 @@ function initReview() {
     commentButton.addEventListener("click", compose);
     clearButton.addEventListener("click", clear);
     copyButton.after(session);
+    const layoutButton = make("button", "", "Show inline");
+    layoutButton.title = "Comments beside the text, or under the lines they are about";
+    layoutButton.addEventListener("click", () => {
+      layout = side ? "inline" : "side";
+      localStorage.setItem(LAYOUT_KEY, layout);
+      closeComposer();
+      drawThreads();
+    });
+    host.dock.querySelector('[data-review="done"]').before(layoutButton);
+    const sizes = new ResizeObserver(() => arrange());
     host.dock.querySelector('[data-review="done"]').addEventListener("click", leave);
     copyButton.addEventListener("click", async () => {
       const done = promptText ? await copyText(promptText) : false;
