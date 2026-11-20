@@ -88,47 +88,14 @@ files untouched. Refresh the browser after saving changes to a document.
 
 ## Host it for a team
 
-You can put aniflow behind a reverse proxy to publish a shared folder of
-notes.
+aniflow can also run behind a reverse proxy as a shared notes site with custom
+branding, GitHub OAuth sign-in (with optional org restriction), per-user and
+shared writable folders, a split-pane web editor, API tokens, and a remote CLI
+(`aniflow login`, `push`, `pull`, `ls`, `search`, `comments`, `rm`).
 
-- `--base /pub` prefixes every generated URL so Caddy or an ingress can mount
-  the reader under a path, and `--allow-host notes.example.com` lets it answer
-  for the forwarded hostname.
-- `--brand "Team Notes"`, `--logo`, and `--favicon` replace the aniflow
-  wordmark and tab icon. Dropping `logo.svg`/`logo.png` or
-  `favicon.svg`/`favicon.png`/`favicon.ico` at the top of the folder works
-  without flags and takes effect on the next page load.
-- `--no-comments` turns off the review UI and comment routes for a static
-  public site.
-- `--github-oauth CLIENT_ID` requires GitHub sign-in to write comments
-  (reading stays open), using `ANIFLOW_GITHUB_SECRET` and
-  `ANIFLOW_SIGNIN_SECRET` from the environment. Add `--github-org ORG` to
-  restrict sign-in to active members of a GitHub organisation, and
-  `--comments-admin LOGIN` to let an admin moderate any comment.
-- `--user-folders` gives each signed-in member a `<login>/` folder with a
-  starter note and a split-pane web editor (**Edit**, **New note**, **Delete**).
-  Everyone reads everything. Any folder containing a `.aniflow-shared` file
-  (`touch notes/team/.aniflow-shared`) is writable by all signed-in members.
-
-Signed-in members can create 90-day API tokens under **API tokens** in the
-account menu and manage notes from the command line or a coding agent:
-
-```sh
-aniflow login https://notes.example.com/pub   # any page URL works; prompts for token
-aniflow whoami
-aniflow ls                                    # your folder (or `aniflow ls /`)
-aniflow search "kueue"                        # search filenames and note text
-aniflow push plan.md                          # -> <your-folder>/plan.md
-aniflow push plan.md team/plan.md             # -> shared folder team/
-aniflow pull team/plan.md                     # stdout (or pass a path; full URLs work)
-aniflow comments team/plan.md                 # review comments as a prompt
-aniflow rm team/old.md
-```
-
-Every remote command accepts `--json` for scripts and agents, and `push`/`rm`
-accept `--if-match` with a note's ETag to guard against overwriting a
-concurrent edit. Run `aniflow --revoke-tokens LOGIN` on the server to revoke
-all of a member's tokens.
+See [`docs/hosting.md`](docs/hosting.md) for the server setup guide (Caddy,
+Docker, OAuth, user folders) and [`docs/cli.md`](docs/cli.md) for the remote
+CLI and agent skill commands.
 
 ## Write a walkthrough
 

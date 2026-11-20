@@ -216,3 +216,21 @@ def test_skill_install_list_show_remove(tmp_path, capsys):
     )
     capsys.readouterr()
     assert not (target / "aniflow-notes").exists()
+
+    # Existing symlinks are left untouched on install, and can still be removed explicitly.
+    link = target / "aniflow-notes"
+    link.symlink_to(tmp_path / "live-dev")
+    assert (
+        client.main(
+            ["skill", "install", "aniflow-notes", "--target", str(target), "--json"]
+        )
+        == 0
+    )
+    res = json.loads(capsys.readouterr().out)
+    assert res["installed"] == [] and res["skipped"][0]["name"] == "aniflow-notes"
+    assert link.is_symlink()
+    assert (
+        client.main(["skill", "remove", "aniflow-notes", "--target", str(target)]) == 0
+    )
+    capsys.readouterr()
+    assert not link.is_symlink()

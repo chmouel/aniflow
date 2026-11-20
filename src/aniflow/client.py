@@ -480,24 +480,34 @@ def cmd_skill(args: argparse.Namespace) -> int:
                     f"aniflow: unknown skill {name!r} (available: {', '.join(available)})"
                 )
         dest_root.mkdir(parents=True, exist_ok=True)
-        installed = []
+        installed, skipped = [], []
         for name in wanted:
             dest = dest_root / name
-            if dest.exists():
+            if dest.is_symlink():
+                skipped.append({"name": name, "path": str(dest), "reason": "symlink"})
+                continue
+            if dest.is_file():
+                dest.unlink()
+            elif dest.exists():
                 shutil.rmtree(dest)
             shutil.copytree(available[name], dest)
             installed.append({"name": name, "path": str(dest)})
         if args.json:
-            print(json.dumps({"installed": installed}))
+            print(json.dumps({"installed": installed, "skipped": skipped}))
         else:
             for item in installed:
                 print(f"Installed {item['name']} -> {item['path']}")
+            for item in skipped:
+                print(f"Skipped {item['name']} -> {item['path']} ({item['reason']})")
         return 0
     if args.skill_action == "remove":
         dest = dest_root / args.name
-        if not dest.exists():
+        if not dest.exists() and not dest.is_symlink():
             raise SystemExit(f"aniflow: {args.name} is not installed in {dest_root}")
-        shutil.rmtree(dest)
+        if dest.is_symlink() or dest.is_file():
+            dest.unlink()
+        else:
+            shutil.rmtree(dest)
         if args.json:
             print(json.dumps({"removed": args.name, "path": str(dest)}))
         else:
