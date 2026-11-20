@@ -77,6 +77,8 @@ the wheel, so `uvx --from git+...` works without Node.
   `--github-oauth CLIENT_ID` turns on sign-in: writes then need a session
   (`ANIFLOW_GITHUB_SECRET`, `ANIFLOW_SIGNIN_SECRET`), a comment belongs to
   the account that wrote it, and `--comments-admin LOGIN` may change any.
+  With `--allow-host` and comments on, `main()` refuses to start without
+  `--github-oauth`, so a missing client id cannot open the comments to all.
 - `src/aniflow/web.py`: `Handler`, a `BaseHTTPRequestHandler` with the
   request checks (`request_allowed()`, `host_allowed()`,
   `origin_allowed()`; `allowed_hosts()` and `allowed_origins()` are for a

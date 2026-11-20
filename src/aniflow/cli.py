@@ -882,6 +882,12 @@ def main() -> None:
     except ValueError as error:
         parser.error(str(error))
     signin = None
+    # A server reachable under a public name takes comments only from signed-in people.
+    if args.allow_host and not args.no_comments and not args.github_oauth:
+        parser.error(
+            "--allow-host serves the comments to the public: add --github-oauth "
+            "(or set ANIFLOW_GITHUB_CLIENT_ID), or --no-comments"
+        )
     if args.github_oauth:
         secret = os.environ.get("ANIFLOW_GITHUB_SECRET", "")
         signing = os.environ.get("ANIFLOW_SIGNIN_SECRET", "")

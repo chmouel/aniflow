@@ -657,6 +657,27 @@ def test_main_rejects_missing_directory(tmp_path, monkeypatch, capsys):
     assert "not a directory" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    "extra",
+    [
+        [],
+        ["--github-oauth", "client"],
+    ],
+)
+def test_public_comments_need_github(tmp_path, monkeypatch, capsys, extra):
+    monkeypatch.delenv("ANIFLOW_GITHUB_CLIENT_ID", raising=False)
+    monkeypatch.delenv("ANIFLOW_GITHUB_SECRET", raising=False)
+    monkeypatch.delenv("ANIFLOW_SIGNIN_SECRET", raising=False)
+    monkeypatch.setattr(
+        "sys.argv", ["aniflow", str(tmp_path), "--allow-host", "share.example", *extra]
+    )
+    with pytest.raises(SystemExit, match="2"):
+        cli.main()
+    err = capsys.readouterr().err
+    # Without a client id it names the fix; with one it still needs the secrets.
+    assert ("--github-oauth" in err) if not extra else ("ANIFLOW_GITHUB_SECRET" in err)
+
+
 def test_spec_prints_reference_without_serving(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("sys.argv", ["aniflow", str(tmp_path / "missing"), "--spec"])
 
