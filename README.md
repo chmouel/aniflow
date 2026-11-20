@@ -113,7 +113,22 @@ folder named after their GitHub login, with a welcome note showing the
 Markdown and the diagrams, and an **Edit** button on their notes that opens
 the Markdown beside the live page. Everyone reads everything; a folder is
 writable by all members once it holds a `.aniflow-shared` file
-(`touch notes/team/.aniflow-shared`), which the web cannot create. Refresh the browser
+(`touch notes/team/.aniflow-shared`), which the web cannot create.
+
+Scripts and agents write with an API token, made under **API tokens** in the
+account menu (shown once, 90 days, revocable). It carries exactly its owner's
+rights:
+
+```sh
+curl -X PUT -H "Authorization: Bearer $ANIFLOW_TOKEN" --data-binary @plan.md \
+  https://notes.example.com/api/notes/<login>/plan.md
+curl https://notes.example.com/api/notes/<login>/plan.md      # read, no token
+curl -X DELETE -H "Authorization: Bearer $ANIFLOW_TOKEN" \
+  https://notes.example.com/api/notes/<login>/plan.md
+```
+
+`aniflow --revoke-tokens LOGIN` revokes all of someone's tokens from the
+server's shell. Refresh the browser
 after saving changes to a document.
 
 ## Write a walkthrough

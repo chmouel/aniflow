@@ -3,6 +3,7 @@ import io
 import json
 import re
 import shutil
+import sqlite3
 import sys
 import threading
 import time
@@ -719,6 +720,146 @@ def test_user_folders_need_github(tmp_path, monkeypatch, capsys):
     with pytest.raises(SystemExit, match="2"):
         cli.main()
     assert "--github-oauth" in capsys.readouterr().err
+
+
+def make_token(request, cookie, name="script"):
+    status, _, body = request(
+        "/tokens/create",
+        method="POST",
+        headers={"Cookie": cookie, "Content-Type": "application/json"},
+        body=json.dumps({"name": name}),
+    )
+    return status, json.loads(body)
+
+
+def api(request, method, key, token=None, body=None, headers=None):
+    sent = {**(headers or {})}
+    if token:
+        sent["Authorization"] = f"Bearer {token}"
+    status, answer_headers, answer = request(
+        f"/api/notes/{key}", method=method, headers=sent, body=body
+    )
+    return status, answer_headers, answer
+
+
+def test_api_tokens_write_like_their_owner(github, local_docs, aniflow_servers):
+    request = folders_server(local_docs, aniflow_servers)
+    alice = sign_in(request, "alice")
+    status, made = make_token(request, alice, "laptop")
+    assert status == 200 and made["token"].startswith("aniflow_")
+    token = made["token"]
+    # The database never holds the token itself.
+    assert (
+        token.encode()
+        not in (local_docs.parent / "cache/aniflow/tokens.db").read_bytes()
+    )
+    status, headers, body = api(request, "PUT", "alice/plan.md", token, "# Plan\n")
+    assert status == 201 and json.loads(body)["url"] == "/files/alice/plan.md"
+    status, headers, body = api(request, "GET", "alice/plan.md")
+    assert status == 200 and body == b"# Plan\n"
+    etag = headers["ETag"]
+    assert (
+        api(request, "PUT", "alice/plan.md", token, "v2", {"If-Match": '"old"'})[0]
+        == 412
+    )
+    assert (
+        api(request, "PUT", "alice/plan.md", token, "v2", {"If-Match": etag})[0] == 200
+    )
+    assert api(request, "PUT", "alice/plan.md", None, "x")[0] == 401
+    assert api(request, "PUT", "alice/plan.md", "aniflow_bogus", "x")[0] == 401
+    assert api(request, "PUT", "bob/plan.md", token, "x")[0] == 403
+    assert api(request, "PUT", "alice/x.js", token, "x")[0] == 404
+    assert api(request, "DELETE", "alice/plan.md", token)[0] == 204
+    assert not (local_docs / "alice" / "plan.md").exists()
+    # The page lists it, and revoking it stops it at once.
+    _, _, page_body = request("/tokens", headers={"Cookie": alice})
+    assert b"laptop" in page_body and made["id"].encode() in page_body
+    status, _, _ = request(
+        "/tokens/revoke",
+        method="POST",
+        headers={"Cookie": alice, "Content-Type": "application/json"},
+        body=json.dumps({"id": made["id"]}),
+    )
+    assert status == 200
+    assert api(request, "PUT", "alice/plan.md", token, "x")[0] == 401
+
+
+def test_tokens_expire_are_capped_and_revocable_by_operator(
+    github, local_docs, aniflow_servers, monkeypatch, capsys
+):
+    request = folders_server(local_docs, aniflow_servers)
+    bob = sign_in(request, "bob")
+    made = [make_token(request, bob, f"t{index}")[1] for index in range(10)]
+    status, answer = make_token(request, bob, "eleventh")
+    assert status == 400 and "10 tokens" in answer["error"]
+    db = local_docs.parent / "cache/aniflow/tokens.db"
+    with sqlite3.connect(db) as connection:
+        connection.execute(
+            "UPDATE tokens SET expires = 0 WHERE id = ?", (made[0]["id"],)
+        )
+    assert api(request, "PUT", "bob/x.md", made[0]["token"], "x")[0] == 401
+    assert api(request, "PUT", "bob/x.md", made[1]["token"], "x")[0] == 201
+    monkeypatch.setattr("sys.argv", ["aniflow", "--revoke-tokens", "Bob"])
+    cli.main()
+    assert "revoked 10 tokens" in capsys.readouterr().out
+    assert api(request, "PUT", "bob/x.md", made[1]["token"], "y")[0] == 401
+
+
+def test_admin_comes_from_the_server_not_the_token(github, local_docs, aniflow_servers):
+    request = folders_server(local_docs, aniflow_servers)
+    sign_in(request, "alice")
+    boss = sign_in(request, "boss")
+    token = make_token(request, boss)[1]["token"]
+    assert api(request, "PUT", "alice/fix.md", token, "x")[0] == 201
+    # The same database behind a server that no longer names boss as admin.
+    demoted = aniflow_servers(
+        local_docs,
+        signin=oauth.SignIn("client-id", "s", "signing-key"),
+        user_folders=True,
+    )
+    assert api(demoted, "PUT", "alice/fix.md", token, "y")[0] == 403
+    assert api(demoted, "PUT", "boss/own.md", token, "y")[0] == 201
+
+
+def test_concurrent_writes_at_one_version_do_not_both_land(
+    github, local_docs, aniflow_servers
+):
+    request = folders_server(local_docs, aniflow_servers)
+    alice = sign_in(request, "alice")
+    token = make_token(request, alice)[1]["token"]
+    api(request, "PUT", "alice/race.md", token, "start")
+    etag = api(request, "GET", "alice/race.md")[1]["ETag"]
+    results = []
+
+    def put(text):
+        results.append(
+            api(request, "PUT", "alice/race.md", token, text, {"If-Match": etag})[0]
+        )
+
+    threads = [threading.Thread(target=put, args=(f"writer {n}",)) for n in range(6)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert sorted(results) == [200, 412, 412, 412, 412, 412]
+    # The editor's save at that same version is refused too.
+    version = etag.strip('"')
+    assert save(request, alice, "alice/race.md", "from the editor", version)[0] == 409
+
+
+def test_a_link_inside_a_folder_cannot_reach_another(
+    github, local_docs, aniflow_servers
+):
+    request = folders_server(local_docs, aniflow_servers)
+    alice, _ = sign_in(request, "alice"), sign_in(request, "bob")
+    (local_docs / "alice" / "into-bob").symlink_to(local_docs / "bob")
+    (local_docs / "alice" / ".hidden").mkdir()
+    (local_docs / "alice" / "into-hidden").symlink_to(local_docs / "alice" / ".hidden")
+    assert save(request, alice, "alice/into-bob/welcome.md", "pwned")[0] == 404
+    assert save(request, alice, "alice/into-hidden/x.md", "x")[0] == 404
+    token = make_token(request, alice)[1]["token"]
+    assert api(request, "PUT", "alice/into-bob/welcome.md", token, "pwned")[0] == 404
+    assert "pwned" not in (local_docs / "bob" / "welcome.md").read_text()
 
 
 def test_sign_out_clears_the_cookie(github, local_docs, aniflow_servers):

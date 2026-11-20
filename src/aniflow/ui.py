@@ -419,3 +419,90 @@ NEW_NOTE_JS = """
   input.addEventListener('keydown', (event) => { if (event.key === 'Enter') open(); });
 })();
 """
+
+
+TOKENS_CSS = """
+  .tokens { max-width:46rem; margin:0 auto 34px; }
+  .tokens .token-new { display:flex; gap:8px; margin-bottom:14px; }
+  .tokens .token-new input { flex:1; min-width:0; padding:9px 11px; border:1px solid var(--borderColor-default); border-radius:8px; background:var(--bgColor-default); color:var(--fgColor-default); font:inherit; font-size:14px; }
+  .tokens button { padding:8px 14px; border:1px solid var(--borderColor-default); border-radius:8px; background:var(--bgColor-default); color:var(--fgColor-default); font:600 13px/1.4 system-ui,sans-serif; cursor:pointer; white-space:nowrap; }
+  .tokens #token-create { border:0; background:var(--fgColor-accent); color:var(--bgColor-default); }
+  .tokens .token-made { margin:0 0 14px; padding:12px 14px; border:1px solid var(--fgColor-success, var(--fgColor-accent)); border-radius:10px; background:var(--bgColor-muted); }
+  .tokens .token-made p { margin:0 0 8px; font-size:13px; color:var(--fgColor-muted); }
+  .tokens .token-made div { display:flex; gap:8px; align-items:center; }
+  .tokens .token-made code { flex:1; min-width:0; overflow-wrap:anywhere; padding:6px 8px; border-radius:6px; background:var(--bgColor-default); font-size:13px; }
+  .tokens .token-status { min-height:1.4em; margin:0 0 8px; font-size:13px; color:var(--fgColor-muted); }
+  .tokens table { width:100%; border-collapse:collapse; font-size:14px; }
+  .tokens th, .tokens td { padding:8px 6px; border-bottom:1px solid var(--borderColor-muted); text-align:left; }
+  .tokens th { color:var(--fgColor-muted); font-weight:600; font-size:12px; }
+  .tokens td:last-child { text-align:right; }
+  .tokens .token-none td { color:var(--fgColor-muted); text-align:left; }
+  @media (max-width:640px) { .tokens th:nth-child(2), .tokens td:nth-child(2), .tokens th:nth-child(3), .tokens td:nth-child(3) { display:none; } }
+"""
+
+TOKENS_JS = """
+(() => {
+  const data = JSON.parse(document.getElementById('aniflow-tokens').textContent);
+  const status = document.getElementById('token-status');
+  const name = document.getElementById('token-name');
+  const rows = document.getElementById('token-rows');
+  const say = (text) => { status.textContent = text; };
+  async function post(url, body) {
+    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const answer = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(answer.error || response.statusText);
+    return answer;
+  }
+  function revokeButton(id) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.id = id;
+    button.textContent = 'Revoke';
+    return button;
+  }
+  async function create() {
+    if (!name.value.trim()) return name.focus();
+    try {
+      const made = await post(data.create, { name: name.value });
+      document.getElementById('token-value').textContent = made.token;
+      document.getElementById('token-made').hidden = false;
+      const row = document.createElement('tr');
+      for (const text of [made.name, 'today', 'never', new Date(made.expires * 1000).toISOString().slice(0, 10)]) {
+        const cell = document.createElement('td');
+        cell.textContent = text;
+        row.append(cell);
+      }
+      const last = document.createElement('td');
+      last.append(revokeButton(made.id));
+      row.append(last);
+      rows.querySelector('.token-none')?.remove();
+      rows.prepend(row);
+      name.value = '';
+      say('');
+    } catch (error) {
+      say(error.message);
+    }
+  }
+  document.getElementById('token-create').addEventListener('click', create);
+  name.addEventListener('keydown', (event) => { if (event.key === 'Enter') create(); });
+  document.getElementById('token-copy').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(document.getElementById('token-value').textContent);
+      say('Copied');
+    } catch {
+      say('Select the token and copy it by hand');
+    }
+  });
+  rows.addEventListener('click', async (event) => {
+    const button = event.target.closest('button[data-id]');
+    if (!button || !confirm('Revoke this token? Scripts that use it stop working.')) return;
+    try {
+      await post(data.revoke, { id: button.dataset.id });
+      button.closest('tr').remove();
+      say('Revoked');
+    } catch (error) {
+      say(error.message);
+    }
+  });
+})();
+"""

@@ -10,6 +10,8 @@ import re
 import secrets
 import socket
 import sys
+import threading
+import time
 import webbrowser
 import zlib
 from datetime import UTC, datetime
@@ -18,7 +20,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
-from aniflow import export, oauth, page, web
+from aniflow import export, oauth, page, tokens, web
 from aniflow.brand import BRAND_CSS, DEFAULT, favicon, masthead
 from aniflow.themes import THEME_READER_CSS, theme_script, theme_select
 from aniflow.ui import (
@@ -30,6 +32,8 @@ from aniflow.ui import (
     NEW_NOTE_JS,
     NOTE_ICON,
     SEARCH_ICON,
+    TOKENS_CSS,
+    TOKENS_JS,
     UI_CSS,
     UI_JS,
     human_size,
@@ -152,6 +156,9 @@ def breadcrumbs(root: Path, path: Path, base: str = "") -> list[tuple[str, str]]
 # and a folder holding this hidden file (and everything under it) is open to all of them.
 SHARED_MARK = ".aniflow-shared"
 NOTE_MAX_BYTES = 1024**2
+# Every write of a note, from the editor or the API, checks its version and writes under
+# this lock, so two saves opened at the same version cannot both land.
+NOTES_LOCK = threading.Lock()
 WELCOME = Path(__file__).with_name("templates") / "welcome.md"
 LOGIN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})")
 DIAGRAM_EXAMPLE = """```mermaid
@@ -176,6 +183,13 @@ def note_path(root: Path, key: str) -> Path | None:
     if len(relative.parts) < 2 or not web.is_markdown(relative.name):
         return None
     path = root / relative
+    # A link anywhere on the way, not only at the end, could lead into someone else's
+    # folder while the path still names your own.
+    current = root
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            return None
     try:
         existing = path.parent
         while not existing.exists():
@@ -215,12 +229,15 @@ def note_version(path: Path) -> str:
         return ""
 
 
-def write_note(path: Path, text: str) -> None:
-    """Replace the note in one step, so a reader never sees half of it."""
+def write_note(path: Path, text: str) -> str:
+    """Replace the note in one step, so a reader never sees half of it, and return the
+    version of what was written."""
+    data = text.encode("utf-8")
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{secrets.token_hex(4)}.part")
-    temporary.write_text(text, "utf-8")
+    temporary.write_bytes(data)
     os.replace(temporary, path)
+    return hashlib.sha256(data).hexdigest()
 
 
 def user_folder(root: Path, login: str) -> Path | None:
@@ -234,6 +251,16 @@ def user_folder(root: Path, login: str) -> Path | None:
             folder / "welcome.md", WELCOME.read_text("utf-8").replace("{login}", login)
         )
     return folder if folder.is_dir() and not folder.is_symlink() else None
+
+
+def day_of(stamp: float) -> str:
+    return time.strftime("%Y-%m-%d", time.gmtime(stamp))
+
+
+def token_db() -> Path:
+    """Where the API tokens live: one database for the machine, beside the comments."""
+    cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+    return cache / "aniflow" / "tokens.db"
 
 
 def account_menu(
@@ -256,6 +283,7 @@ def account_menu(
         f'<p class="account-who">Signed in as <b>{login}</b></p>'
         + (
             f'<a href="{base}{FILES}{quote(session.get("login", "").lower())}/">My folder</a>'
+            f'<a href="{base}/tokens">API tokens</a>'
             if folders
             else ""
         )
@@ -555,6 +583,9 @@ class Server(ThreadingHTTPServer):
         identity = hashlib.sha256(os.fsencode(self.root)).hexdigest()
         cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
         self.comments_root = cache / "aniflow" / "comments" / identity
+        self.tokens = (
+            tokens.Tokens(token_db()) if user_folders and signin is not None else None
+        )
         if ":" in address[0]:
             self.address_family = socket.AF_INET6
         super().__init__(address, Handler)
@@ -626,7 +657,25 @@ class Handler(web.Handler):
     def session(self) -> dict | None:
         """Who is asking, when the server offers GitHub sign-in and they signed in."""
         signin = self.server.signin
-        return signin.session(self.cookie(oauth.SESSION_COOKIE)) if signin else None
+        held = signin.session(self.cookie(oauth.SESSION_COOKIE)) if signin else None
+        return self.with_admin(held)
+
+    def with_admin(self, who: dict | None) -> dict | None:
+        """who, with admin decided now from --comments-admin rather than whatever was
+        true when the cookie or the token was made."""
+        if who is None:
+            return None
+        admin = self.server.signin.admin if self.server.signin else ""
+        return {**who, "admin": bool(admin) and who["login"].lower() == admin}
+
+    def bearer(self) -> dict | None:
+        """Who an API token in the Authorization header stands for, if it is alive."""
+        if self.server.tokens is None:
+            return None
+        scheme, _, value = (self.headers.get("Authorization") or "").partition(" ")
+        if scheme.lower() != "bearer":
+            return None
+        return self.with_admin(self.server.tokens.check(value.strip()))
 
     def writable(self, path: Path) -> bool:
         """Whether whoever is asking may change the note at path from the web."""
@@ -675,6 +724,224 @@ class Handler(web.Handler):
             return
         self.send_html(body, page.reader_headers(nonce))
 
+    def do_PUT(self) -> None:
+        self.api_write("PUT")
+
+    def do_DELETE(self) -> None:
+        self.api_write("DELETE")
+
+    def api_write(self, method: str) -> None:
+        if not self.request_allowed():
+            return
+        path = self.under_base(urlsplit(self.path).path)
+        if not path.startswith("/api/notes/"):
+            self.send_response(405)
+            self.send_header("Allow", "GET")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        self.api_note(method, unquote(path.removeprefix("/api/notes/")))
+
+    def api_note(self, method: str, key: str) -> None:
+        """/api/notes/<path>: GET the Markdown (open to all, like the site), PUT it to
+        create or replace it and DELETE it, both with an API token. If-Match with the
+        ETag of a GET refuses to touch a note changed since."""
+        root = self.server.root
+        if self.server.tokens is None:
+            self.send_json({"error": "not found"}, status=404)
+            return
+        if method == "GET":
+            path = local_path(root, key)
+            if path is None or not path.is_file() or not web.is_markdown(path.name):
+                self.send_json({"error": "not found"}, status=404)
+                return
+            data = path.read_bytes()
+            self.send_bytes(
+                data,
+                "text/markdown; charset=utf-8",
+                {
+                    "ETag": f'"{hashlib.sha256(data).hexdigest()}"',
+                    "Cache-Control": "no-store",
+                    "X-Content-Type-Options": "nosniff",
+                },
+            )
+            return
+        who = self.bearer()
+        if who is None:
+            self.send_json(
+                {"error": "send an API token: Authorization: Bearer aniflow_..."},
+                status=401,
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+            return
+        note = note_path(root, key)
+        if note is None:
+            self.send_json({"error": "not a note this server writes"}, status=404)
+            return
+        if not may_write(root, note, who):
+            self.send_json({"error": "this folder is not yours"}, status=403)
+            return
+        text = ""
+        if method == "PUT":
+            body = self.read_body(NOTE_MAX_BYTES)
+            if body is None:
+                self.send_json({"error": "notes are limited to 1 MB"}, status=413)
+                return
+            try:
+                text = body.decode("utf-8")
+            except UnicodeDecodeError:
+                self.send_json({"error": "send UTF-8 Markdown"}, status=400)
+                return
+        wanted = self.headers.get("If-Match")
+        wanted = wanted.strip().removeprefix("W/").strip('"') if wanted else None
+        try:
+            with NOTES_LOCK:
+                current = note_version(note)
+                if (
+                    wanted is not None
+                    and wanted != current
+                    and not (wanted == "*" and current)
+                ):
+                    self.send_json(
+                        {"error": "the note changed since that version"}, status=412
+                    )
+                    return
+                if method == "DELETE":
+                    if not current:
+                        self.send_json({"error": "not found"}, status=404)
+                        return
+                    note.unlink()
+                    self.send_response(204)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                version = write_note(note, text)
+        except OSError as error:
+            self.send_json({"error": f"could not write: {error.strerror}"}, status=500)
+            return
+        self.send_json(
+            {"url": file_url(root, note, self.server.base), "version": version},
+            status=200 if current else 201,
+            headers={"ETag": f'"{version}"'},
+        )
+
+    def change_tokens(self, action: str) -> None:
+        """POST /tokens/create {name} or /tokens/revoke {id}, from the signed-in page."""
+        if self.server.tokens is None:
+            self.send_json({"error": "not found"}, status=404)
+            return
+        who = self.session()
+        if who is None:
+            self.send_json({"error": "sign in with GitHub first"}, status=401)
+            return
+        body = self.read_body(4096)
+        try:
+            data = json.loads(body or b"null")
+        except ValueError:
+            data = None
+        if not isinstance(data, dict):
+            self.send_json({"error": "send JSON"}, status=400)
+            return
+        if action == "create":
+            made = self.server.tokens.create(
+                who["id"], who["login"], str(data.get("name", ""))
+            )
+            if isinstance(made, str):
+                self.send_json({"error": made}, status=400)
+                return
+            self.send_json(made)
+            return
+        if not self.server.tokens.revoke(who["id"], str(data.get("id", ""))):
+            self.send_json({"error": "no such token of yours"}, status=404)
+            return
+        self.send_json({"revoked": True})
+
+    def tokens_page(self) -> None:
+        """GET /tokens: your API tokens, a way to make one, and how to use it."""
+        if self.server.tokens is None:
+            self.send_error(404)
+            return
+        who = self.session()
+        if who is None:
+            self.redirect(
+                self.server.url("/auth/github/start?next=") + quote(self.path, safe="")
+            )
+            return
+        base = self.server.base
+        rows = (
+            "".join(
+                f"<tr><td>{html.escape(row['name'])}</td><td>{day_of(row['created'])}</td>"
+                f"<td>{day_of(row['last_used']) if row['last_used'] else 'never'}</td>"
+                f'<td>{day_of(row["expires"])}</td><td><button type="button" '
+                f'data-id="{html.escape(row["id"])}">Revoke</button></td></tr>'
+                for row in self.server.tokens.mine(who["id"])
+            )
+            or '<tr class="token-none"><td colspan="5">No tokens yet.</td></tr>'
+        )
+        panel = (
+            '<section class="tokens"><div class="token-new">'
+            '<input id="token-name" maxlength="60" autocomplete="off" '
+            'placeholder="What is it for? e.g. laptop sync" aria-label="Token name">'
+            '<button type="button" id="token-create">Create token</button></div>'
+            '<div class="token-made" id="token-made" hidden><p>Copy it now: it is not '
+            'shown again.</p><div><code id="token-value"></code>'
+            '<button type="button" id="token-copy">Copy</button></div></div>'
+            '<p class="token-status" id="token-status" role="status"></p>'
+            "<table><thead><tr><th>Name</th><th>Created</th><th>Last used</th>"
+            f'<th>Expires</th><th></th></tr></thead><tbody id="token-rows">{rows}'
+            "</tbody></table></section>"
+        )
+        origin, _ = oauth.origin_of(
+            self.headers.get("Host") or "", self.headers.get("X-Forwarded-Proto", "")
+        )
+        api = f"{origin}{base}/api/notes/{who['login'].lower()}"
+        guide = f"""# API tokens
+
+A token lets a script write notes as you, with exactly your rights on the web:
+your own folder and the shared ones. It lasts {tokens.LIFETIME // 86400} days,
+and you can revoke it here at any time.
+
+```sh
+export ANIFLOW_TOKEN=aniflow_...
+
+# create or replace a note
+curl -X PUT -H "Authorization: Bearer $ANIFLOW_TOKEN" \\
+  --data-binary @plan.md {api}/plan.md
+
+# read it (no token needed: everyone reads everything)
+curl {api}/plan.md
+
+# delete it
+curl -X DELETE -H "Authorization: Bearer $ANIFLOW_TOKEN" {api}/plan.md
+```
+
+A GET answers with an `ETag`. Send it back as `If-Match` on a PUT or DELETE to
+refuse the change when someone edited the note in between.
+"""
+        nonce = secrets.token_urlsafe(16)
+        data = {"create": f"{base}/tokens/create", "revoke": f"{base}/tokens/revoke"}
+        body = page.reader_page(
+            title="API tokens",
+            text=guide,
+            nonce=nonce,
+            back=("Files", base + FILES),
+            options=page.reader_options(root=base + FILES, base=base),
+            base=base,
+            account=self.account(),
+            theme=True,
+            top=panel,
+            favicon=favicon(
+                self.server.brand_name, self.server.icon or self.server.logo
+            ),
+            style=BRAND_CSS + UI_CSS + TOKENS_CSS,
+            body_class="aniflow-local",
+            after=(
+                f'<script type="application/json" id="aniflow-tokens">{page.json_script(data)}</script>'
+                f'<script nonce="{nonce}">{TOKENS_JS}</script>'
+            ),
+        )
+        self.send_html(body, page.reader_headers(nonce))
+
     def change_note(self, path: str) -> None:
         """POST /notes/save/<path> or /notes/delete/<path>, from the editor."""
         if not self.server.user_folders or self.server.signin is None:
@@ -700,33 +967,36 @@ class Handler(web.Handler):
         if body is None or not isinstance(data, dict):
             self.send_json({"error": "send JSON, under 1 MB"}, status=400)
             return
-        if data.get("version", "") != note_version(note):
-            self.send_json(
-                {"error": "changed since you opened it: copy your text, then reload"},
-                status=409,
-            )
+        text = data.get("text")
+        if action != "delete" and (
+            not isinstance(text, str) or len(text.encode("utf-8")) > NOTE_MAX_BYTES
+        ):
+            self.send_json({"error": "text must be a string under 1 MB"}, status=400)
             return
         try:
-            if action == "delete":
-                if not note.exists():
-                    self.send_json({"error": "not found"}, status=404)
+            with NOTES_LOCK:
+                if data.get("version", "") != note_version(note):
+                    self.send_json(
+                        {
+                            "error": "changed since you opened it: copy your text, then reload"
+                        },
+                        status=409,
+                    )
                     return
-                note.unlink()
-                self.send_json({"deleted": True})
-                return
-            text = data.get("text")
-            if not isinstance(text, str) or len(text.encode("utf-8")) > NOTE_MAX_BYTES:
-                self.send_json(
-                    {"error": "text must be a string under 1 MB"}, status=400
-                )
-                return
-            write_note(note, text)
+                if action == "delete":
+                    if not note.exists():
+                        self.send_json({"error": "not found"}, status=404)
+                        return
+                    note.unlink()
+                    self.send_json({"deleted": True})
+                    return
+                version = write_note(note, text)
         except OSError as error:
             self.send_json({"error": f"could not write: {error.strerror}"}, status=500)
             return
         self.send_json(
             {
-                "version": note_version(note),
+                "version": version,
                 "url": file_url(self.server.root, note, self.server.base),
             }
         )
@@ -896,6 +1166,12 @@ class Handler(web.Handler):
             return
         if self.send_asset(path):
             return
+        if path.startswith("/api/notes/"):
+            self.api_note("GET", unquote(path.removeprefix("/api/notes/")))
+            return
+        if path == "/tokens":
+            self.tokens_page()
+            return
         if path.startswith(FILES):
             base = self.server.base
             root = self.server.root
@@ -961,6 +1237,9 @@ class Handler(web.Handler):
         path = self.under_base(parsed.path)
         if path.startswith(("/notes/save/", "/notes/delete/")):
             self.change_note(path)
+            return
+        if path in ("/tokens/create", "/tokens/revoke"):
+            self.change_tokens(path.removeprefix("/tokens/"))
             return
         if path.startswith("/comments/"):
             session = self.session()
@@ -1082,6 +1361,12 @@ def main() -> None:
         "is writable by all of them",
     )
     parser.add_argument(
+        "--revoke-tokens",
+        metavar="MEMBER",
+        help="revoke every API token of a member, by GitHub login or numeric id, and "
+        "exit (their signed-in browser session is not affected)",
+    )
+    parser.add_argument(
         "--comments-admin",
         metavar="LOGIN",
         default=os.environ.get("ANIFLOW_COMMENTS_ADMIN", ""),
@@ -1187,6 +1472,10 @@ def main() -> None:
         raise SystemExit(export.check(args.check))
     if args.spec:
         sys.stdout.write(SPEC.read_text("utf-8"))
+        return
+    if args.revoke_tokens:
+        count = tokens.Tokens(token_db()).revoke_member(args.revoke_tokens)
+        print(f"aniflow: revoked {count} token{'' if count == 1 else 's'}")
         return
     if args.share:
         try:

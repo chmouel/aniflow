@@ -86,7 +86,10 @@ the wheel, so `uvx --from git+...` works without Node.
   `--user-folders` gives each member `<root>/<login>/`, made on first
   sign-in with `templates/welcome.md`; `editor_page()` shows the Markdown in
   a textarea beside the reader, which `EDITOR_JS` updates through
-  `window.aniflowReader` (set by `BOOT_JS`).
+  `window.aniflowReader` (set by `BOOT_JS`). `/tokens` lists, makes and
+  revokes your API tokens; `/api/notes/<path>` is GET (open, with an ETag),
+  PUT and DELETE (`Authorization: Bearer`, the owner's rights, `If-Match`).
+  `aniflow --revoke-tokens LOGIN|ID` is the operator's way out.
   With `--allow-host` and comments on, `main()` refuses to start without
   `--github-oauth`, so a missing client id cannot open the comments to all.
 - `src/aniflow/web.py`: `Handler`, a `BaseHTTPRequestHandler` with the
@@ -107,6 +110,11 @@ the wheel, so `uvx --from git+...` works without Node.
   session lives in the cookie alone, scoped to the base path, `HttpOnly`,
   `SameSite=Lax`, `Secure` when the proxy reports https. `next_path()` keeps
   the way back inside the base, so the callback cannot be an open redirect.
+- `src/aniflow/tokens.py`: personal API tokens in SQLite
+  (`$XDG_CACHE_HOME/aniflow/tokens.db`): `aniflow_` + 256 random bits, kept
+  only as a sha256, 90 days, 10 live per member, `create()` serialized by
+  `LOCK`. No admin flag is stored: `Handler.with_admin()` decides it per
+  request from `--comments-admin`, for cookies and tokens alike.
 - `src/aniflow/comments.py`: the review comments model: `view()`,
   `change()`, `anchor()`, `prompt()`, `in_lines()`, `target_valid()` and the
   limits. Storage is a JSON file the caller chooses.
@@ -321,7 +329,9 @@ Keep these when changing code.
   hidden part and no symlink leading out; `may_write()` allows the member's
   own `<root>/<login>/`, any folder under one holding a `.aniflow-shared`
   file, or everything for the admin. A save carries the version it was
-  opened at and is refused (409) when the file changed since. The mark is a
+  opened at and is refused (409, or 412 for the API) when the file changed
+  since; the check and the write happen under `NOTES_LOCK`. A symlink
+  anywhere on the path, folders included, makes it unwritable. The mark is a
   hidden file, so the web can never create or remove it.
 - With sign-in on, a comment carries its author's GitHub id and only that
   account, or the admin, may edit or delete it. The session cookie is
