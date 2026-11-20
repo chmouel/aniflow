@@ -51,7 +51,7 @@ MARKDOWN_SUFFIXES = {".md", ".markdown"}
 HTML_CSP = "sandbox allow-scripts allow-forms"
 VECTOR_CSP = "sandbox"
 INLINE_SUFFIXES = {
-    ".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg",
+    ".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".ico",
     ".mp4", ".m4v", ".mov", ".webm", ".ogv", ".mp3", ".m4a", ".ogg", ".wav", ".flac",
 }  # fmt: skip
 TEXT_MAX_BYTES = 2 * 1024**2

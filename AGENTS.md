@@ -67,7 +67,10 @@ the wheel, so `uvx --from git+...` works without Node.
   `--brand NAME` puts that name in the bar, the masthead and the tab icon, and
   `--logo VALUE` (a path inside the served folder, an https URL or a data:
   image; `logo.svg`/`logo.png` there are picked up on their own) puts a
-  picture beside it. `logo_url()` refuses a path that leaves the folder.
+  picture beside it. `--favicon VALUE` (or `favicon.svg|png|ico` there) is
+  the tab icon, before the logo and the name's first letter. `logo_url()`
+  refuses a path that leaves the folder; `Server.logo` and `Server.icon`
+  look again on every page.
   `--allow-host NAME` adds a host name to answer for, and a POST's Origin only
   has to match its host, since a TLS proxy terminates the scheme before it
   arrives.

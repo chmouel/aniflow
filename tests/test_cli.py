@@ -239,6 +239,24 @@ def test_logo_replaces_the_wordmark(local_docs, aniflow_servers):
     assert b"aniflow-letters" not in body
 
 
+def test_favicon_comes_before_the_logo(local_docs, aniflow_servers):
+    (local_docs / "logo.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"/>')
+    request = aniflow_servers(local_docs, base="/pub", brand_name="Notes")
+    _, _, body = request("/pub/files/")
+    assert b'<link rel="icon" href="/pub/files/logo.svg">' in body
+    (local_docs / "favicon.ico").write_bytes(b"\0\0\1\0")
+    _, _, body = request("/pub/files/")
+    assert b'<link rel="icon" href="/pub/files/favicon.ico">' in body
+    _, _, page_body = request("/pub/files/guides/start.md")
+    assert b'<link rel="icon" href="/pub/files/favicon.ico">' in page_body
+    status, headers, _ = request("/pub/files/favicon.ico")
+    assert status == 200 and "Content-Disposition" not in headers
+    # Given on the command line, the favicon wins over the one in the folder.
+    pinned = aniflow_servers(local_docs, icon="https://example.com/i.png")
+    _, _, body = pinned("/files/")
+    assert b'<link rel="icon" href="https://example.com/i.png">' in body
+
+
 def test_logo_must_stay_inside_the_folder(local_docs):
     with pytest.raises(ValueError):
         cli.logo_url(local_docs, "../secret.svg", "/pub")
@@ -570,6 +588,10 @@ def test_empty_directory(aniflow_server, local_docs):
     (local_docs / "empty").mkdir()
     status, _, body = aniflow_server("/files/empty/")
     assert status == 200 and b"No Markdown files or folders here." in body
+    assert b'class="browser-demo"' in body
+    # A folder with notes in it keeps the demo to the bar's link.
+    _, _, body = aniflow_server("/files/")
+    assert b'class="browser-demo"' not in body
 
 
 @pytest.mark.parametrize("path", ["/files/", "/files/guides/", "/files/README.md"])

@@ -101,16 +101,21 @@ def path_prefix(value: str) -> str:
     return prefix
 
 
-# A logo dropped in the served folder is used without being named: the first of these.
+# Pictures dropped at the top of the served folder are used without being named: the
+# first of these that exists.
 LOGO_NAMES = ("logo.svg", "logo.png")
+ICON_NAMES = ("favicon.svg", "favicon.png", "favicon.ico")
 
 
-def logo_url(root: Path, value: str = "", base: str = "") -> str:
-    """Where the browser fetches the masthead logo: a path inside the served folder, an
-    https URL or a data: picture, and nothing else. Without a value, LOGO_NAMES at the top
-    of the folder are looked for, so dropping one there is enough."""
+def logo_url(
+    root: Path, value: str = "", base: str = "", names: tuple[str, ...] = LOGO_NAMES
+) -> str:
+    """Where the browser fetches a picture (the masthead logo, or the tab icon with
+    ICON_NAMES): a path inside the served folder, an https URL or a data: picture, and
+    nothing else. Without a value, names at the top of the folder are looked for, so
+    dropping one there is enough."""
     if not value:
-        value = next((name for name in LOGO_NAMES if (root / name).is_file()), "")
+        value = next((name for name in names if (root / name).is_file()), "")
         if not value:
             return ""
     if value.startswith(("data:image/", "https://")):
@@ -144,6 +149,7 @@ def directory_page(
     base: str = "",
     brand_name: str = DEFAULT,
     logo: str = "",
+    icon: str = "",
 ) -> tuple[bytes, str]:
     entries = []
     for child in path.iterdir():
@@ -224,19 +230,26 @@ def directory_page(
         f'<a href="{base}/help">Try the demo while you’re here</a></div>'
     )
     description = f'{folders} {"folder" if folders == 1 else "folders"} <span aria-hidden="true">/</span> {documents} {"document" if documents == 1 else "documents"}'
+    # The demo is for a folder with nothing to read yet; once there are notes it is noise.
+    demo = (
+        ""
+        if entries
+        else f'<a class="browser-demo" href="{base}/help"><span class="demo-play" aria-hidden="true"></span>'
+        "<span><strong>Try animated diagrams</strong><span>Play the demo, then make your own.</span></span>"
+        f"{NEXT_ICON}</a>"
+    )
     body = f"""<!doctype html>
 <html lang="en" data-theme-default="auto"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark"><title>{html.escape(title)} · {html.escape(brand_name)}</title>
-<link rel="icon" href="{html.escape(favicon(brand_name, logo))}">{theme_script(nonce)}
+<link rel="icon" href="{html.escape(favicon(brand_name, icon or logo))}">{theme_script(nonce)}
 <link rel="stylesheet" href="{base}/vendor/github-markdown.css">
 <link rel="stylesheet" href="{base}/static/page.css">
 <style>{THEME_READER_CSS}{BRAND_CSS}{UI_CSS}{DIRECTORY_CSS}</style>
 </head><body class="aniflow-local aniflow-browser"><header class="bar"><a href="{base}{FILES}">{html.escape(brand_name)}</a><span class="name">{title}</span>
 <nav><a href="{base}/help">Demo &amp; help</a>{theme_select(nonce)}</nav></header>
 <main class="browser-shell"><div class="browser-masthead">{masthead(base, brand_name, logo)}
-<a class="browser-demo" href="{base}/help"><span class="demo-play" aria-hidden="true"></span>
-<span><strong>Try animated diagrams</strong><span>Play the demo, then make your own.</span></span>{NEXT_ICON}</a></div>
+{demo}</div>
 <nav class="browser-trail" aria-label="Folders"><ol>{trail}</ol></nav>
 <div class="browser-heading"><div><h1>{title}</h1><p class="folder-summary">{description}</p></div>{parent}</div>
 {content}</main><script nonce="{nonce}">{UI_JS}</script></body></html>"""
@@ -256,6 +269,7 @@ def reader_page(
     signin: bool = False,
     brand_name: str = DEFAULT,
     logo: str = "",
+    icon: str = "",
 ) -> tuple[bytes, str]:
     """A markdown file in the reader, with links kept under root_url."""
     nonce = secrets.token_urlsafe(16)
@@ -303,7 +317,7 @@ def reader_page(
         theme=True,
         trail=trail,
         top=masthead(base, brand_name, logo),
-        favicon=favicon(brand_name, logo),
+        favicon=favicon(brand_name, icon or logo),
         style=BRAND_CSS + UI_CSS,
         body_class="aniflow-local",
         after=f'<script nonce="{nonce}">{UI_JS}</script>',
@@ -322,6 +336,7 @@ class Server(ThreadingHTTPServer):
         hosts: frozenset[str] = frozenset(),
         brand_name: str = DEFAULT,
         logo: str = "",
+        icon: str = "",
     ):
         self.root = root.resolve()
         self.base = base
@@ -330,6 +345,7 @@ class Server(ThreadingHTTPServer):
         self.hosts = hosts
         self.brand_name = brand_name
         self.chosen_logo = logo
+        self.chosen_icon = icon
         identity = hashlib.sha256(os.fsencode(self.root)).hexdigest()
         cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
         self.comments_root = cache / "aniflow" / "comments" / identity
@@ -342,6 +358,12 @@ class Server(ThreadingHTTPServer):
         """The --logo picture, or a logo.svg/logo.png in the folder, looked for on every
         page so one dropped there while the server runs shows up on the next load."""
         return self.chosen_logo or logo_url(self.root, "", self.base)
+
+    @property
+    def icon(self) -> str:
+        """The --favicon picture, or a favicon.svg/png/ico in the folder, looked up like
+        the logo. Empty means the tab gets the logo, or the name's first letter."""
+        return self.chosen_icon or logo_url(self.root, "", self.base, ICON_NAMES)
 
     def url(self, path: str) -> str:
         """A path under the base prefix this server was started with."""
@@ -523,6 +545,7 @@ class Handler(web.Handler):
                     signin=self.server.signin is not None,
                     brand_name=self.server.brand_name,
                     logo=self.server.logo,
+                    icon=self.server.icon,
                 )
                 self.send_html(body, page.reader_headers(nonce))
             return
@@ -555,6 +578,7 @@ class Handler(web.Handler):
                             base,
                             self.server.brand_name,
                             self.server.logo,
+                            self.server.icon,
                         )
                     elif web.is_markdown(local.name) and not raw:
                         body, nonce = reader_page(
@@ -575,6 +599,7 @@ class Handler(web.Handler):
                             signin=self.server.signin is not None,
                             brand_name=self.server.brand_name,
                             logo=self.server.logo,
+                            icon=self.server.icon,
                         )
                     else:
                         self.send_local_file(local, raw=raw)
@@ -674,6 +699,13 @@ def main() -> None:
         default="",
         help="picture for the masthead and the tab icon: a path inside the served folder, "
         "an https URL or a data: image (default: logo.svg or logo.png there, if any)",
+    )
+    parser.add_argument(
+        "--favicon",
+        metavar="VALUE",
+        default="",
+        help="tab icon, given like --logo (default: favicon.svg, favicon.png or "
+        "favicon.ico there, then the logo, then the name's first letter)",
     )
     parser.add_argument(
         "--allow-host",
@@ -867,6 +899,7 @@ def main() -> None:
         )
     try:
         logo = logo_url(args.directory, args.logo, base)
+        icon = args.favicon and logo_url(args.directory, args.favicon, base, ICON_NAMES)
     except ValueError as error:
         parser.error(str(error))
     try:
@@ -881,6 +914,7 @@ def main() -> None:
             ),
             brand_name=args.brand.strip() or DEFAULT,
             logo=logo,
+            icon=icon,
         )
     except (OSError, OverflowError) as error:
         parser.error(str(error))
