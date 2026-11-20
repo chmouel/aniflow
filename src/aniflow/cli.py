@@ -17,7 +17,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from aniflow import export, page, web
-from aniflow.brand import BRAND, BRAND_CSS
+from aniflow.brand import BRAND_CSS, DEFAULT, brand, favicon
 from aniflow.themes import THEME_READER_CSS, theme_script, theme_select
 from aniflow.ui import (
     DIRECTORY_CSS,
@@ -35,6 +35,8 @@ SPEC = Path(__file__).with_name("spec.md")
 TRY_URL = "https://chmouel.github.io/aniflow/try/"
 SHARE_LONG = 8000
 PICTURE = re.compile(r"""\bimg:\s*["']([^"']+)["']|!\[[^\]]*\]\(\s*<?([^)\s>]+)""")
+# What --base accepts after its trailing slashes are gone: a plain path, no scheme or host.
+BASE_PREFIX = re.compile(r"(?:/[A-Za-z0-9._~%!$&'()*+,;=:@-]+)+")
 
 
 def share_url(text: str) -> str:
@@ -87,24 +89,37 @@ def local_path(root: Path, key: str) -> Path | None:
         return None
 
 
-def file_url(root: Path, path: Path) -> str:
+def path_prefix(value: str) -> str:
+    """--base normalised: "" for the root, otherwise "/pub" with no trailing slash. A scheme,
+    a host or a relative path is refused."""
+    prefix = value.strip().rstrip("/")
+    if not prefix:
+        return ""
+    if not BASE_PREFIX.fullmatch(prefix):
+        raise ValueError(f"--base must be a path such as /pub, not {value!r}")
+    return prefix
+
+
+def file_url(root: Path, path: Path, base: str = "") -> str:
     relative = path.relative_to(root).as_posix()
     if relative == ".":
-        return FILES
-    return FILES + quote(relative) + ("/" if path.is_dir() else "")
+        return base + FILES
+    return base + FILES + quote(relative) + ("/" if path.is_dir() else "")
 
 
-def breadcrumbs(root: Path, path: Path) -> list[tuple[str, str]]:
+def breadcrumbs(root: Path, path: Path, base: str = "") -> list[tuple[str, str]]:
     return [
         (
             root.name if parent == Path(".") else parent.name,
-            file_url(root, root / parent),
+            file_url(root, root / parent, base),
         )
         for parent in reversed(path.relative_to(root).parents)
     ]
 
 
-def directory_page(root: Path, path: Path) -> tuple[bytes, str]:
+def directory_page(
+    root: Path, path: Path, base: str = "", brand_name: str = DEFAULT
+) -> tuple[bytes, str]:
     entries = []
     for child in path.iterdir():
         try:
@@ -119,7 +134,9 @@ def directory_page(root: Path, path: Path) -> tuple[bytes, str]:
     folder_rows, document_rows = [], []
     for child, folder, stat in entries:
         name = html.escape(child.name)
-        link = f'<a href="{html.escape(file_url(root, child))}" data-name="{name}">'
+        link = (
+            f'<a href="{html.escape(file_url(root, child, base))}" data-name="{name}">'
+        )
         attributes = f'data-modified="{stat.st_mtime}"'
         if folder:
             folder_rows.append(
@@ -151,15 +168,15 @@ def directory_page(root: Path, path: Path) -> tuple[bytes, str]:
         )
         if rows
     )
-    ancestors = breadcrumbs(root, path)
+    ancestors = breadcrumbs(root, path, base)
     trail = "".join(
-        f'<li><a href="{html.escape(url)}">{html.escape("Files" if url == FILES else label)}</a></li>'
+        f'<li><a href="{html.escape(url)}">{html.escape("Files" if url == base + FILES else label)}</a></li>'
         for label, url in ancestors
     )
     title = html.escape(path.name or str(path))
     trail += f'<li aria-current="page">{title if ancestors else "Files"}</li>'
     parent = (
-        f'<a class="folder-up" href="{html.escape(file_url(root, path.parent))}">{NEXT_ICON}Up one folder</a>'
+        f'<a class="folder-up" href="{html.escape(file_url(root, path.parent, base))}">{NEXT_ICON}Up one folder</a>'
         if path != root
         else ""
     )
@@ -179,21 +196,21 @@ def directory_page(root: Path, path: Path) -> tuple[bytes, str]:
         if entries
         else f'<div class="browser-empty"><span class="empty-symbol" aria-hidden="true">{FOLDER_ICON}</span>'
         "<h2>No Markdown files or folders here.</h2><p>Save a .md file in this folder, then refresh to open it.</p>"
-        '<a href="/help">Try the demo while you’re here</a></div>'
+        f'<a href="{base}/help">Try the demo while you’re here</a></div>'
     )
     description = f'{folders} {"folder" if folders == 1 else "folders"} <span aria-hidden="true">/</span> {documents} {"document" if documents == 1 else "documents"}'
     body = f"""<!doctype html>
 <html lang="en" data-theme-default="auto"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="light dark"><title>{title} · aniflow</title>
-<link rel="icon" href="data:,">{theme_script(nonce)}
-<link rel="stylesheet" href="/vendor/github-markdown.css">
-<link rel="stylesheet" href="/static/page.css">
+<meta name="color-scheme" content="light dark"><title>{html.escape(title)} · {html.escape(brand_name)}</title>
+<link rel="icon" href="{html.escape(favicon(brand_name))}">{theme_script(nonce)}
+<link rel="stylesheet" href="{base}/vendor/github-markdown.css">
+<link rel="stylesheet" href="{base}/static/page.css">
 <style>{THEME_READER_CSS}{BRAND_CSS}{UI_CSS}{DIRECTORY_CSS}</style>
-</head><body class="aniflow-local aniflow-browser"><header class="bar"><a href="{FILES}">aniflow</a><span class="name">{title}</span>
-<nav><a href="/help">Demo &amp; help</a>{theme_select(nonce)}</nav></header>
-<main class="browser-shell"><div class="browser-masthead">{BRAND}
-<a class="browser-demo" href="/help"><span class="demo-play" aria-hidden="true"></span>
+</head><body class="aniflow-local aniflow-browser"><header class="bar"><a href="{base}{FILES}">{html.escape(brand_name)}</a><span class="name">{title}</span>
+<nav><a href="{base}/help">Demo &amp; help</a>{theme_select(nonce)}</nav></header>
+<main class="browser-shell"><div class="browser-masthead">{brand(base, brand_name)}
+<a class="browser-demo" href="{base}/help"><span class="demo-play" aria-hidden="true"></span>
 <span><strong>Try animated diagrams</strong><span>Play the demo, then make your own.</span></span>{NEXT_ICON}</a></div>
 <nav class="browser-trail" aria-label="Folders"><ol>{trail}</ol></nav>
 <div class="browser-heading"><div><h1>{title}</h1><p class="folder-summary">{description}</p></div>{parent}</div>
@@ -209,11 +226,13 @@ def reader_page(
     links: list[tuple[str, str]],
     comments: str,
     crumbs: list[tuple[str, str]] | None = None,
+    base: str = "",
+    brand_name: str = DEFAULT,
 ) -> tuple[bytes, str]:
     """A markdown file in the reader, with links kept under root_url."""
     nonce = secrets.token_urlsafe(16)
     help_link = (
-        '<a class="reader-help" href="/help">Help</a>'
+        f'<a class="reader-help" href="{base}/help">Help</a>'
         if any(label == "Help" for label, _ in links)
         else ""
     )
@@ -243,11 +262,13 @@ def reader_page(
         nonce=nonce,
         back=back,
         options=page.reader_options(
-            comments=comments, review_name="Comments", root=root_url
+            comments=comments, review_name="Comments", root=root_url, base=base
         ),
+        base=base,
         actions=actions,
         theme=True,
-        top=BRAND + trail,
+        top=brand(base, brand_name) + trail,
+        favicon=favicon(brand_name),
         style=BRAND_CSS + UI_CSS,
         body_class="aniflow-local",
         after=f'<script nonce="{nonce}">{UI_JS}</script>',
@@ -256,8 +277,18 @@ def reader_page(
 
 
 class Server(ThreadingHTTPServer):
-    def __init__(self, address: tuple[str, int], root: Path):
+    def __init__(
+        self,
+        address: tuple[str, int],
+        root: Path,
+        base: str = "",
+        comments: bool = True,
+        name: str = DEFAULT,
+    ):
         self.root = root.resolve()
+        self.base = base
+        self.comments = comments
+        self.name = name
         identity = hashlib.sha256(os.fsencode(self.root)).hexdigest()
         cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
         self.comments_root = cache / "aniflow" / "comments" / identity
@@ -265,11 +296,21 @@ class Server(ThreadingHTTPServer):
             self.address_family = socket.AF_INET6
         super().__init__(address, Handler)
 
+    def url(self, path: str) -> str:
+        """A path under the base prefix this server was started with."""
+        return self.base + path
+
+    def comments_url(self, key: str) -> str:
+        """The comments endpoint for key, or "" when the server does not take comments."""
+        return self.url("/comments/" + key) if self.comments else ""
+
 
 class Handler(web.Handler):
     server: Server
 
     def comment_target(self, key: str) -> tuple[Path, Path] | None:
+        if not self.server.comments:
+            return None
         if key == "help":
             path, identity = HELP, "help"
         elif key.startswith("file/"):
@@ -288,15 +329,25 @@ class Handler(web.Handler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    def under_base(self, path: str) -> str:
+        """path with the base prefix removed, so a proxy may forward it with or without it."""
+        base = self.server.base
+        if base and path == base:
+            return "/"
+        if base and path.startswith(base + "/"):
+            return path[len(base) :]
+        return path
+
     def do_GET(self) -> None:
         if not self.request_allowed():
             return
         parsed = urlsplit(self.path)
+        path = self.under_base(parsed.path)
         raw = "raw" in parse_qs(parsed.query, keep_blank_values=True)
-        if parsed.path == "/":
-            self.redirect(FILES)
+        if path == "/":
+            self.redirect(self.server.url(FILES))
             return
-        if parsed.path == "/help":
+        if path == "/help":
             if raw:
                 self.send_file(
                     HELP,
@@ -304,51 +355,61 @@ class Handler(web.Handler):
                     {"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff"},
                 )
             else:
+                base = self.server.base
                 body, nonce = reader_page(
-                    "/",
+                    base + "/",
                     "aniflow help",
                     HELP.read_text("utf-8"),
-                    ("Files", FILES),
-                    [("Raw", "/help?raw=1")],
-                    "/comments/help",
+                    ("Files", base + FILES),
+                    [("Raw", base + "/help?raw=1")],
+                    self.server.comments_url("help"),
+                    base=base,
+                    brand_name=self.server.name,
                 )
                 self.send_html(body, page.reader_headers(nonce))
             return
-        if parsed.path.startswith("/comments/"):
-            target = self.comment_target(parsed.path.removeprefix("/comments/"))
+        if path.startswith("/comments/"):
+            target = self.comment_target(path.removeprefix("/comments/"))
             if target is None:
                 self.send_json({"error": "not found"}, status=404)
             else:
                 self.send_comments(*target, parsed.query, "aniflow")
             return
-        if self.send_asset(parsed.path):
+        if self.send_asset(path):
             return
-        if parsed.path.startswith(FILES):
+        if path.startswith(FILES):
+            base = self.server.base
             root = self.server.root
-            path = local_path(root, unquote(parsed.path.removeprefix(FILES)))
-            if path is not None:
+            key = unquote(path.removeprefix(FILES))
+            local = local_path(root, key)
+            if local is not None:
                 try:
-                    if path.is_dir():
-                        if not parsed.path.endswith("/"):
-                            self.redirect(file_url(root, path))
+                    if local.is_dir():
+                        if not path.endswith("/"):
+                            self.redirect(file_url(root, local, base))
                             return
-                        body, nonce = directory_page(root, path)
-                    elif web.is_markdown(path.name) and not raw:
+                        body, nonce = directory_page(
+                            root, local, base, self.server.name
+                        )
+                    elif web.is_markdown(local.name) and not raw:
                         body, nonce = reader_page(
-                            FILES,
-                            path.name,
-                            path.read_text("utf-8", errors="replace"),
-                            ("Files", file_url(root, path.parent)),
+                            base + FILES,
+                            local.name,
+                            local.read_text("utf-8", errors="replace"),
+                            ("Files", file_url(root, local.parent, base)),
                             [
-                                ("Help", "/help"),
-                                ("Raw", file_url(root, path) + "?raw=1"),
+                                ("Help", base + "/help"),
+                                ("Raw", file_url(root, local, base) + "?raw=1"),
                             ],
-                            "/comments/file/"
-                            + quote(path.relative_to(root).as_posix()),
-                            breadcrumbs(root, path),
+                            self.server.comments_url(
+                                "file/" + quote(local.relative_to(root).as_posix())
+                            ),
+                            breadcrumbs(root, local, base),
+                            base=base,
+                            brand_name=self.server.name,
                         )
                     else:
-                        self.send_local_file(path, raw=raw)
+                        self.send_local_file(local, raw=raw)
                         return
                     self.send_html(body, page.reader_headers(nonce))
                     return
@@ -360,14 +421,15 @@ class Handler(web.Handler):
         if not self.request_allowed():
             return
         parsed = urlsplit(self.path)
-        if parsed.path.startswith("/comments/"):
-            _, _, key = parsed.path.removeprefix("/comments/").partition("/")
+        path = self.under_base(parsed.path)
+        if path.startswith("/comments/"):
+            _, _, key = path.removeprefix("/comments/").partition("/")
             target = self.comment_target(key)
             if target is None:
                 self.send_json({"error": "not found"}, status=404)
                 return
-            path, storage = target
-            self.handle_comment(parsed, path, storage)
+            local, storage = target
+            self.handle_comment(parsed._replace(path=path), local, storage)
             return
         self.send_response(405)
         self.send_header("Allow", "GET")
@@ -394,6 +456,25 @@ def main() -> None:
         type=int,
         default=0,
         help="port to listen on (default: an available port)",
+    )
+    parser.add_argument(
+        "--base",
+        metavar="PATH",
+        default="",
+        help="path the server is mounted under, for a reverse proxy that serves it at "
+        "a prefix such as /pub (default: the root)",
+    )
+    parser.add_argument(
+        "--no-comments",
+        action="store_true",
+        help="do not offer review comments, for a read-only public deployment",
+    )
+    parser.add_argument(
+        "--brand",
+        metavar="NAME",
+        default=DEFAULT,
+        help="name to show in the bar, the masthead and the tab icon "
+        f"(default: {DEFAULT})",
     )
     parser.add_argument(
         "--spec",
@@ -552,12 +633,22 @@ def main() -> None:
     if not args.directory.is_dir():
         parser.error(f"not a directory: {args.directory}")
     try:
-        httpd = Server((args.host, args.port), args.directory)
+        base = path_prefix(args.base)
+    except ValueError as error:
+        parser.error(str(error))
+    try:
+        httpd = Server(
+            (args.host, args.port),
+            args.directory,
+            base=base,
+            comments=not args.no_comments,
+            name=args.brand.strip() or DEFAULT,
+        )
     except (OSError, OverflowError) as error:
         parser.error(str(error))
     host = f"[{args.host}]" if ":" in args.host else args.host
     print(
-        f"aniflow: serving {httpd.root} at http://{host}:{httpd.server_address[1]}",
+        f"aniflow: serving {httpd.root} at http://{host}:{httpd.server_address[1]}{base}/",
         flush=True,
     )
     try:

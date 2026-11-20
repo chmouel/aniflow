@@ -3150,9 +3150,9 @@ function renderLocal() {
     return fragment;
   }
 }
-function directoryUrl(value, root) {
+function directoryUrl(value, root, base = "") {
   if (!value || value.includes("\\") || /^(?:[a-z][a-z0-9+.-]*:|#|\/\/)/i.test(value)) return null;
-  if (value.startsWith("/icons/")) return value;
+  if (value.startsWith("/icons/")) return base + value;
   const rooted = value.startsWith("/") && !value.startsWith(root) ? root + value.slice(1) : value;
   const url = new URL(rooted, location.href);
   return url.origin === location.origin && url.pathname.startsWith(root) ? url.href : null;
@@ -4751,7 +4751,7 @@ function diagrams(options = {}) {
     }
   };
 }
-var directoryResolver = (root) => (value) => directoryUrl(value, root);
+var directoryResolver = (root, base = "") => (value) => directoryUrl(value, root, base);
 async function diagramExport(stage, kind) {
   const element2 = stage instanceof Element ? stage : document.querySelector(stage);
   if (!element2) throw new Error("aniflow: no diagram to export");

@@ -26,7 +26,7 @@ BOOT_JS = """
 (() => {
   const data = (id) => JSON.parse(document.getElementById(id).textContent);
   const options = data('aniflow-options');
-  if (options.root) options.resolveImage = options.resolveLink = Aniflow.directoryResolver(options.root);
+  if (options.root) options.resolveImage = options.resolveLink = Aniflow.directoryResolver(options.root, options.base);
   Aniflow.reader(Object.assign(options, {
     source: data('markdown-source'),
     nonce: document.currentScript.nonce,
@@ -55,17 +55,21 @@ def reader_options(
     comments: str = "",
     review_name: str = "Review",
     root: str = "",
+    base: str = "",
     breaks: bool = False,
     callouts: bool = False,
-    mermaid: str = "/vendor/mermaid.min.js",
+    mermaid: str = "",
 ) -> dict[str, object]:
     """The JSON half of Aniflow.reader()'s options. root keeps links and pictures inside
-    that path; comments is the URL of the document's comments."""
+    that path; comments is the URL of the document's comments; base is the path prefix the
+    page is served under, which the built-in icons get too."""
     options: dict[str, object] = {
-        "mermaid": mermaid,
+        "mermaid": mermaid or base + "/vendor/mermaid.min.js",
         "breaks": breaks,
         "callouts": callouts,
     }
+    if base:
+        options["base"] = base
     if comments:
         options["comments"] = {
             "url": comments,
@@ -84,6 +88,7 @@ def reader_page(
     nonce: str,
     back: tuple[str, str],
     options: dict[str, object],
+    base: str = "",
     actions: str = "",
     tools: str = "",
     top: str = "",
@@ -98,11 +103,12 @@ def reader_page(
 ) -> bytes:
     """The whole document. actions and tools go in the bar after the back link, top above
     the contents, before and after are scripts around the one that renders. theme adds a
-    theme picker to the bar; slides always offer one in their dock."""
+    theme picker to the bar; slides always offer one in their dock. base prefixes the
+    reader's own stylesheets and scripts."""
     review = (REVIEW_BUTTON, REVIEW_DOCK) if options.get("comments") else ("", "")
     highlight = len(text.encode("utf-8")) <= HIGHLIGHT_MAX_BYTES
     scripts = "".join(
-        f'<script nonce="{nonce}" src="/vendor/{name}"></script>'
+        f'<script nonce="{nonce}" src="{base}/vendor/{name}"></script>'
         for name in MARKDOWN_SCRIPTS
         if highlight or name != "highlight.min.js"
     )
@@ -112,9 +118,9 @@ def reader_page(
 <meta name="color-scheme" content="light dark"><title>{html.escape(title)}</title>
 {theme_script(nonce, theme_key)}
 <link rel="icon" href="{html.escape(favicon)}">
-<link rel="stylesheet" href="/vendor/github-markdown.css">
-<link rel="stylesheet" href="/static/page.css">
-<link rel="stylesheet" href="/static/aniflow.css">
+<link rel="stylesheet" href="{base}/vendor/github-markdown.css">
+<link rel="stylesheet" href="{base}/static/page.css">
+<link rel="stylesheet" href="{base}/static/aniflow.css">
 <style>{THEME_READER_CSS}{style}</style></head><body{body_attribute}>
 <header class="bar progress"><a href="{html.escape(back[1])}">← {html.escape(back[0])}</a><span class="name">{html.escape(title)}</span><nav>{actions}{PRESENT_BUTTON}{review[0]}{tools}{theme_select(nonce) if theme else ""}</nav></header>
 <main class="page reader">{top}
@@ -124,7 +130,7 @@ def reader_page(
 <script type="application/json" id="markdown-source">{json_script(text)}</script>
 <script type="application/json" id="aniflow-options">{json_script(options)}</script>
 {scripts}
-<script nonce="{nonce}" src="/static/aniflow.min.js"></script>
+<script nonce="{nonce}" src="{base}/static/aniflow.min.js"></script>
 {before}<script nonce="{nonce}">{BOOT_JS}</script>
 {after}
 </body></html>""".encode()

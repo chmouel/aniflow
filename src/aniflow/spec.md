@@ -109,7 +109,9 @@ without it.
 `pos: "t"` puts the label above the picture. Allowed sources:
 
 - a path relative to the document, such as `icons/build.svg`
-- a built-in icon, `/icons/<name>.svg` (listed below)
+- a built-in icon, `/icons/<name>.svg` (listed below). A server started with
+  `--base /pub` turns that into `/pub/icons/<name>.svg`, so the same source
+  works under a proxy that mounts aniflow at a path.
 - an `https://` URL
 - a `data:image/` URL for PNG, JPEG, GIF, WebP or SVG
 

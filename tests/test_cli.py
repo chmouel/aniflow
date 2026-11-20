@@ -100,8 +100,8 @@ def aniflow_servers(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     running = []
 
-    def start(root):
-        httpd = cli.Server(("127.0.0.1", 0), root)
+    def start(root, **options):
+        httpd = cli.Server(("127.0.0.1", 0), root, **options)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         running.append((httpd, thread))
@@ -145,6 +145,95 @@ def test_browse_folders_and_markdown(aniflow_server):
     assert b'href="/files/"' in body
     assert b'href="/files/guides/%C3%A9%20space.markdown"' in body
     assert aniflow_server("/files/guides/%C3%A9%20space.markdown")[0] == 200
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("", ""),
+        ("/", ""),
+        ("//", ""),
+        ("/pub", "/pub"),
+        ("/pub/", "/pub"),
+        ("/a/b//", "/a/b"),
+    ],
+)
+def test_path_prefix_normalises(value, expected):
+    assert cli.path_prefix(value) == expected
+
+
+@pytest.mark.parametrize("value", ["pub", "https://share.example/pub", "//host/pub"])
+def test_path_prefix_rejects_a_relative_path_or_a_host(value):
+    with pytest.raises(ValueError):
+        cli.path_prefix(value)
+
+
+def test_base_prefixes_every_url(local_docs, aniflow_servers):
+    request = aniflow_servers(local_docs, base="/pub")
+    status, headers, _ = request("/")
+    assert status == 302 and headers["Location"] == "/pub/files/"
+    status, _, body = request("/pub/files/")
+    assert status == 200
+    assert b'href="/pub/files/README.md"' in body
+    assert b'href="/pub/static/page.css"' in body
+    assert b'href="/pub/vendor/github-markdown.css"' in body
+    assert b'href="/pub/help"' in body
+    status, headers, body = request("/pub/files/guides/start.md")
+    assert status == 200
+    options = json_block(body, "aniflow-options")
+    assert options["base"] == "/pub"
+    assert options["root"] == "/pub/files/"
+    assert options["mermaid"] == "/pub/vendor/mermaid.min.js"
+    assert options["comments"]["url"] == "/pub/comments/file/guides/start.md"
+    for script in re.findall(rb'(?:src|href)="([^"]+)"', body):
+        value = script.decode()
+        if value.startswith("/"):
+            assert value.startswith("/pub/"), value
+    assert request("/pub/static/aniflow.css")[0] == 200
+    assert request("/pub/icons/agent.svg")[0] == 200
+    assert request("/pub/comments/file/guides/start.md")[0] == 200
+    assert request("/pub/files/guides")[0] == 302
+
+
+def test_base_also_answers_prefix_free_paths(local_docs, aniflow_servers):
+    request = aniflow_servers(local_docs, base="/pub")
+    assert request("/")[0] == 302
+    assert request("/files/")[0] == 200
+    assert request("/static/page.css")[0] == 200
+    assert request("/icons/agent.svg")[0] == 200
+    # Nothing outside the base prefix is invented: a lookalike stays a 404.
+    assert request("/public/files/")[0] == 404
+
+
+def test_brand_names_the_page_and_the_tab(local_docs, aniflow_servers):
+    request = aniflow_servers(local_docs, base="/pub", name="ChmouzFlow")
+    _, _, body = request("/pub/files/")
+    assert b"\xc2\xb7 ChmouzFlow</title>" in body
+    assert b'href="/pub/files/">ChmouzFlow</a>' in body
+    assert b'class="aniflow-brand brand-name"' in body
+    assert b"aniflow-letters" not in body
+    assert b'<link rel="icon" href="data:image/svg+xml,' in body
+    _, _, page_body = request("/pub/files/guides/start.md")
+    assert b'class="aniflow-brand brand-name"' in page_body
+    assert b">ChmouzFlow</span>" in page_body
+
+
+def test_brand_is_escaped(local_docs, aniflow_servers):
+    request = aniflow_servers(local_docs, name='<b>&"x')
+    _, _, body = request("/files/")
+    assert b"<b>" not in body.replace(b"<body", b"")
+    assert b'&lt;b&gt;&amp;&quot;x' in body
+
+
+def test_no_comments_hides_the_review_ui(local_docs, aniflow_servers):
+    request = aniflow_servers(local_docs, comments=False)
+    _, _, body = request("/files/guides/start.md")
+    options = json_block(body, "aniflow-options")
+    assert "comments" not in options
+    assert b'data-review="toggle"' not in body
+    assert request("/comments/file/guides/start.md")[0] == 404
+    status, _, _ = request("/comments/add/file/guides/start.md", method="POST")
+    assert status == 404
 
 
 def test_reader_page(aniflow_server):

@@ -116,7 +116,7 @@ export function diagrams(options = {}) {
 }
 
 // Keeps links and pictures that point inside the served directory root, for resolveLink/resolveImage.
-export const directoryResolver = (root) => (value) => directoryUrl(value, root);
+export const directoryResolver = (root, base = '') => (value) => directoryUrl(value, root, base);
 
 // Saves one diagram as a file: kind is gif, mp4, webm, or png for a still of the view it is
 // showing. It resolves to {name, blob} and rejects when the diagram could not be drawn or saved.

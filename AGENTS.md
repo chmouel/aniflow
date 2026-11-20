@@ -59,7 +59,13 @@ the wheel, so `uvx --from git+...` works without Node.
   directives, missing backgrounds) as `file:line:`, exiting 1 on any.
   `aniflow --slides pdf|png FILE` drives Chrome over
   `--remote-debugging-pipe` (`export.DevTools`) and writes the deck as one
-  PDF of JPEG pages or one PNG per slide.
+  PDF of JPEG pages or one PNG per slide. `aniflow --base /pub` mounts the
+  server under a path for a reverse proxy: every URL it writes carries the
+  prefix, and a request that still has the prefix is accepted as well, so
+  the proxy may strip it or not. `--no-comments` drops the review UI and
+  answers 404 on the comment routes, for a read-only public deployment.
+  `--brand NAME` puts that name in the bar, the masthead and the tab icon
+  (`brand.brand()`, `brand.favicon()`) instead of the aniflow wordmark.
 - `src/aniflow/web.py`: `Handler`, a `BaseHTTPRequestHandler` with the
   request checks (`request_allowed()`, `host_allowed()`,
   `origin_allowed()`; `allowed_hosts()` and `allowed_origins()` are for a

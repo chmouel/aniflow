@@ -74,6 +74,14 @@ aniflow binds to `127.0.0.1` by default; use `--host` to change that. It only
 reads files from the chosen directory, leaving out hidden paths and symlinks
 that lead outside it. It needs Python 3.12 or newer and nothing else.
 
+Behind a reverse proxy that serves it at a path, start it with `--base /pub`:
+the prefix then goes into every URL it writes, so a Caddy `handle /pub/*` or an
+ingress path rule reaches the pages, stylesheets and icons. `--no-comments`
+turns the review UI and the comment routes off, which is what a public reader
+wants since comments are written to a cache directory. `--brand ChmouzFlow`
+replaces the aniflow wordmark with that name in the bar, the masthead and the
+tab icon.
+
 Demo & help opens a playable diagram first, followed by a walkthrough from
 your first Markdown file to pictures, several stories and exports. It ships
 with aniflow and works even when you serve an empty folder.

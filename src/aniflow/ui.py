@@ -213,7 +213,8 @@ UI_JS = """
   }
   const copy = document.querySelector('[data-review="copy"]');
   if (copy) copy.textContent = 'Copy feedback';
-  if (location.pathname !== '/help') return;
+  // The help page, with the base prefix the server may be mounted under.
+  if (!location.pathname.endsWith('/help')) return;
   document.body.classList.add('aniflow-help');
   const article = document.querySelector('article.markdown-body');
   const attached = new WeakSet();
