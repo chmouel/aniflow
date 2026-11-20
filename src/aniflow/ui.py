@@ -571,12 +571,19 @@ EDITOR_JS = """
       back.href = answer.url;
       back.textContent = '← View';
       mark();
+      return answer;
     } catch (error) {
       say(error.message, true);
+      return null;
+    } finally {
+      saveButton.disabled = false;
     }
-    saveButton.disabled = false;
   }
-  saveButton.addEventListener('click', save);
+  // The button saves and goes to the note; Ctrl+S saves and stays in the editor.
+  saveButton.addEventListener('click', async () => {
+    const answer = await save();
+    if (answer) location.href = answer.url;
+  });
   document.addEventListener('keydown', (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
       event.preventDefault();

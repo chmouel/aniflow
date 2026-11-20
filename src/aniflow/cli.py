@@ -634,8 +634,9 @@ def editor_page(
             if exists
             else ""
         )
-        + '<button type="button" class="editor-save" id="editor-save" title="Ctrl+S">'
-        "Save</button>"
+        + '<button type="button" class="editor-save" id="editor-save"'
+        ' title="Save and go back to the note (Ctrl+S saves and stays)">'
+        "Save &amp; close</button>"
     )
     editor = (
         '<div class="editor"><textarea id="editor-text" spellcheck="true" '
