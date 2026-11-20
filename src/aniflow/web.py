@@ -124,7 +124,12 @@ def origin_allowed(
     if origin.strip().lower().rstrip("/") in allowed:
         return True
     parsed = urlparse(origin)
-    return parsed.scheme == "http" and parsed.netloc.lower() == (host or "").lower()
+    # Only the host is compared: behind a TLS proxy the browser's origin is https while
+    # the request arrives on http, and an attacker cannot set Origin at all.
+    return (
+        parsed.scheme in ("http", "https")
+        and parsed.netloc.lower() == (host or "").lower()
+    )
 
 
 class Handler(BaseHTTPRequestHandler):

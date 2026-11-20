@@ -64,6 +64,9 @@ the wheel, so `uvx --from git+...` works without Node.
   prefix, and a request that still has the prefix is accepted as well, so
   the proxy may strip it or not. `--no-comments` drops the review UI and
   answers 404 on the comment routes, for a read-only public deployment.
+  `--allow-host NAME` adds a host name to answer for, and a POST's Origin only
+  has to match its host, since a TLS proxy terminates the scheme before it
+  arrives.
   `--github-oauth CLIENT_ID` turns on sign-in: writes then need a session
   (`ANIFLOW_GITHUB_SECRET`, `ANIFLOW_SIGNIN_SECRET`), a comment belongs to
   the account that wrote it, and `--comments-admin LOGIN` may change any.

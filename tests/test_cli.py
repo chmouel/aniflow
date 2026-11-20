@@ -418,6 +418,30 @@ def test_signed_in_reader_names_the_comment_author(github, local_docs, aniflow_s
     assert status == 200
 
 
+def test_forwarded_host_is_allowed_by_name(local_docs, aniflow_servers):
+    plain = aniflow_servers(local_docs)
+    status, _, _ = plain("/files/README.md", headers={"Host": "share.example.com"})
+    assert status == 403
+    proxied = aniflow_servers(local_docs, hosts=frozenset({"share.example.com"}))
+    status, _, _ = proxied("/files/README.md", headers={"Host": "share.example.com"})
+    assert status == 200
+    # The origin check follows the host, whatever scheme the proxy terminated.
+    status, _, _ = proxied(
+        "/comments/add/file/README.md",
+        method="POST",
+        headers={"Host": "share.example.com", "Origin": "https://share.example.com"},
+        body='{"start":1,"end":1,"body":"hi"}',
+    )
+    assert status == 200
+    status, _, _ = proxied(
+        "/comments/add/file/README.md",
+        method="POST",
+        headers={"Host": "share.example.com", "Origin": "https://evil.example"},
+        body='{"start":1,"end":1,"body":"hi"}',
+    )
+    assert status == 403
+
+
 def test_sign_out_clears_the_cookie(github, local_docs, aniflow_servers):
     request = signin_servers(local_docs, aniflow_servers)
     status, headers, _ = request("/auth/logout")

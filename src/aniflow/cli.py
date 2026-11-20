@@ -290,11 +290,13 @@ class Server(ThreadingHTTPServer):
         base: str = "",
         comments: bool = True,
         signin: oauth.SignIn | None = None,
+        hosts: frozenset[str] = frozenset(),
     ):
         self.root = root.resolve()
         self.base = base
         self.comments = comments
         self.signin = signin
+        self.hosts = hosts
         identity = hashlib.sha256(os.fsencode(self.root)).hexdigest()
         cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
         self.comments_root = cache / "aniflow" / "comments" / identity
@@ -313,6 +315,10 @@ class Server(ThreadingHTTPServer):
 
 class Handler(web.Handler):
     server: Server
+
+    def allowed_hosts(self) -> frozenset[str]:
+        """Host names a proxy may forward: --allow-host, for a public deployment."""
+        return self.server.hosts
 
     def comment_target(self, key: str) -> tuple[Path, Path] | None:
         if not self.server.comments:
@@ -608,6 +614,14 @@ def main() -> None:
         "the cookie key come from ANIFLOW_GITHUB_SECRET and ANIFLOW_SIGNIN_SECRET",
     )
     parser.add_argument(
+        "--allow-host",
+        metavar="NAME",
+        action="append",
+        default=[],
+        help="host name the server answers for besides local ones, for a reverse proxy "
+        "that forwards the public Host (repeatable)",
+    )
+    parser.add_argument(
         "--comments-admin",
         metavar="LOGIN",
         default=os.environ.get("ANIFLOW_COMMENTS_ADMIN", ""),
@@ -796,6 +810,9 @@ def main() -> None:
             base=base,
             comments=not args.no_comments,
             signin=signin,
+            hosts=frozenset(
+                name.strip().lower() for name in args.allow_host if name.strip()
+            ),
         )
     except (OSError, OverflowError) as error:
         parser.error(str(error))
