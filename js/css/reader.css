@@ -147,20 +147,35 @@
   @media (prefers-reduced-motion:no-preference) { .reader .markdown-body .review-margin > * { transition:top .18s ease; } }
   /* The margin takes the contents rail's place while it is open. */
   body.review-side .reader .toc { visibility:hidden; }
-  .reader .markdown-body .review-comment { padding:10px 14px 12px; border:1px solid var(--borderColor-default); border-left:3px solid var(--fgColor-accent); border-radius:4px 12px 12px 4px; background:var(--bgColor-muted); }
-  .reader .markdown-body .review-comment + .review-comment { margin-top:8px; }
-  .reader .markdown-body .review-comment.outdated { border-left-color:var(--fgColor-attention); }
-  .reader .markdown-body .review-comment > header { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; margin-bottom:6px; color:var(--fgColor-muted); font-size:13px; }
-  .reader .markdown-body .review-where { padding:0; border:0; background:none; color:var(--fgColor-accent); font:600 12.5px/1.4 var(--mono); cursor:pointer; }
+  .reader .markdown-body .review-comment { padding:12px 14px; border:1px solid var(--borderColor-default); border-radius:12px; background:var(--bgColor-default); box-shadow:0 2px 8px color-mix(in srgb, var(--fgColor-default) 7%, transparent); }
+  .reader .markdown-body .review-comment + .review-comment { margin-top:10px; }
+  .reader .markdown-body .review-comment.outdated { border-color:color-mix(in srgb, var(--fgColor-attention) 55%, var(--borderColor-default)); }
+  .reader .markdown-body .review-head { display:flex; align-items:flex-start; gap:9px; margin-bottom:8px; }
+  .reader .markdown-body .review-avatar { width:26px; height:26px; border-radius:50%; border:1px solid var(--borderColor-muted); background:var(--bgColor-muted); flex-shrink:0; margin-top:1px; object-fit:cover; }
+  .reader .markdown-body .review-avatar-init { display:inline-flex; align-items:center; justify-content:center; color:var(--fgColor-muted); font-size:12px; font-weight:700; }
+  .reader .markdown-body .review-meta { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+  .reader .markdown-body .review-meta-top { display:flex; align-items:baseline; flex-wrap:wrap; gap:2px 6px; line-height:1.3; }
+  .reader .markdown-body .review-time { color:var(--fgColor-muted); font-size:12px; white-space:nowrap; }
+  .reader .markdown-body .review-where { align-self:flex-start; padding:0; border:0; background:none; color:var(--fgColor-accent); font:600 11.5px/1.35 var(--mono); cursor:pointer; }
   .reader .markdown-body .review-where:hover { text-decoration:underline; }
-  .reader .markdown-body .review-tools { display:flex; gap:2px; margin-left:auto; }
+  .reader .markdown-body .review-tools { display:flex; align-items:center; gap:2px; margin-left:auto; flex-shrink:0; }
   /* Who wrote a comment, and the sign-in the review dock offers when nobody is. */
-  :is(.review-author, .diagram-note-meta .review-author) { color:var(--fgColor-muted); font-size:12px; font-weight:600; }
-  .review-author::before { content:'@'; opacity:.6; }
+  .reader .markdown-body .review-author { color:var(--fgColor-default); font-size:13px; font-weight:650; }
+  .diagram-note-meta .review-author { color:var(--fgColor-muted); font-size:12px; font-weight:600; }
+  .diagram-note-meta .review-author::before { content:'@'; opacity:.6; }
   .review-session { display:inline-flex; align-items:center; gap:10px; color:var(--fgColor-muted); font-size:12px; }
   .review-signin { display:inline-flex; align-items:center; min-height:32px; padding:0 12px; border:1px solid var(--borderColor-default); border-radius:8px; background:var(--bgColor-default); color:var(--fgColor-accent); font-size:13px; font-weight:600; text-decoration:none; }
   .review-signin:hover { border-color:var(--fgColor-accent); }
-  .reader .markdown-body .review-body { margin:0; color:var(--fgColor-default); white-space:pre-wrap; overflow-wrap:anywhere; }
+  .reader .markdown-body .review-body { margin:0; color:var(--fgColor-default); font-size:14px; line-height:1.55; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .reader .markdown-body .review-replies { margin-top:10px; padding:10px 0 0 12px; border-top:1px solid var(--borderColor-muted); border-left:2px solid var(--borderColor-muted); display:flex; flex-direction:column; gap:10px; }
+  .reader .markdown-body .review-reply .review-head { margin-bottom:4px; }
+  .reader .markdown-body .review-reply .review-avatar { width:22px; height:22px; }
+  .reader .markdown-body .review-foot { display:flex; align-items:center; margin-top:8px; padding-top:6px; border-top:1px solid color-mix(in srgb, var(--borderColor-muted) 65%, transparent); }
+  .reader .markdown-body .review-reply-btn { display:inline-flex; align-items:center; gap:5px; padding:4px 8px; margin-left:-8px; border:0; border-radius:6px; background:none; color:var(--fgColor-muted); font:600 12.5px/1 system-ui,-apple-system,sans-serif; cursor:pointer; }
+  .reader .markdown-body .review-reply-btn:hover { color:var(--fgColor-default); background:var(--bgColor-muted); }
+  .reader .markdown-body .review-reply-btn svg { width:14px; height:14px; }
+  .reader .markdown-body .review-reply-box { margin-top:10px; padding-top:10px; border-top:1px solid var(--borderColor-muted); }
+  .reader .markdown-body .review-reply-box .review-form textarea { min-height:4.2em; font-size:14px; }
   .reader .markdown-body .review-note { margin:0 0 6px; color:var(--fgColor-attention); font-size:13px; font-weight:600; }
   .reader .markdown-body .review-quote { margin:0 0 8px; padding:8px 10px; border:1px solid var(--borderColor-muted); border-radius:8px; background:var(--bgColor-default); color:var(--fgColor-muted); font:12.5px/1.5 var(--mono); white-space:pre-wrap; overflow-wrap:anywhere; }
   .reader .markdown-body .review-composer { padding:12px; border:1px solid color-mix(in srgb, var(--fgColor-accent) 45%, var(--borderColor-default)); border-radius:12px; background:var(--bgColor-muted); }
@@ -178,9 +193,10 @@
   :is(.review-actions, .review-dock) button.primary { border-color:var(--fgColor-accent); background:var(--fgColor-accent); color:var(--bgColor-default); }
   :is(.review-actions, .review-tools, .review-dock) button:disabled { opacity:.55; cursor:progress; }
   :is(.review-actions, .review-tools, .review-dock) button[hidden] { display:none; }
-  .review-tools button { min-height:26px; padding:0 8px; border-color:transparent; background:none; color:var(--fgColor-muted); }
-  .review-tools button:hover { color:var(--fgColor-default); }
-  .review-tools button.danger { border-color:var(--fgColor-danger); color:var(--fgColor-danger); }
+  .review-tools button { min-height:26px; min-width:26px; padding:0 6px; border-color:transparent; background:none; color:var(--fgColor-muted); border-radius:6px; justify-content:center; }
+  .review-tools button svg { width:14px; height:14px; display:block; }
+  .review-tools button:hover { color:var(--fgColor-default); background:var(--bgColor-muted); border-color:transparent; }
+  .review-tools button.danger { padding:0 8px; border-color:var(--fgColor-danger); color:var(--fgColor-danger); background:color-mix(in srgb, var(--fgColor-danger) 10%, transparent); font-size:12px; }
 
   .review-dock { position:fixed; z-index:3; left:50%; bottom:max(16px, env(safe-area-inset-bottom)); display:flex; align-items:center; gap:8px; width:max-content; max-width:calc(100% - 24px); padding:8px 8px 8px 16px; border:1px solid var(--borderColor-default); border-radius:14px; background:color-mix(in srgb, var(--bgColor-default) 94%, transparent); box-shadow:0 12px 32px rgba(0,0,0,.3); backdrop-filter:blur(10px); color:var(--fgColor-default); font:14px/1.3 system-ui,-apple-system,sans-serif; transform:translateX(-50%); }
   .review-dock[hidden] { display:none; }

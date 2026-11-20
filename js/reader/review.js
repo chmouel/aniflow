@@ -16,7 +16,10 @@ export function initReview() {
     // the account that wrote a comment may change it.
     const gated = Boolean(host.commentsSignin);
     const me = host.commentsMe;
-    const mine = (comment) => !gated || (me && comment.author_id === me.id);
+    const mine = (comment) => !gated || (me && (me.admin || comment.author_id === me.id));
+    const ICON_EDIT = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M11.3 2.5a1.5 1.5 0 0 1 2.2 2.2L5.4 12.8 2.5 13.5l.7-2.9Z"/></svg>';
+    const ICON_DELETE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M2.5 4.2h11M6 4.2V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.2M4 4.2l.7 8.6a1.2 1.2 0 0 0 1.2 1.2h4.2a1.2 1.2 0 0 0 1.2-1.2l.7-8.6"/></svg>';
+    const ICON_REPLY = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M6 4.5 2.5 8 6 11.5M3 8h6.5a4 4 0 0 1 4 4v.5"/></svg>';
     function signInLink(label) {
       const link = make('a', 'review-signin', label);
       const back = location.pathname + location.search + location.hash;
@@ -385,34 +388,66 @@ export function initReview() {
       holder.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
 
-    function card(comment) {
-      const item = make('section', 'review-comment' + (comment.outdated ? ' outdated' : ''));
-      const head = make('header');
-      const about = comment.target ? (comment.target.label ? ', ' + comment.target.label : ', diagram') : '';
-      const where = make('button', 'review-where', range(comment.start, comment.end) + about);
-      where.setAttribute('aria-label', 'Select ' + range(comment.start, comment.end).toLowerCase());
-      where.addEventListener('click', () => choose(comment.start, comment.end, false));
+    function renderEntry(comment, isReply) {
+      const box = make('div', isReply ? 'review-reply' : 'review-root');
+      const head = make('header', 'review-head');
+      if (comment.author_id) {
+        const avatar = document.createElement('img');
+        avatar.className = 'review-avatar';
+        avatar.src = 'https://avatars.githubusercontent.com/u/' + comment.author_id + '?s=48';
+        avatar.alt = '';
+        head.append(avatar);
+      } else if (comment.author) {
+        head.append(make('span', 'review-avatar review-avatar-init', comment.author[0].toUpperCase()));
+      }
+      const meta = make('div', 'review-meta');
+      const line1 = make('div', 'review-meta-top');
+      if (comment.author) {
+        line1.append(make('span', 'review-author', comment.author));
+      } else if (!isReply) {
+        const about = comment.target ? (comment.target.label ? ', ' + comment.target.label : ', diagram') : '';
+        const where = make('button', 'review-where', range(comment.start, comment.end) + about);
+        where.setAttribute('aria-label', 'Select ' + range(comment.start, comment.end).toLowerCase());
+        where.addEventListener('click', () => choose(comment.start, comment.end, false));
+        line1.append(where);
+      }
       const stamp = new Date((comment.updated || comment.created) * 1000);
-      const when = make('time', '', ago(stamp) + (comment.updated > comment.created + 1 ? ', edited' : ''));
+      const edited = comment.updated > comment.created + 1;
+      const when = make('time', 'review-time', ago(stamp) + (edited ? ' · edited' : ''));
       when.dateTime = stamp.toISOString();
       when.title = stamp.toLocaleString();
-      const tools = make('span', 'review-tools');
-      const edit = make('button', '', 'Edit');
-      const remove = make('button', '', 'Delete');
-      tools.append(edit, remove);
-      head.append(where, when);
-      if (comment.author) head.append(make('span', 'review-author', comment.author));
-      if (mine(comment)) head.append(tools);
-      edit.hidden = remove.hidden = false;
-      item.append(head);
-      if (comment.outdated) {
-        item.append(make('p', 'review-note', 'These lines changed after the comment. It was written on:'));
-        item.append(make('pre', 'review-quote', comment.quote.join('\n')));
+      line1.append(when);
+      meta.append(line1);
+      if (!isReply && comment.author) {
+        const about = comment.target ? (comment.target.label ? ' · ' + comment.target.label : ' · diagram') : '';
+        const where = make('button', 'review-where', range(comment.start, comment.end) + about);
+        where.setAttribute('aria-label', 'Select ' + range(comment.start, comment.end).toLowerCase());
+        where.addEventListener('click', () => choose(comment.start, comment.end, false));
+        meta.append(where);
+      }
+      head.append(meta);
+      const edit = make('button', 'review-icon-btn');
+      edit.innerHTML = ICON_EDIT;
+      edit.title = 'Edit';
+      edit.setAttribute('aria-label', 'Edit');
+      const remove = make('button', 'review-icon-btn');
+      remove.innerHTML = ICON_DELETE;
+      remove.title = 'Delete';
+      remove.setAttribute('aria-label', 'Delete');
+      if (mine(comment)) {
+        const tools = make('span', 'review-tools');
+        tools.append(edit, remove);
+        head.append(tools);
+      }
+      box.append(head);
+      if (!isReply && comment.outdated) {
+        box.append(make('p', 'review-note', 'These lines changed after the comment. It was written on:'));
+        box.append(make('pre', 'review-quote', comment.quote.join('\n')));
       }
       const body = make('p', 'review-body', comment.body);
-      item.append(body);
+      box.append(body);
       edit.addEventListener('click', () => {
-        if (item.querySelector('form')) return;
+        if (box.querySelector('form')) return;
         const done = () => {
           form.remove();
           body.hidden = false;
@@ -430,11 +465,11 @@ export function initReview() {
       let armed = 0;
       remove.addEventListener('click', async () => {
         if (!armed) {
-          remove.textContent = 'Confirm delete';
+          remove.textContent = 'Delete?';
           remove.classList.add('danger');
           armed = setTimeout(() => {
             armed = 0;
-            remove.textContent = 'Delete';
+            remove.innerHTML = ICON_DELETE;
             remove.classList.remove('danger');
           }, 3000);
           return;
@@ -449,6 +484,46 @@ export function initReview() {
           notify('!Deleting failed: ' + (error.message || error));
         }
       });
+      return box;
+    }
+
+    function card(comment, replies) {
+      const item = make('section', 'review-comment' + (comment.outdated ? ' outdated' : ''));
+      item.append(renderEntry(comment, false));
+      if (replies.length) {
+        const list = make('div', 'review-replies');
+        for (const reply of replies) list.append(renderEntry(reply, true));
+        item.append(list);
+      }
+      const foot = make('footer', 'review-foot');
+      const replyButton = make('button', 'review-reply-btn');
+      replyButton.innerHTML = ICON_REPLY + '<span>Reply</span>';
+      replyButton.addEventListener('click', () => {
+        if (item.querySelector('.review-reply-box')) return;
+        const holder = make('div', 'review-reply-box');
+        if (gated && !me) {
+          holder.append(signInLink('Sign in with GitHub to reply'));
+          foot.hidden = true;
+          item.append(holder);
+          return;
+        }
+        const close = () => {
+          holder.remove();
+          foot.hidden = false;
+        };
+        const { form, area } = editor('', 'Reply to ' + (comment.author || 'comment'), 'Reply', async (text) => {
+          await post('add', '', { parent: comment.id, body: text });
+          notify('Reply added');
+        }, close);
+        area.rows = 2;
+        area.placeholder = 'Write a reply…';
+        holder.append(form);
+        foot.hidden = true;
+        item.append(holder);
+        area.focus();
+      });
+      foot.append(replyButton);
+      item.append(foot);
       return item;
     }
 
@@ -465,8 +540,20 @@ export function initReview() {
         margin.remove();
         host.article.style.minHeight = '';
       }
-      const groups = [];
+      const repliesByParent = new Map();
+      const roots = [];
       for (const comment of view.comments) {
+        if (comment.parent) {
+          const list = repliesByParent.get(comment.parent) || [];
+          list.push(comment);
+          repliesByParent.set(comment.parent, list);
+        } else {
+          roots.push(comment);
+        }
+      }
+      for (const list of repliesByParent.values()) list.sort((a, b) => (a.created || 0) - (b.created || 0));
+      const groups = [];
+      for (const comment of roots) {
         const mark = spot(comment.end);
         if (!mark) continue;
         const where = slot(mark, comment.start);
@@ -478,7 +565,7 @@ export function initReview() {
       // Inserted from the bottom up, so threads after the same block keep their line order.
       for (const group of groups.sort((a, b) => b.end - a.end)) {
         const thread = make('div', 'review-thread');
-        for (const comment of group.comments) thread.append(card(comment));
+        for (const comment of group.comments) thread.append(card(comment, repliesByParent.get(comment.id) || []));
         if (side) {
           thread.anchorStart = Math.min(...group.comments.map((comment) => comment.start));
           thread.anchorEnd = group.end;

@@ -49,6 +49,7 @@ def entry_valid(entry: object) -> bool:
         and isinstance(entry.get("body"), str)
         and isinstance(entry.get("author", ""), str)
         and isinstance(entry.get("author_id", 0), int)
+        and ("parent" not in entry or isinstance(entry["parent"], str))
         and isinstance(entry.get("quote"), list)
         and all(isinstance(line, str) for line in entry["quote"])
         and all(
@@ -119,6 +120,7 @@ def anchor(entry: dict, lines: list[str]) -> dict:
             "updated",
             "author",
             "author_id",
+            "parent",
         )
         if key in entry
     }
@@ -164,7 +166,14 @@ def prompt(view: dict, app: str = "aniflow") -> str:
     if not view["comments"]:
         return f"No review comments on {name}.\n"
     parts = [f"Review comments on {name} ({app}):"]
+    replies: dict[str, list[dict]] = {}
+    roots = []
     for comment in view["comments"]:
+        if parent := comment.get("parent"):
+            replies.setdefault(parent, []).append(comment)
+        else:
+            roots.append(comment)
+    for comment in roots:
         where = (
             str(comment["start"])
             if comment["start"] == comment["end"]
@@ -181,7 +190,13 @@ def prompt(view: dict, app: str = "aniflow") -> str:
         if comment["outdated"]:
             head += " (outdated: these lines changed since the comment)"
         quoted = "\n".join(f"> {line}".rstrip() for line in comment["quote"])
-        parts.append(f"{head}\n{quoted}\n{comment['body'].strip()}")
+        block = f"{head}\n{quoted}\n{comment['body'].strip()}"
+        for reply in sorted(
+            replies.get(comment["id"], []), key=lambda r: r.get("created", 0)
+        ):
+            who = f"@{reply['author']}: " if reply.get("author") else ""
+            block += f"\n  ↳ {who}{reply['body'].strip()}"
+        parts.append(block)
     return "\n\n".join(parts) + "\n"
 
 
@@ -226,32 +241,56 @@ def change(
     with LOCK:
         entries = load(storage)
         if action == "add":
-            start, end = data.get("start"), data.get("end", data.get("start"))
-            if not all(
-                isinstance(value, int) and not isinstance(value, bool)
-                for value in (start, end)
-            ):
-                return "start and end must be line numbers"
-            if not 1 <= start <= end <= len(lines):
-                return f"lines must be between 1 and {len(lines)}"
-            if end - start + 1 > COMMENT_MAX_LINES:
-                return f"a comment covers at most {COMMENT_MAX_LINES} lines"
             if len(entries) >= COMMENTS_MAX:
                 return f"a file holds at most {COMMENTS_MAX} comments"
-            target = data.get("target")
-            if target is not None and not target_valid(target):
-                return "target must name a node, edge or diagram"
-            entry = {
-                "id": secrets.token_hex(6),
-                "start": start,
-                "end": end,
-                "quote": lines[start - 1 : end],
-                "body": body,
-                "created": now,
-                "updated": now,
-            }
-            if target is not None:
-                entry["target"] = target
+            parent_id = data.get("parent")
+            if parent_id is not None:
+                if not isinstance(parent_id, str) or not parent_id:
+                    return "parent must be a comment id"
+                parent = next(
+                    (entry for entry in entries if entry["id"] == parent_id), None
+                )
+                if parent is None:
+                    return "parent comment not found"
+                if parent.get("parent"):
+                    return "replies cannot be nested"
+                entry = {
+                    "id": secrets.token_hex(6),
+                    "parent": parent_id,
+                    "start": parent["start"],
+                    "end": parent["end"],
+                    "quote": list(parent["quote"]),
+                    "body": body,
+                    "created": now,
+                    "updated": now,
+                }
+                if "target" in parent:
+                    entry["target"] = parent["target"]
+            else:
+                start, end = data.get("start"), data.get("end", data.get("start"))
+                if not all(
+                    isinstance(value, int) and not isinstance(value, bool)
+                    for value in (start, end)
+                ):
+                    return "start and end must be line numbers"
+                if not 1 <= start <= end <= len(lines):
+                    return f"lines must be between 1 and {len(lines)}"
+                if end - start + 1 > COMMENT_MAX_LINES:
+                    return f"a comment covers at most {COMMENT_MAX_LINES} lines"
+                target = data.get("target")
+                if target is not None and not target_valid(target):
+                    return "target must name a node, edge or diagram"
+                entry = {
+                    "id": secrets.token_hex(6),
+                    "start": start,
+                    "end": end,
+                    "quote": lines[start - 1 : end],
+                    "body": body,
+                    "created": now,
+                    "updated": now,
+                }
+                if target is not None:
+                    entry["target"] = target
             if author:
                 entry["author"] = author
             if author_id:
@@ -271,7 +310,12 @@ def change(
             if not admin and entries[index].get("author_id", 0) != author_id:
                 return "not yours"
             if action == "delete":
-                del entries[index]
+                removed = entries[index]["id"]
+                entries = [
+                    entry
+                    for entry in entries
+                    if entry["id"] != removed and entry.get("parent") != removed
+                ]
             else:
                 entries[index] = {**entries[index], "body": body, "updated": now}
         save(storage, entries, create_parents=create_parents, allowed=allowed)

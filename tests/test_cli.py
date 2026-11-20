@@ -1125,6 +1125,44 @@ def test_diagram_comment_target_in_cache_storage(aniflow_server):
     assert 'README.md:1 (diagram 2, arrow "A → B")' in body.decode()
 
 
+def test_comment_replies_are_one_level_only(aniflow_server):
+    status, _, body = aniflow_server(
+        "/comments/add/file/README.md",
+        method="POST",
+        headers={"Content-Type": "application/json"},
+        body=json.dumps({"start": 1, "end": 1, "body": "Root question"}),
+    )
+    assert status == 200
+    root_id = json.loads(body)["comments"][0]["id"]
+    # Reply inherits lines from root.
+    status, _, body = aniflow_server(
+        "/comments/add/file/README.md",
+        method="POST",
+        headers={"Content-Type": "application/json"},
+        body=json.dumps({"parent": root_id, "body": "First reply"}),
+    )
+    assert status == 200
+    all_comments = json.loads(body)["comments"]
+    reply = next(c for c in all_comments if c.get("parent") == root_id)
+    assert reply["start"] == 1 and reply["end"] == 1
+    # Replying to a reply is refused (one step only).
+    status, _, body = aniflow_server(
+        "/comments/add/file/README.md",
+        method="POST",
+        headers={"Content-Type": "application/json"},
+        body=json.dumps({"parent": reply["id"], "body": "Too deep"}),
+    )
+    assert status == 400 and "nested" in json.loads(body)["error"]
+    # Prompt groups the reply under its root.
+    status, _, prompt_body = aniflow_server("/comments/file/README.md?format=prompt")
+    assert status == 200 and b"Root question\n  \xe2\x86\xb3 First reply" in prompt_body
+    # Deleting the root removes its replies too.
+    status, _, body = aniflow_server(
+        f"/comments/delete/file/README.md?id={root_id}", method="POST"
+    )
+    assert status == 200 and json.loads(body)["comments"] == []
+
+
 def test_comments_persist_and_are_separate_by_root_and_document(
     aniflow_server,
     aniflow_servers,
