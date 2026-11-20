@@ -95,12 +95,6 @@
   .reader .markdown-body .frontmatter-code { display:block; padding:6px 10px; white-space:pre-wrap; }
   .reader .markdown-body .frontmatter-raw pre { margin:0 0 2.2em; }
   @media (max-width:540px) { .reader .markdown-body .frontmatter { gap:6px 16px; padding:12px 14px; } }
-  .reader .crumbs { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 6px; max-width:46rem; margin:0 auto 18px; color:var(--fgColor-muted); font-size:13px; }
-  .reader .crumbs a { color:inherit; text-decoration:none; }
-  .reader .crumbs a:hover { color:var(--fgColor-accent); }
-  .reader .crumbs a:focus-visible { outline:2px solid var(--fgColor-accent); outline-offset:2px; border-radius:3px; }
-  .reader .crumbs span { opacity:.6; }
-  .reader .crumbs b { color:var(--fgColor-default); font-weight:500; }
   .reader .markdown-body details.markdown-alert { padding:.85em 1.15em; }
   .reader .markdown-body details.markdown-alert > summary { margin:0; padding:0; border:0; list-style:none; }
   .reader .markdown-body details.markdown-alert > summary::-webkit-details-marker { display:none; }
@@ -207,7 +201,7 @@
   html[data-mode="light"] body[data-accent-dark="true"], html[data-mode="dark"] body[data-accent-dark="false"] { --slide-accent-contrast:var(--bgColor-default); }
 
   body.presenting { overflow:hidden; }
-  body.presenting > .bar, body.presenting :is(.reader .toc, .reader .crumbs, .reader .notice, .review-dock, .review-gutter, .code-gutter, .review-thread, .review-composer) { display:none !important; }
+  body.presenting > .bar, body.presenting :is(.reader .toc, .reader .notice, .review-dock, .review-gutter, .code-gutter, .review-thread, .review-composer) { display:none !important; }
   body.presenting .page.reader { position:fixed; inset:0; display:block; width:auto; max-width:none; margin:0; padding:0; background:color-mix(in srgb, var(--fgColor-default) 7%, var(--bgColor-default)); }
 
   .reader .markdown-body.slide-canvas { --diagram-done:var(--slide-accent); --slide-scrim:color-mix(in srgb, var(--bgColor-default) 72%, transparent); --slide-gradient:radial-gradient(ellipse 70% 90% at 92% 0%, color-mix(in srgb, var(--slide-accent) 24%, transparent), transparent 70%), radial-gradient(ellipse 60% 70% at 0% 100%, color-mix(in srgb, var(--slide-accent) 12%, transparent), transparent 70%);

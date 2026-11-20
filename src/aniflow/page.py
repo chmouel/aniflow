@@ -91,6 +91,7 @@ def reader_page(
     base: str = "",
     actions: str = "",
     tools: str = "",
+    trail: str = "",
     top: str = "",
     style: str = "",
     body_class: str = "",
@@ -101,10 +102,11 @@ def reader_page(
     before: str = "",
     after: str = "",
 ) -> bytes:
-    """The whole document. actions and tools go in the bar after the back link, top above
-    the contents, before and after are scripts around the one that renders. theme adds a
-    theme picker to the bar; slides always offer one in their dock. base prefixes the
-    reader's own stylesheets and scripts."""
+    """The whole document. actions and tools go in the bar after the back link, trail is
+    the breadcrumb nav that takes the place of the title there, top above the contents,
+    before and after are scripts around the one that renders. theme adds a theme picker to
+    the bar; slides always offer one in their dock. base prefixes the reader's own
+    stylesheets and scripts."""
     review = (REVIEW_BUTTON, REVIEW_DOCK) if options.get("comments") else ("", "")
     highlight = len(text.encode("utf-8")) <= HIGHLIGHT_MAX_BYTES
     scripts = "".join(
@@ -122,7 +124,7 @@ def reader_page(
 <link rel="stylesheet" href="{base}/static/page.css">
 <link rel="stylesheet" href="{base}/static/aniflow.css">
 <style>{THEME_READER_CSS}{style}</style></head><body{body_attribute}>
-<header class="bar progress"><a href="{html.escape(back[1])}">← {html.escape(back[0])}</a><span class="name">{html.escape(title)}</span><nav>{actions}{PRESENT_BUTTON}{review[0]}{tools}{theme_select(nonce) if theme else ""}</nav></header>
+<header class="bar progress"><a href="{html.escape(back[1])}">← {html.escape(back[0])}</a>{trail or '<span class="name">' + html.escape(title) + "</span>"}<nav>{actions}{PRESENT_BUTTON}{review[0]}{tools}{theme_select(nonce) if theme else ""}</nav></header>
 <main class="page reader">{top}
 <details class="toc" id="toc" hidden><summary>Contents</summary><ol></ol></details>
 <article class="markdown-body"><noscript><pre>{html.escape(text)}</pre></noscript></article></main>

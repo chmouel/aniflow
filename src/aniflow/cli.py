@@ -247,7 +247,7 @@ def reader_page(
         else ""
     )
     trail = (
-        '<nav class="crumbs" aria-label="Folders">'
+        '<nav class="bar-trail" aria-label="Folders">'
         + "".join(
             f'<a href="{html.escape(href)}">{html.escape(label)}</a><span aria-hidden="true">/</span>'
             for label, href in crumbs
@@ -267,7 +267,8 @@ def reader_page(
         base=base,
         actions=actions,
         theme=True,
-        top=brand(base, brand_name) + trail,
+        trail=trail,
+        top=brand(base, brand_name),
         favicon=favicon(brand_name),
         style=BRAND_CSS + UI_CSS,
         body_class="aniflow-local",

@@ -5,6 +5,13 @@
   .bar a { color:var(--fgColor-accent); text-decoration:none; font-weight:600; white-space:nowrap; }
   .bar a:hover { text-decoration:underline; }
   .bar .name { flex:1; min-width:0; overflow:hidden; color:var(--fgColor-muted); text-overflow:ellipsis; white-space:nowrap; }
+  .bar .bar-trail { display:flex; align-items:center; gap:6px; flex:1; min-width:0; overflow:hidden; color:var(--fgColor-muted); font-size:13px; }
+  .bar .bar-trail a { flex:0 1 auto; min-width:0; overflow:hidden; color:inherit; font-weight:500; text-overflow:ellipsis; }
+  .bar .bar-trail a:hover { color:var(--fgColor-accent); }
+  .bar .bar-trail span { flex:0 0 auto; opacity:.55; }
+  .bar .bar-trail b { flex:2 1 auto; min-width:0; overflow:hidden; color:var(--fgColor-default); font-weight:600; text-overflow:ellipsis; }
+  /* Narrow: the folder segments would leave nothing of the file name. */
+  @media (max-width:640px) { .bar .bar-trail > :not(b) { display:none; } }
   .bar nav { display:flex; gap:14px; }
   .bar nav .theme-pick { position:relative; cursor:pointer; }
   .bar nav .theme-pick select { position:absolute; inset:0; width:100%; opacity:0; cursor:pointer; }

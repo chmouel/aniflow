@@ -256,6 +256,18 @@ def test_reader_page(aniflow_server):
         assert aniflow_server("/static/" + name)[0] == 200
 
 
+def test_reader_path_sits_in_the_bar(aniflow_server):
+    _, _, body = aniflow_server("/files/guides/start.md")
+    bar = body.split(b"</header>")[0]
+    assert b'<nav class="bar-trail" aria-label="Folders">' in bar
+    assert b'href="/files/guides/"' in bar
+    assert b'<b aria-current="page">start.md</b>' in bar
+    assert b'<span class="name">' not in bar
+    assert b'class="crumbs"' not in body
+    _, _, help_body = aniflow_server("/help")
+    assert b'<span class="name">aniflow help</span>' in help_body
+
+
 def test_source_is_escaped_and_reread(aniflow_server, local_docs):
     source = "# Updated\n\n</script><script>alert(1)</script> & <b>\n"
     (local_docs / "README.md").write_text(source, encoding="utf-8")
