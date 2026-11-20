@@ -45,6 +45,11 @@ DIRECTORY_CSS = """
   .aniflow-browser .folder-up { display:inline-flex; align-items:center; gap:8px; padding:10px 0 10px 12px; color:var(--fgColor-muted); font-size:13px; text-decoration:none; white-space:nowrap; }
   .aniflow-browser .folder-up svg { width:18px; height:18px; transform:rotate(180deg); }
   .aniflow-browser .folder-up:hover { color:var(--document-color); }
+  .aniflow-browser .new-note { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .aniflow-browser .new-note input { width:13em; padding:8px 10px; border:1px solid var(--borderColor-default); border-radius:8px; background:var(--bgColor-default); color:var(--fgColor-default); font:inherit; font-size:14px; }
+  .aniflow-browser .new-note button { padding:8px 14px; border:0; border-radius:8px; background:var(--fgColor-accent); color:var(--bgColor-default); font:600 14px/1.4 system-ui,sans-serif; cursor:pointer; white-space:nowrap; }
+  .aniflow-browser .new-note button.new-folder { border:1px solid var(--borderColor-default); background:var(--bgColor-default); color:var(--fgColor-default); }
+  .aniflow-browser .new-note button.new-folder:hover { border-color:var(--fgColor-muted); background:var(--bgColor-muted); }
   .aniflow-browser .browser-toolbar { display:flex; gap:16px; align-items:center; padding:8px; margin-bottom:30px; border:1px solid var(--borderColor-default); border-radius:12px; background:var(--bgColor-muted); }
   .aniflow-browser .folder-filter { display:flex; flex:1; align-items:center; min-width:0; gap:12px; padding-left:10px; color:var(--fgColor-muted); }
   .aniflow-browser .folder-filter svg { flex:0 0 20px; width:20px; height:20px; fill:currentColor; }
@@ -384,6 +389,27 @@ UI_JS = """
       }
     });
   }
+  const rename = document.querySelector('button[data-rename-url]');
+  if (rename) {
+    rename.addEventListener('click', async () => {
+      const next = prompt('Rename ' + rename.dataset.name + ' to:', rename.dataset.name);
+      if (!next || next.trim() === rename.dataset.name) return;
+      rename.disabled = true;
+      try {
+        const response = await fetch(rename.dataset.renameUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to: next.trim(), version: rename.dataset.version }),
+        });
+        const answer = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(answer.error || response.statusText);
+        location.href = answer.url;
+      } catch (error) {
+        rename.disabled = false;
+        alert('Could not rename: ' + (error.message || error));
+      }
+    });
+  }
   const remove = document.querySelector('button[data-delete-url]');
   if (remove) {
     remove.addEventListener('click', async () => {
@@ -507,9 +533,6 @@ EDITOR_CSS = """
     .editor { position:static; }
     .editor textarea { height:55vh; }
   }
-  .new-note { display:flex; gap:8px; align-items:center; }
-  .new-note input { width:12em; padding:8px 10px; border:1px solid var(--borderColor-default); border-radius:8px; background:var(--bgColor-default); color:var(--fgColor-default); font:inherit; font-size:14px; }
-  .new-note button { padding:8px 14px; border:0; border-radius:8px; background:var(--fgColor-accent); color:var(--bgColor-default); font:600 14px/1.4 system-ui,sans-serif; cursor:pointer; white-space:nowrap; }
 """
 
 EDITOR_JS = """
@@ -648,6 +671,23 @@ NEW_NOTE_JS = """
   }
   document.getElementById('new-note').addEventListener('click', open);
   input.addEventListener('keydown', (event) => { if (event.key === 'Enter') open(); });
+  const mkdirButton = document.getElementById('new-folder');
+  if (mkdirButton) {
+    mkdirButton.addEventListener('click', async () => {
+      const name = input.value.trim().replace(/\\s+/g, '-');
+      if (!name) return input.focus();
+      mkdirButton.disabled = true;
+      try {
+        const response = await fetch(mkdirButton.dataset.mkdirUrl + '/' + encodeURIComponent(name), { method: 'POST' });
+        const answer = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(answer.error || response.statusText);
+        location.href = answer.url;
+      } catch (error) {
+        mkdirButton.disabled = false;
+        alert('Could not create folder: ' + (error.message || error));
+      }
+    });
+  }
 })();
 """
 

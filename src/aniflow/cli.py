@@ -20,7 +20,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
-from aniflow import client, export, oauth, page, tokens, web
+from aniflow import client, comments, export, oauth, page, tokens, web
 from aniflow.brand import BRAND_CSS, DEFAULT, favicon, masthead
 from aniflow.themes import THEME_READER_CSS, theme_script, theme_select
 from aniflow.ui import (
@@ -463,9 +463,10 @@ def directory_page(
     )
     description = f'{folders} {"folder" if folders == 1 else "folders"} <span aria-hidden="true">/</span> {documents} {"document" if documents == 1 else "documents"}'
     new_box = (
-        '<div class="new-note"><input id="new-note-name" placeholder="name.md" '
-        'aria-label="Name of the new note" autocomplete="off">'
-        '<button type="button" id="new-note">New note</button></div>'
+        '<div class="new-note"><input id="new-note-name" placeholder="name.md or folder" '
+        'aria-label="Name of the new note or folder" autocomplete="off">'
+        '<button type="button" id="new-note">New note</button>'
+        f'<button type="button" class="new-folder" id="new-folder" data-mkdir-url="{html.escape(base)}/notes/mkdir/{quote(path.relative_to(root).as_posix())}">New folder</button></div>'
         if new_note
         else ""
     )
@@ -531,6 +532,11 @@ def reader_page(
     if delete:
         menu_links += (
             '<hr class="menu-sep">'
+            f'<button type="button"'
+            f' data-rename-url="{html.escape(delete["rename"])}"'
+            f' data-version="{html.escape(delete["version"])}"'
+            f' data-name="{html.escape(delete["name"])}">'
+            "Rename</button>"
             f'<button type="button" class="menu-danger"'
             f' data-delete-url="{html.escape(delete["url"])}"'
             f' data-version="{html.escape(delete["version"])}"'
@@ -1175,6 +1181,125 @@ refuse the change when someone edited the note in between.
         )
         self.send_html(body, page.reader_headers(nonce))
 
+    def mkdir_folder(self, key: str) -> None:
+        """POST /notes/mkdir/<path>: create a subfolder inside a writable folder."""
+        if not self.server.user_folders or self.server.signin is None:
+            self.send_json({"error": "not found"}, status=404)
+            return
+        session = self.session()
+        if session is None:
+            self.send_json(
+                {"error": "sign in with GitHub to create folders"}, status=401
+            )
+            return
+        folder = upload_folder(self.server.root, unquote(key))
+        if folder is None or len(folder.relative_to(self.server.root).parts) < 2:
+            self.send_json({"error": "not a folder this server creates"}, status=404)
+            return
+        if not may_write(self.server.root, folder / "probe.md", session):
+            self.send_json({"error": "this folder is not yours"}, status=403)
+            return
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+        except OSError as error:
+            self.send_json(
+                {"error": f"could not create folder: {error.strerror}"}, status=500
+            )
+            return
+        self.send_json(
+            {"url": file_url(self.server.root, folder, self.server.base)}, status=201
+        )
+
+    def rename_note(self, key: str) -> None:
+        """POST /notes/rename/<path> {to, version}: rename a note inside a writable folder."""
+        if not self.server.user_folders or self.server.signin is None:
+            self.send_json({"error": "not found"}, status=404)
+            return
+        session = self.session()
+        if session is None:
+            self.send_json({"error": "sign in with GitHub to rename"}, status=401)
+            return
+        src = note_path(self.server.root, unquote(key))
+        if src is None:
+            self.send_json({"error": "not a note this server writes"}, status=404)
+            return
+        if not may_write(self.server.root, src, session):
+            self.send_json({"error": "this folder is not yours"}, status=403)
+            return
+        body = self.read_body(4096)
+        try:
+            data = json.loads(body or b"null")
+        except ValueError:
+            data = None
+        if (
+            body is None
+            or not isinstance(data, dict)
+            or not isinstance(data.get("to"), str)
+        ):
+            self.send_json({"error": "send JSON with a 'to' filename"}, status=400)
+            return
+        wanted = data["to"].strip()
+        if "/" in wanted or "\\" in wanted or not wanted:
+            self.send_json({"error": "enter a filename without slashes"}, status=400)
+            return
+        if not web.is_markdown(wanted):
+            wanted += ".md"
+        dst_rel = (src.parent / wanted).relative_to(self.server.root).as_posix()
+        dst = note_path(self.server.root, dst_rel)
+        if dst is None:
+            self.send_json({"error": "invalid target filename"}, status=400)
+            return
+        if not may_write(self.server.root, dst, session):
+            self.send_json({"error": "this folder is not yours"}, status=403)
+            return
+        try:
+            with NOTES_LOCK:
+                if note_path(self.server.root, unquote(key)) != src or (
+                    note_path(self.server.root, dst_rel) != dst
+                ):
+                    self.send_json({"error": "invalid note path"}, status=404)
+                    return
+                if not src.is_file():
+                    self.send_json({"error": "not found"}, status=404)
+                    return
+                if data.get("version", "") != note_version(src):
+                    self.send_json(
+                        {"error": "changed since you opened it: reload and try again"},
+                        status=409,
+                    )
+                    return
+                if dst != src:
+                    old_comments = self.comment_target(
+                        "file/" + quote(src.relative_to(self.server.root).as_posix())
+                    )
+                    try:
+                        # Hard-link fails atomically with EEXIST if dst appeared concurrently.
+                        os.link(src, dst)
+                    except FileExistsError:
+                        self.send_json(
+                            {"error": "a note with that name already exists"},
+                            status=409,
+                        )
+                        return
+                    src.unlink()
+                    with comments.LOCK:
+                        new_comments = self.comment_target(
+                            "file/"
+                            + quote(dst.relative_to(self.server.root).as_posix())
+                        )
+                        if (
+                            old_comments
+                            and new_comments
+                            and old_comments[1].is_file()
+                            and not new_comments[1].exists()
+                        ):
+                            new_comments[1].parent.mkdir(parents=True, exist_ok=True)
+                            os.replace(old_comments[1], new_comments[1])
+        except OSError as error:
+            self.send_json({"error": f"could not rename: {error.strerror}"}, status=500)
+            return
+        self.send_json({"url": file_url(self.server.root, dst, self.server.base)})
+
     def upload_image(self, key: str) -> None:
         """POST /notes/upload/<folder>: save a pasted or chosen raster image next to the notes."""
         if not self.server.user_folders or self.server.signin is None:
@@ -1520,6 +1645,7 @@ refuse the change when someone edited the note in between.
                             else "",
                             delete={
                                 "url": f"{base}/notes/delete/{relative}",
+                                "rename": f"{base}/notes/rename/{relative}",
                                 "version": note_version(local),
                                 "folder": file_url(root, local.parent, base),
                                 "name": local.name,
@@ -1541,6 +1667,12 @@ refuse the change when someone edited the note in between.
             return
         parsed = urlsplit(self.path)
         path = self.under_base(parsed.path)
+        if path.startswith("/notes/mkdir/"):
+            self.mkdir_folder(path.removeprefix("/notes/mkdir/"))
+            return
+        if path.startswith("/notes/rename/"):
+            self.rename_note(path.removeprefix("/notes/rename/"))
+            return
         if path.startswith("/notes/upload/"):
             self.upload_image(path.removeprefix("/notes/upload/"))
             return

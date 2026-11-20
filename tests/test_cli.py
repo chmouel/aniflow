@@ -872,6 +872,76 @@ def test_concurrent_writes_at_one_version_do_not_both_land(
     assert save(request, alice, "alice/race.md", "from the editor", version)[0] == 409
 
 
+def test_mkdir_and_rename_note_rules(github, local_docs, aniflow_servers):
+    request = folders_server(local_docs, aniflow_servers)
+    alice, bob = sign_in(request, "alice"), sign_in(request, "bob")
+    # Create subfolder inside alice/, refused at top level or inside bob/
+    status, _, body = request(
+        "/notes/mkdir/alice/specs", method="POST", headers={"Cookie": alice}
+    )
+    assert status == 201 and json.loads(body)["url"] == "/files/alice/specs/"
+    assert (local_docs / "alice" / "specs").is_dir()
+    assert (
+        request("/notes/mkdir/top", method="POST", headers={"Cookie": alice})[0] == 404
+    )
+    assert (
+        request("/notes/mkdir/bob/sub", method="POST", headers={"Cookie": alice})[0]
+        == 403
+    )
+    assert (
+        request("/notes/mkdir/alice/.hid", method="POST", headers={"Cookie": alice})[0]
+        == 404
+    )
+
+    # Save a note, add a comment on it, then rename — comments follow the note.
+    status, made = save(request, alice, "alice/old.md", "# Hello\n")
+    assert status == 200
+    status, _, _ = request(
+        "/comments/add/file/alice/old.md",
+        method="POST",
+        headers={"Cookie": alice, "Content-Type": "application/json"},
+        body=json.dumps({"start": 1, "end": 1, "body": "Keep this comment"}),
+    )
+    assert status == 200
+    status, _, body = request(
+        "/notes/rename/alice/old.md",
+        method="POST",
+        headers={"Cookie": alice, "Content-Type": "application/json"},
+        body=json.dumps({"to": "renamed", "version": made["version"]}),
+    )
+    assert status == 200 and json.loads(body)["url"] == "/files/alice/renamed.md"
+    assert not (local_docs / "alice" / "old.md").exists()
+    assert (local_docs / "alice" / "renamed.md").read_text() == "# Hello\n"
+    status, _, cbody = request("/comments/file/alice/renamed.md")
+    assert (
+        status == 200
+        and json.loads(cbody)["comments"][0]["body"] == "Keep this comment"
+    )
+    # Collision -> 409; stale version -> 409; bob -> 403; slashes -> 400
+    save(request, alice, "alice/other.md", "# Other\n")
+    status, _, _ = request(
+        "/notes/rename/alice/renamed.md",
+        method="POST",
+        headers={"Cookie": alice, "Content-Type": "application/json"},
+        body=json.dumps({"to": "other.md", "version": made["version"]}),
+    )
+    assert status == 409
+    status, _, _ = request(
+        "/notes/rename/alice/renamed.md",
+        method="POST",
+        headers={"Cookie": bob, "Content-Type": "application/json"},
+        body=json.dumps({"to": "stolen.md", "version": made["version"]}),
+    )
+    assert status == 403
+    status, _, _ = request(
+        "/notes/rename/alice/renamed.md",
+        method="POST",
+        headers={"Cookie": alice, "Content-Type": "application/json"},
+        body=json.dumps({"to": "../bob/x.md", "version": made["version"]}),
+    )
+    assert status == 400
+
+
 def test_image_upload_validates_auth_magic_and_symlinks(
     github, local_docs, aniflow_servers
 ):
