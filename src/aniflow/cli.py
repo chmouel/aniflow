@@ -1413,6 +1413,10 @@ refuse the change when someone edited the note in between.
         parsed = urlsplit(self.path)
         path = self.under_base(parsed.path)
         raw = "raw" in parse_qs(parsed.query, keep_blank_values=True)
+        if path == "/healthz":
+            ok = self.server.root.is_dir()
+            self.send_json({"ok": ok}, status=200 if ok else 503)
+            return
         if path == "/":
             self.redirect(self.server.url(FILES))
             return

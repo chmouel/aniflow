@@ -141,6 +141,13 @@ def aniflow_server(local_docs, aniflow_servers):
     return aniflow_servers(local_docs)
 
 
+def test_healthz_endpoint(local_docs, aniflow_servers):
+    request = aniflow_servers(local_docs, base="/pub")
+    for path in ("/healthz", "/pub/healthz"):
+        status, _, body = request(path)
+        assert status == 200 and json.loads(body) == {"ok": True}
+
+
 def test_global_search_ui_and_api(local_docs, aniflow_servers):
     request = aniflow_servers(local_docs, base="/pub")
     for path in ("/pub/files/", "/pub/files/README.md"):
