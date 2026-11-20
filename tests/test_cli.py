@@ -994,6 +994,143 @@ def test_uploaded_images_lose_metadata_and_shrink(
     assert status == 415
 
 
+@pytest.mark.skipif(cli.magick_command() is None, reason="ImageMagick is not installed")
+def test_large_images_are_brought_under_two_megabytes(
+    github, local_docs, aniflow_servers, tmp_path
+):
+    noisy = tmp_path / "noise.png"
+    subprocess.run(
+        [
+            *cli.magick_command(),
+            "-seed",
+            "7",
+            "-size",
+            "1400x1000",
+            "xc:skyblue",
+            "+noise",
+            "Random",
+            "-type",
+            "TrueColor",
+            "-depth",
+            "8",
+            str(noisy),
+        ],
+        check=True,
+    )
+    raw = noisy.read_bytes()
+    # Over the stored cap, under the upload cap: the request reaches recompression.
+    assert cli.IMAGE_STORED_MAX < len(raw) <= cli.IMAGE_MAX_BYTES
+    request = folders_server(local_docs, aniflow_servers)
+    alice = sign_in(request, "alice")
+    status, _, body = request(
+        "/notes/upload/alice",
+        method="POST",
+        headers={"Cookie": alice, "Content-Type": "image/png"},
+        body=raw,
+    )
+    assert status == 201
+    made = json.loads(body)
+    assert made["path"].endswith(".webp") and made["markdown"].endswith(".webp)")
+    stored = (local_docs / "alice" / made["path"]).read_bytes()
+    assert len(stored) <= cli.IMAGE_STORED_MAX
+    assert stored[:4] == b"RIFF" and stored[8:12] == b"WEBP"
+    status, headers, _ = request(made["url"])
+    assert status == 200 and headers["Content-Type"] == "image/webp"
+
+
+def fake_magick(monkeypatch, sizes):
+    """Stub ImageMagick: each pass returns a valid-looking image of the next size."""
+    calls = []
+    signatures = {
+        ".png": b"\x89PNG\r\n\x1a\n",
+        ".jpg": b"\xff\xd8\xff",
+        ".webp": b"RIFF\x00\x00\x00\x00WEBP",
+    }
+
+    def run(tool, scratch, source, coder_in, suffix, side, quality, timeout=20):
+        calls.append((coder_in, suffix, side, quality))
+        size = sizes[min(len(calls) - 1, len(sizes) - 1)]
+        head = signatures[suffix]
+        return head + b"\x00" * (size - len(head))
+
+    monkeypatch.setattr(cli, "magick_command", lambda: ["magick"])
+    monkeypatch.setattr(cli, "magick_run", run)
+    return calls
+
+
+def test_image_steps_stop_at_the_first_that_fits(monkeypatch):
+    big = cli.IMAGE_STORED_MAX + 1
+    calls = fake_magick(monkeypatch, [big, big, cli.IMAGE_STORED_MAX])
+    data, suffix = cli.tidy_image(b"\x89PNG\r\n\x1a\n", ".png")
+    assert suffix == ".webp" and len(data) == cli.IMAGE_STORED_MAX
+    # PNG first tries lossless, then WebP; the source is always read as PNG.
+    assert calls == [
+        ("png", ".png", 2560, 0),
+        ("png", ".webp", 2560, 85),
+        ("png", ".webp", 2560, 75),
+    ]
+
+
+def test_image_steps_give_up_after_the_smallest(monkeypatch):
+    calls = fake_magick(monkeypatch, [cli.IMAGE_STORED_MAX + 1])
+    with pytest.raises(cli.ImageTooLarge):
+        cli.tidy_image(b"\xff\xd8\xff", ".jpg")
+    assert [call[2] for call in calls] == [2560, 2560, 2048, 1600, 1280]
+    assert all(call[0] == "jpeg" and call[1] == ".jpg" for call in calls)
+
+
+def test_image_steps_respect_the_budget(monkeypatch):
+    calls = fake_magick(monkeypatch, [cli.IMAGE_STORED_MAX + 1])
+    clock = iter([0.0, 0.0, 30.0, 44.5, 99.0])
+    monkeypatch.setattr(cli.time, "monotonic", lambda: next(clock))
+    with pytest.raises(cli.ImageTooLarge):
+        cli.tidy_image(b"\xff\xd8\xff", ".jpg")
+    # Two passes fit inside the 45 s budget; the third would start with under 1 s left.
+    assert len(calls) == 2
+
+
+def test_gif_is_never_converted(monkeypatch):
+    calls = fake_magick(monkeypatch, [10])
+    assert cli.tidy_image(b"GIF89a", ".gif") == (b"GIF89a", ".gif")
+    with pytest.raises(cli.ImageTooLarge):
+        cli.tidy_image(b"GIF89a" + b"\x00" * cli.IMAGE_STORED_MAX, ".gif")
+    assert calls == []
+
+
+def test_one_conversion_at_a_time(monkeypatch):
+    fake_magick(monkeypatch, [10])
+    assert cli.IMAGE_SLOT.acquire(blocking=False)
+    try:
+        with pytest.raises(cli.ImageBusy):
+            cli.tidy_image(b"\xff\xd8\xff", ".jpg")
+    finally:
+        cli.IMAGE_SLOT.release()
+
+
+def test_without_imagemagick_large_images_are_refused(
+    github, local_docs, aniflow_servers, monkeypatch
+):
+    monkeypatch.setattr(cli, "magick_command", lambda: None)
+    request = folders_server(local_docs, aniflow_servers)
+    alice = sign_in(request, "alice")
+    big = b"\x89PNG\r\n\x1a\n" + b"\x00" * (cli.IMAGE_STORED_MAX + 1)
+    status, _, body = request(
+        "/notes/upload/alice",
+        method="POST",
+        headers={"Cookie": alice, "Content-Type": "image/png"},
+        body=big,
+    )
+    assert status == 413 and "2 MB" in json.loads(body)["error"]
+    gif = b"GIF89a" + b"\x00" * (cli.IMAGE_STORED_MAX + 1)
+    status, _, _ = request(
+        "/notes/upload/alice",
+        method="POST",
+        headers={"Cookie": alice, "Content-Type": "image/gif"},
+        body=gif,
+    )
+    assert status == 413
+
+
 def test_image_upload_validates_auth_magic_and_symlinks(
     github, local_docs, aniflow_servers
 ):

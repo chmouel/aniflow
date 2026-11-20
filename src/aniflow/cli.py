@@ -243,58 +243,138 @@ def magick_command() -> list[str] | None:
     return None
 
 
-# The ImageMagick coder for each accepted suffix; GIF is left alone to keep animations.
+# The ImageMagick coder for each suffix it rewrites; GIF is left alone to keep animations.
 MAGICK_CODERS = {".png": "png", ".jpg": "jpeg", ".webp": "webp"}
 IMAGE_MAX_SIDE = 2560
+IMAGE_STORED_MAX = 2 * 1024**2
+# Seconds of ImageMagick work one upload may use before it is refused.
+IMAGE_BUDGET = 45
+# ImageMagick's limits cap its pixel cache, not the process, so only one conversion runs
+# at a time; another upload meanwhile is told to retry rather than queued.
+IMAGE_SLOT = threading.Semaphore(1)
+# Tried in order until the result fits IMAGE_STORED_MAX: (suffix, longest side, quality).
+# PNG keeps its format while lossless compression is enough, then becomes WebP.
+IMAGE_STEPS = {
+    ".png": [(".png", 2560, 0), (".webp", 2560, 85), (".webp", 2560, 75)],
+    ".jpg": [(".jpg", 2560, 85), (".jpg", 2560, 75)],
+    ".webp": [(".webp", 2560, 85), (".webp", 2560, 75)],
+}
+IMAGE_SHRINK = [(2048, 72), (1600, 68), (1280, 62)]
+# Per-format settings that trade CPU for a smaller file.
+MAGICK_SMALLER = {
+    "png": [
+        "-define",
+        "png:compression-level=9",
+        "-define",
+        "png:compression-filter=5",
+    ],
+    "jpeg": ["-sampling-factor", "4:2:0", "-interlace", "JPEG"],
+    "webp": ["-define", "webp:method=6"],
+}
 
 
-def tidy_image(raw: bytes, suffix: str) -> bytes:
-    """Strip metadata (GPS and camera details), fix the rotation, shrink anything over
-    IMAGE_MAX_SIDE and recompress, when ImageMagick is installed; without it the bytes
-    come back untouched. ImageMagick reads untrusted data here, so the input format is
-    forced to the one the magic bytes showed and its resources are capped. A failure
-    raises ValueError, so the upload is refused rather than stored unprocessed."""
-    coder = MAGICK_CODERS.get(suffix)
+class ImageTooLarge(ValueError):
+    """The image cannot be brought under IMAGE_STORED_MAX."""
+
+
+class ImageBusy(ValueError):
+    """Another upload is being converted; this one should be retried."""
+
+
+def magick_run(
+    tool: list[str],
+    scratch: str,
+    source: Path,
+    coder_in: str,
+    suffix: str,
+    side: int,
+    quality: int,
+    timeout: float = 20,
+) -> bytes:
+    """One ImageMagick pass: strip, turn upright, fit inside side px, recompress."""
+    coder = MAGICK_CODERS[suffix]
+    result = Path(scratch) / f"out-{side}-{quality}{suffix}"
+    # width and height refuse an oversized image at decode time; the rest keep the
+    # pixel cache small enough for a Raspberry Pi with a 512 MB container.
+    limits = ["-limit", "width", "12000", "-limit", "height", "12000"]
+    limits += ["-limit", "memory", "64MiB", "-limit", "map", "128MiB"]
+    limits += ["-limit", "disk", "256MiB", "-limit", "thread", "1"]
+    limits += ["-limit", "time", str(max(1, int(timeout)))]
+    command = [
+        *tool,
+        *limits,
+        f"{coder_in}:{source}",
+        "-auto-orient",
+        "-strip",
+        "-resize",
+        f"{side}x{side}>",
+        *(["-quality", str(quality)] if quality else []),
+        *MAGICK_SMALLER[coder],
+        f"{coder}:{result}",
+    ]
+    subprocess.run(
+        command,
+        cwd=scratch,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=timeout,
+        check=True,
+        env={"PATH": os.environ.get("PATH", ""), "MAGICK_TMPDIR": scratch},
+    )
+    return result.read_bytes()
+
+
+def tidy_image(raw: bytes, suffix: str) -> tuple[bytes, str]:
+    """The image to store and its suffix: no metadata (camera details, GPS position),
+    upright, at most IMAGE_MAX_SIDE px and under IMAGE_STORED_MAX, shrinking step by
+    step only as far as needed. ImageMagick reads untrusted data here, so the input
+    format is forced to the one the magic bytes showed and its resources are capped; a
+    failure raises ValueError so the upload is refused rather than stored unprocessed.
+    Without ImageMagick, or for a GIF, the bytes are kept as they are if small enough."""
     tool = magick_command()
-    if coder is None or tool is None:
-        return raw
-    with tempfile.TemporaryDirectory(prefix="aniflow-img-") as scratch:
-        source = Path(scratch) / f"in{suffix}"
-        result = Path(scratch) / f"out{suffix}"
-        source.write_bytes(raw)
-        limits = ["-limit", "memory", "128MiB", "-limit", "map", "256MiB"]
-        limits += ["-limit", "disk", "1GiB", "-limit", "area", "128MP"]
-        limits += ["-limit", "time", "15"]
-        quality = ["-quality", "85"] if coder in ("jpeg", "webp") else []
-        command = [
-            *tool,
-            *limits,
-            f"{coder}:{source}",
-            "-auto-orient",
-            "-strip",
-            "-resize",
-            f"{IMAGE_MAX_SIDE}x{IMAGE_MAX_SIDE}>",
-            *quality,
-            f"{coder}:{result}",
-        ]
-        try:
-            subprocess.run(
-                command,
-                cwd=scratch,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=20,
-                check=True,
-                env={"PATH": os.environ.get("PATH", ""), "MAGICK_TMPDIR": scratch},
+    if suffix not in MAGICK_CODERS or tool is None:
+        if len(raw) > IMAGE_STORED_MAX:
+            raise ImageTooLarge(
+                "images are limited to 2 MB"
+                + ("" if suffix != ".gif" else " (GIFs are stored as they are)")
             )
-            data = result.read_bytes()
-        except (OSError, subprocess.SubprocessError) as error:
-            raise ValueError("could not process the image") from error
-    mime = next(name for name, ending in IMAGE_TYPES.items() if ending == suffix)
-    if image_suffix(mime, data) != suffix:
-        raise ValueError("could not process the image")
-    return data
+        return raw, suffix
+    steps = IMAGE_STEPS[suffix]
+    lossy = steps[-1][0]
+    steps = steps + [(lossy, side, quality) for side, quality in IMAGE_SHRINK]
+    if not IMAGE_SLOT.acquire(blocking=False):
+        raise ImageBusy("another image is being processed, try again in a moment")
+    try:
+        deadline = time.monotonic() + IMAGE_BUDGET
+        with tempfile.TemporaryDirectory(prefix="aniflow-img-") as scratch:
+            source = Path(scratch) / f"in{suffix}"
+            source.write_bytes(raw)
+            for ending, side, quality in steps:
+                remaining = deadline - time.monotonic()
+                if remaining <= 1:
+                    break
+                try:
+                    data = magick_run(
+                        tool,
+                        scratch,
+                        source,
+                        MAGICK_CODERS[suffix],
+                        ending,
+                        side,
+                        quality,
+                        timeout=min(20, remaining),
+                    )
+                except (OSError, subprocess.SubprocessError) as error:
+                    raise ValueError("could not process the image") from error
+                mime = next(name for name, end in IMAGE_TYPES.items() if end == ending)
+                if image_suffix(mime, data) != ending:
+                    raise ValueError("could not process the image")
+                if len(data) <= IMAGE_STORED_MAX:
+                    return data, ending
+    finally:
+        IMAGE_SLOT.release()
+    raise ImageTooLarge("could not bring the image under 2 MB")
 
 
 def image_suffix(content_type: str, data: bytes) -> str | None:
@@ -1394,7 +1474,15 @@ refuse the change when someone edited the note in between.
             )
             return
         try:
-            raw = tidy_image(raw, suffix)
+            raw, suffix = tidy_image(raw, suffix)
+        except ImageTooLarge as error:
+            self.send_json({"error": str(error)}, status=413)
+            return
+        except ImageBusy as error:
+            self.send_json(
+                {"error": str(error)}, status=503, headers={"Retry-After": "5"}
+            )
+            return
         except ValueError as error:
             self.send_json({"error": str(error)}, status=415)
             return

@@ -135,11 +135,14 @@ Add `--user-folders` (requires `--github-oauth`):
   Hidden files are never listed, served, or writable from the web.
 - The editor takes images by paste, drag-drop or its **Image** button and saves
   them to `<folder>/images/`. PNG, JPEG, WebP and GIF up to 10 MB are
-  accepted. When ImageMagick (`magick` or `convert`) is installed, aniflow
-  strips their metadata (camera details and GPS position), fixes the rotation,
-  shrinks anything wider or taller than 2560 px and recompresses JPEG and
-  WebP. GIFs are stored as they are, to keep animations. Install ImageMagick
-  in the container image to get this (the Docker example below does).
+  accepted, and nothing over 2 MB is stored. When ImageMagick (`magick` or
+  `convert`) is installed, aniflow strips their metadata (camera details and
+  GPS position), fixes the rotation, fits them inside 2560 px and recompresses
+  them, stepping down quality and size only as far as needed to get under
+  2 MB. A PNG keeps its format while lossless compression is enough, and
+  becomes WebP otherwise. GIFs are stored as they are, to keep animations,
+  and refused over 2 MB; without ImageMagick, so is any image over 2 MB.
+  Install ImageMagick in the container image (the Docker example below does).
 - Writes refuse symlinks anywhere along the path, refuse files at the top level
   of the served root, and check a content-hash version under a lock so
   concurrent saves return `409 Conflict` instead of overwriting each other.
