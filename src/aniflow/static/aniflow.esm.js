@@ -3204,8 +3204,11 @@ function initReview() {
         updateDock();
       }, 3e3);
       updateDock();
+    }, openCount = function() {
+      const closed = new Set(view.comments.filter((c) => !c.parent && c.resolved).map((c) => c.id));
+      return view.comments.filter((c) => !c.resolved && !closed.has(c.parent)).length;
     }, redraw = function() {
-      const count = view.comments.length;
+      const count = openCount();
       badge.textContent = String(count);
       badge.hidden = !count;
       const label = count ? reviewName + ", " + plural(count) : reviewName;
@@ -3326,7 +3329,7 @@ function initReview() {
       remember();
       paint();
     }, updateDock = function() {
-      const count = view.comments.length;
+      const count = openCount();
       host.dock.classList.toggle("error", message.startsWith("!"));
       if (message) dockText.textContent = message.replace(/^!/, "");
       else if (selection) dockText.textContent = range(selection.start, selection.end) + " selected";
@@ -3486,11 +3489,26 @@ function initReview() {
       remove.innerHTML = ICON_DELETE;
       remove.title = "Delete";
       remove.setAttribute("aria-label", "Delete");
-      if (mine(comment)) {
-        const tools = make("span", "review-tools");
-        tools.append(edit, remove);
-        head.append(tools);
+      const tools = make("span", "review-tools");
+      if (!isReply && canResolve()) {
+        const resolve = make("button", "review-icon-btn review-resolve-btn");
+        resolve.innerHTML = ICON_CHECK;
+        resolve.title = comment.resolved ? "Reopen thread" : "Resolve thread";
+        resolve.setAttribute("aria-label", resolve.title);
+        resolve.addEventListener("click", async () => {
+          resolve.disabled = true;
+          try {
+            await post("resolve", "?id=" + encodeURIComponent(comment.id), { resolved: !comment.resolved });
+            notify(comment.resolved ? "Thread reopened" : "Thread resolved");
+          } catch (error) {
+            resolve.disabled = false;
+            notify("!Update failed: " + (error.message || error));
+          }
+        });
+        tools.append(resolve);
       }
+      if (mine(comment)) tools.append(edit, remove);
+      if (tools.childElementCount) head.append(tools);
       box.append(head);
       if (!isReply && comment.outdated) {
         box.append(make("p", "review-note", "These lines changed after the comment. It was written on:"));
@@ -3538,6 +3556,42 @@ function initReview() {
       });
       return box;
     }, card = function(comment, replies) {
+      if (comment.resolved) {
+        const item2 = make("section", "review-comment review-resolved");
+        const bar = make("div", "review-resolved-bar");
+        const tag = make("span", "review-resolved-label", "Resolved \xB7 " + (comment.author ? "@" + comment.author + " \xB7 " : "") + range(comment.start, comment.end));
+        const toggle = make("button", "review-resolved-toggle", "Show");
+        const details = make("div", "review-resolved-body");
+        details.hidden = true;
+        details.append(renderEntry(comment, false));
+        if (replies.length) {
+          const list = make("div", "review-replies");
+          for (const reply of replies) list.append(renderEntry(reply, true));
+          details.append(list);
+        }
+        toggle.addEventListener("click", () => {
+          details.hidden = !details.hidden;
+          toggle.textContent = details.hidden ? "Show" : "Hide";
+          arrange();
+        });
+        bar.append(tag, toggle);
+        if (canResolve()) {
+          const reopen = make("button", "review-resolved-toggle", "Reopen");
+          reopen.addEventListener("click", async () => {
+            reopen.disabled = true;
+            try {
+              await post("resolve", "?id=" + encodeURIComponent(comment.id), { resolved: false });
+              notify("Thread reopened");
+            } catch (error) {
+              reopen.disabled = false;
+              notify("!Update failed: " + (error.message || error));
+            }
+          });
+          bar.append(reopen);
+        }
+        item2.append(bar, details);
+        return item2;
+      }
       const item = make("section", "review-comment" + (comment.outdated ? " outdated" : ""));
       item.append(renderEntry(comment, false));
       if (replies.length) {
@@ -3709,6 +3763,8 @@ function initReview() {
     const ICON_EDIT = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M11.3 2.5a1.5 1.5 0 0 1 2.2 2.2L5.4 12.8 2.5 13.5l.7-2.9Z"/></svg>';
     const ICON_DELETE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M2.5 4.2h11M6 4.2V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.2M4 4.2l.7 8.6a1.2 1.2 0 0 0 1.2 1.2h4.2a1.2 1.2 0 0 0 1.2-1.2l.7-8.6"/></svg>';
     const ICON_REPLY = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M6 4.5 2.5 8 6 11.5M3 8h6.5a4 4 0 0 1 4 4v.5"/></svg>';
+    const ICON_CHECK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 8.5 6.3 11.8 13 4.5"/></svg>';
+    const canResolve = () => !gated || Boolean(me);
     const badge = host.reviewToggle.querySelector(".count");
     const dockText = host.dock.querySelector(".review-dock-text");
     const commentButton = host.dock.querySelector('[data-review="comment"]');
@@ -3797,7 +3853,7 @@ function initReview() {
     host.dock.querySelector('[data-review="done"]').addEventListener("click", leave);
     copyButton.addEventListener("click", async () => {
       const done = promptText ? await copyText(promptText) : false;
-      notify(done ? "Copied " + plural(view.comments.length) + " as a prompt" : "!Copy failed");
+      notify(done ? "Copied " + plural(openCount()) + " as a prompt" : "!Copy failed");
     });
     document.addEventListener("keydown", (event) => {
       if (reviewing && event.key === "Escape" && selection && !composer && !event.target.closest("textarea")) clear();

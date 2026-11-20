@@ -50,6 +50,7 @@ def entry_valid(entry: object) -> bool:
         and isinstance(entry.get("author", ""), str)
         and isinstance(entry.get("author_id", 0), int)
         and ("parent" not in entry or isinstance(entry["parent"], str))
+        and ("resolved" not in entry or isinstance(entry["resolved"], bool))
         and isinstance(entry.get("quote"), list)
         and all(isinstance(line, str) for line in entry["quote"])
         and all(
@@ -121,6 +122,7 @@ def anchor(entry: dict, lines: list[str]) -> dict:
             "author",
             "author_id",
             "parent",
+            "resolved",
         )
         if key in entry
     }
@@ -171,8 +173,10 @@ def prompt(view: dict, app: str = "aniflow") -> str:
     for comment in view["comments"]:
         if parent := comment.get("parent"):
             replies.setdefault(parent, []).append(comment)
-        else:
+        elif not comment.get("resolved"):
             roots.append(comment)
+    if not roots:
+        return f"No review comments on {name}.\n"
     for comment in roots:
         where = (
             str(comment["start"])
@@ -228,7 +232,7 @@ def change(
 
     author and author_id name who is asking: a comment belongs to the account that wrote
     it, and only that account, or admin, may change it afterwards."""
-    if action != "delete":
+    if action not in ("delete", "resolve"):
         if not isinstance(data, dict) or not isinstance(data.get("body"), str):
             return "body must be a string"
         body = data["body"].strip()
@@ -307,16 +311,30 @@ def change(
             )
             if index is None:
                 return "not found"
-            if not admin and entries[index].get("author_id", 0) != author_id:
-                return "not yours"
-            if action == "delete":
-                removed = entries[index]["id"]
-                entries = [
-                    entry
-                    for entry in entries
-                    if entry["id"] != removed and entry.get("parent") != removed
-                ]
+            if action == "resolve":
+                if entries[index].get("parent"):
+                    return "only top-level comments can be resolved"
+                if data is None:
+                    flag = not bool(entries[index].get("resolved"))
+                elif isinstance(data, dict) and isinstance(data.get("resolved"), bool):
+                    flag = data["resolved"]
+                else:
+                    return "resolved must be true or false"
+                updated = {**entries[index], "resolved": flag}
+                if not flag:
+                    updated.pop("resolved", None)
+                entries[index] = updated
             else:
-                entries[index] = {**entries[index], "body": body, "updated": now}
+                if not admin and entries[index].get("author_id", 0) != author_id:
+                    return "not yours"
+                if action == "delete":
+                    removed = entries[index]["id"]
+                    entries = [
+                        entry
+                        for entry in entries
+                        if entry["id"] != removed and entry.get("parent") != removed
+                    ]
+                else:
+                    entries[index] = {**entries[index], "body": body, "updated": now}
         save(storage, entries, create_parents=create_parents, allowed=allowed)
     return None

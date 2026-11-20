@@ -361,6 +361,13 @@
   .reader .markdown-body .review-reply-btn svg { width:14px; height:14px; }
   .reader .markdown-body .review-reply-box { margin-top:10px; padding-top:10px; border-top:1px solid var(--borderColor-muted); }
   .reader .markdown-body .review-reply-box .review-form textarea { min-height:4.2em; font-size:14px; }
+  .reader .markdown-body .review-resolved { padding:8px 12px; opacity:.78; }
+  .reader .markdown-body .review-resolved:hover { opacity:1; }
+  .reader .markdown-body .review-resolved-bar { display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--fgColor-muted); }
+  .reader .markdown-body .review-resolved-label { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .reader .markdown-body .review-resolved-toggle { padding:2px 8px; border:1px solid var(--borderColor-default); border-radius:6px; background:none; color:var(--fgColor-muted); font:600 12px/1.4 system-ui,sans-serif; cursor:pointer; }
+  .reader .markdown-body .review-resolved-toggle:hover { color:var(--fgColor-default); border-color:var(--fgColor-muted); }
+  .reader .markdown-body .review-resolved-body { margin-top:10px; padding-top:10px; border-top:1px solid var(--borderColor-muted); }
   .reader .markdown-body .review-note { margin:0 0 6px; color:var(--fgColor-attention); font-size:13px; font-weight:600; }
   .reader .markdown-body .review-quote { margin:0 0 8px; padding:8px 10px; border:1px solid var(--borderColor-muted); border-radius:8px; background:var(--bgColor-default); color:var(--fgColor-muted); font:12.5px/1.5 var(--mono); white-space:pre-wrap; overflow-wrap:anywhere; }
   .reader .markdown-body .review-composer { padding:12px; border:1px solid color-mix(in srgb, var(--fgColor-accent) 45%, var(--borderColor-default)); border-radius:12px; background:var(--bgColor-muted); }

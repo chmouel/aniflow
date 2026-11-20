@@ -1232,6 +1232,31 @@ def test_comment_replies_are_one_level_only(aniflow_server):
     # Prompt groups the reply under its root.
     status, _, prompt_body = aniflow_server("/comments/file/README.md?format=prompt")
     assert status == 200 and b"Root question\n  \xe2\x86\xb3 First reply" in prompt_body
+    # Resolving hides the thread from the agent prompt; resolving a reply is refused.
+    status, _, body = aniflow_server(
+        f"/comments/resolve/file/README.md?id={reply['id']}",
+        method="POST",
+        headers={"Content-Type": "application/json"},
+        body=json.dumps({"resolved": True}),
+    )
+    assert status == 400 and "top-level" in json.loads(body)["error"]
+    status, _, body = aniflow_server(
+        f"/comments/resolve/file/README.md?id={root_id}",
+        method="POST",
+        headers={"Content-Type": "application/json"},
+        body=json.dumps({"resolved": True}),
+    )
+    assert status == 200 and json.loads(body)["comments"][0]["resolved"] is True
+    status, _, prompt_body = aniflow_server("/comments/file/README.md?format=prompt")
+    assert b"No review comments" in prompt_body
+    # Reopening brings it back into the prompt.
+    status, _, body = aniflow_server(
+        f"/comments/resolve/file/README.md?id={root_id}",
+        method="POST",
+        headers={"Content-Type": "application/json"},
+        body=json.dumps({"resolved": False}),
+    )
+    assert status == 200 and "resolved" not in json.loads(body)["comments"][0]
     # Deleting the root removes its replies too.
     status, _, body = aniflow_server(
         f"/comments/delete/file/README.md?id={root_id}", method="POST"

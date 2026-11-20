@@ -195,14 +195,14 @@ class Handler(BaseHTTPRequestHandler):
     ) -> None:
         """POST /comments/<add|edit|delete>/...: options go to comments.change()."""
         action = parsed.path.removeprefix("/comments/").partition("/")[0]
-        if action not in ("add", "edit", "delete"):
+        if action not in ("add", "edit", "delete", "resolve"):
             self.send_json({"error": "not found"}, status=404)
             return
         if path is None or not is_markdown(path.name):
             self.send_json({"error": "not found"}, status=404)
             return
         data: object = None
-        if action != "delete":
+        if action not in ("delete", "resolve"):
             body = self.read_body(comments.COMMENT_MAX_CHARS * 4 + 1024)
             if body is None:
                 self.send_json({"error": "request too large"}, status=413)
@@ -212,6 +212,17 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 self.send_json({"error": "body must be JSON"}, status=400)
                 return
+        elif action == "resolve":
+            body = self.read_body(1024)
+            if body is None:
+                self.send_json({"error": "request too large"}, status=413)
+                return
+            if body:
+                try:
+                    data = json.loads(body)
+                except ValueError:
+                    self.send_json({"error": "body must be JSON"}, status=400)
+                    return
         comment_id = (parse_qs(parsed.query).get("id") or [""])[-1]
         try:
             error = comments.change(path, action, comment_id, data, storage, **options)
