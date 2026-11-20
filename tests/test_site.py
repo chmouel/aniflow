@@ -23,7 +23,8 @@ def test_gallery_and_template_editor(tmp_path):
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    with open(os.devnull, "w") as log:
+    chrome_log = tmp_path / "chrome.log"
+    with chrome_log.open("w+", encoding="utf-8") as log:
         process, client = export.launch(export.chrome(), "about:blank", tmp_path, log)
         try:
             target = next(

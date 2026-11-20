@@ -804,15 +804,18 @@ def launch(
     since a preexec_fn is unsafe next to the server's thread."""
     to_chrome = os.pipe()
     from_chrome = os.pipe()
-    reader = fcntl.fcntl(to_chrome[0], fcntl.F_DUPFD, 10)
-    writer = fcntl.fcntl(from_chrome[1], fcntl.F_DUPFD, 10)
+    # dash (Ubuntu's /bin/sh) reserves fds >= 10 for its own internal use, so
+    # keep the temporary descriptors below 10 when possible and prefer bash.
+    reader = fcntl.fcntl(to_chrome[0], fcntl.F_DUPFD, 5)
+    writer = fcntl.fcntl(from_chrome[1], fcntl.F_DUPFD, 5)
     os.close(to_chrome[0])
     os.close(from_chrome[1])
     args = command(browser, url, profile)
     args.insert(-1, "--remote-debugging-pipe")
+    shell = shutil.which("bash") or "/bin/sh"
     try:
         process = subprocess.Popen(
-            ["/bin/sh", "-c", f'exec "$0" "$@" 3<&{reader} 4>&{writer}', *args],
+            [shell, "-c", f'exec "$0" "$@" 3<&{reader} 4>&{writer}', *args],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=log,
