@@ -41,6 +41,14 @@ BRAND_CSS = """
     background:linear-gradient(96deg, var(--aniflow-ice) 6%, var(--aniflow-cyan) 38%, var(--aniflow-violet) 68%, var(--aniflow-pink) 96%);
     -webkit-background-clip:text; background-clip:text; color:transparent;
   }
+  /* Ice and bright cyan vanish on white; light mode uses deep indigo-to-magenta instead. */
+  html[data-mode="light"] .aniflow-brand .brand-word {
+    background:linear-gradient(96deg, #16133a 0%, #3730a3 36%, #7c3aed 70%, #db2777 100%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  html[data-mode="light"] .aniflow-brand .brand-logo {
+    filter:drop-shadow(0 3px 10px rgba(22, 19, 58, .16));
+  }
   @media (prefers-reduced-motion:no-preference) {
     .aniflow-brand .brand-logo, .aniflow-brand .brand-word { transition:filter .2s; }
     .aniflow-brand:hover .brand-word { filter:drop-shadow(0 0 10px color-mix(in srgb, var(--aniflow-pink) 30%, transparent)); }

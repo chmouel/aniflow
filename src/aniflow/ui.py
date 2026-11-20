@@ -12,6 +12,14 @@ SEARCH_ICON = '<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true
 
 DIRECTORY_CSS = """
   .aniflow-browser { --folder-color:var(--fgColor-attention); --document-color:var(--fgColor-accent); }
+  html[data-mode="light"] body.aniflow-browser { background:var(--bgColor-muted); }
+  html[data-mode="light"] .aniflow-browser .bar { background:color-mix(in srgb, var(--bgColor-default) 88%, transparent); }
+  html[data-mode="light"] .aniflow-browser .browser-toolbar { background:var(--bgColor-default); box-shadow:0 1px 2px color-mix(in srgb, var(--fgColor-default) 6%, transparent); }
+  html[data-mode="light"] .aniflow-browser .folder-sort select { background:var(--bgColor-default); }
+  html[data-mode="light"] .aniflow-browser .folders-list a { background:var(--bgColor-default); box-shadow:0 1px 3px color-mix(in srgb, var(--fgColor-default) 7%, transparent); }
+  html[data-mode="light"] .aniflow-browser .folders-list a:hover { box-shadow:0 6px 16px color-mix(in srgb, var(--fgColor-default) 10%, transparent); }
+  html[data-mode="light"] .aniflow-browser .documents-list { background:var(--bgColor-default); box-shadow:0 1px 3px color-mix(in srgb, var(--fgColor-default) 6%, transparent); }
+  html[data-mode="light"] .aniflow-browser .browser-empty { background:var(--bgColor-default); }
   .aniflow-browser .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
   .aniflow-browser .browser-shell { width:min(100%, 1120px); margin:0 auto; padding:34px 40px 80px; }
   .aniflow-browser .browser-masthead { display:flex; align-items:center; justify-content:space-between; gap:32px; padding-bottom:30px; margin-bottom:28px; border-bottom:1px solid var(--borderColor-default); }

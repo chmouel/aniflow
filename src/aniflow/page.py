@@ -111,7 +111,7 @@ def reader_page(
     style: str = "",
     body_class: str = "",
     favicon: str = "data:,",
-    theme_default: str = "auto",
+    theme_default: str = "dark",
     theme_key: str = "aniflow-theme",
     theme: bool = False,
     before: str = "",

@@ -407,7 +407,7 @@ def directory_page(
         f"{NEXT_ICON}</a>"
     )
     body = f"""<!doctype html>
-<html lang="en" data-theme-default="auto"><head><meta charset="utf-8">
+<html lang="en" data-theme-default="dark"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark"><title>{html.escape(title)} · {html.escape(brand_name)}</title>
 <link rel="icon" href="{html.escape(favicon(brand_name, icon or logo))}">{theme_script(nonce)}
