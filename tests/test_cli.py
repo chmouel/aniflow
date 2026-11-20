@@ -586,6 +586,141 @@ def test_sign_out_returns_to_the_page(github, local_docs, aniflow_servers):
     assert headers["Location"] == "/files/"
 
 
+def folders_server(local_docs, aniflow_servers):
+    return aniflow_servers(
+        local_docs,
+        signin=oauth.SignIn("client-id", "s", "signing-key", admin="boss"),
+        user_folders=True,
+    )
+
+
+def save(request, cookie, key, text, version=""):
+    status, _, body = request(
+        f"/notes/save/{key}",
+        method="POST",
+        headers={"Cookie": cookie, "Content-Type": "application/json"},
+        body=json.dumps({"text": text, "version": version}),
+    )
+    return status, json.loads(body or b"{}")
+
+
+def test_first_sign_in_makes_a_folder(github, local_docs, aniflow_servers):
+    request = folders_server(local_docs, aniflow_servers)
+    sign_in(request, "alice")
+    welcome = local_docs / "alice" / "welcome.md"
+    assert "# Welcome, alice" in welcome.read_text()
+    welcome.write_text("mine now")
+    sign_in(request, "alice")
+    assert welcome.read_text() == "mine now"
+
+
+def test_members_write_their_own_folder(github, local_docs, aniflow_servers):
+    request = folders_server(local_docs, aniflow_servers)
+    alice, bob = sign_in(request, "alice"), sign_in(request, "bob")
+    status, answer = save(request, alice, "alice/plan.md", "# Plan\n")
+    assert status == 200 and answer["url"] == "/files/alice/plan.md"
+    assert (local_docs / "alice" / "plan.md").read_text() == "# Plan\n"
+    version = answer["version"]
+    # A save from a stale editor is refused rather than overwriting.
+    assert save(request, alice, "alice/plan.md", "lost", "old")[0] == 409
+    status, answer = save(request, alice, "alice/plan.md", "# Plan v2\n", version)
+    assert status == 200
+    # bob reads it but cannot change it, and nobody writes without signing in.
+    assert request("/files/alice/plan.md")[0] == 200
+    assert save(request, bob, "alice/plan.md", "x", answer["version"])[0] == 403
+    status, _, _ = request(
+        "/notes/save/alice/plan.md",
+        method="POST",
+        headers={"Content-Type": "application/json"},
+        body='{"text": "x"}',
+    )
+    assert status == 401
+    # The admin may change anyone's notes.
+    boss = sign_in(request, "boss")
+    assert save(request, boss, "alice/plan.md", "fixed", answer["version"])[0] == 200
+    status, _, _ = request(
+        "/notes/delete/alice/plan.md",
+        method="POST",
+        headers={"Cookie": alice, "Content-Type": "application/json"},
+        body=json.dumps({"version": oauth.hashlib.sha256(b"fixed").hexdigest()}),
+    )
+    assert status == 200 and not (local_docs / "alice" / "plan.md").exists()
+
+
+def test_a_marked_folder_is_open_to_every_member(github, local_docs, aniflow_servers):
+    request = folders_server(local_docs, aniflow_servers)
+    bob = sign_in(request, "bob")
+    (local_docs / "pac").mkdir()
+    assert save(request, bob, "pac/notes.md", "x")[0] == 403
+    (local_docs / "pac" / cli.SHARED_MARK).write_text("")
+    assert save(request, bob, "pac/notes.md", "x")[0] == 200
+    assert save(request, bob, "pac/deep/er.md", "y")[0] == 200
+    # The mark itself is hidden: neither listed, served nor writable.
+    assert request("/files/pac/" + cli.SHARED_MARK)[0] == 404
+    assert cli.SHARED_MARK.encode() not in request("/files/pac/")[2]
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "top.md",
+        "alice/.hidden.md",
+        "alice/../bob/x.md",
+        "alice/script.js",
+        "alice/notes.txt",
+        "%2Fetc%2Fpasswd.md",
+    ],
+)
+def test_only_markdown_inside_a_folder_is_written(
+    github, local_docs, aniflow_servers, key
+):
+    request = folders_server(local_docs, aniflow_servers)
+    boss = sign_in(request, "boss")
+    assert save(request, boss, key, "x")[0] == 404
+
+
+def test_symlink_out_of_the_folder_is_refused(
+    github, local_docs, aniflow_servers, tmp_path
+):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    request = folders_server(local_docs, aniflow_servers)
+    boss = sign_in(request, "boss")
+    (local_docs / "alice").mkdir(exist_ok=True)
+    (local_docs / "alice" / "out").symlink_to(outside)
+    assert save(request, boss, "alice/out/x.md", "x")[0] == 404
+    assert not (outside / "x.md").exists()
+
+
+def test_editor_and_its_links(github, local_docs, aniflow_servers):
+    request = folders_server(local_docs, aniflow_servers)
+    status, headers, _ = request("/files/alice/new.md?edit")
+    assert status == 302 and "/auth/github/start?next=" in headers["Location"]
+    alice, bob = sign_in(request, "alice"), sign_in(request, "bob")
+    status, _, body = request("/files/alice/new.md?edit", headers={"Cookie": alice})
+    assert status == 200 and b'id="editor-text"' in body and b"# new" in body
+    assert b'id="editor-delete"' not in body
+    assert request("/files/alice/new.md?edit", headers={"Cookie": bob})[0] == 403
+    # Edit on your notes, New note in your folder, My folder in the account menu.
+    _, _, body = request("/files/alice/welcome.md", headers={"Cookie": alice})
+    assert b'href="/files/alice/welcome.md?edit">Edit</a>' in body
+    assert b'href="/files/alice/">My folder</a>' in body
+    _, _, body = request("/files/alice/welcome.md", headers={"Cookie": bob})
+    assert b">Edit</a>" not in body
+    _, _, body = request("/files/alice/", headers={"Cookie": alice})
+    assert b'id="new-note"' in body
+    _, _, body = request("/files/alice/", headers={"Cookie": bob})
+    assert b'id="new-note"' not in body
+
+
+def test_user_folders_need_github(tmp_path, monkeypatch, capsys):
+    monkeypatch.delenv("ANIFLOW_GITHUB_CLIENT_ID", raising=False)
+    monkeypatch.setattr("sys.argv", ["aniflow", str(tmp_path), "--user-folders"])
+    with pytest.raises(SystemExit, match="2"):
+        cli.main()
+    assert "--github-oauth" in capsys.readouterr().err
+
+
 def test_sign_out_clears_the_cookie(github, local_docs, aniflow_servers):
     request = signin_servers(local_docs, aniflow_servers)
     status, headers, _ = request("/auth/logout")

@@ -106,7 +106,14 @@ account that wrote it, and `--comments-admin LOGIN` may edit anyone's.
 `--github-org ORG` keeps the sign-in to members of a GitHub organisation;
 if the organisation restricts OAuth apps, an owner has to approve yours. Add
 `--base /pub` to mount all of it under a path, or `--no-comments` to turn the
-comments off altogether. Refresh the browser
+comments off altogether.
+
+With `--user-folders` as well, the people who sign in write too: each gets a
+folder named after their GitHub login, with a welcome note showing the
+Markdown and the diagrams, and an **Edit** button on their notes that opens
+the Markdown beside the live page. Everyone reads everything; a folder is
+writable by all members once it holds a `.aniflow-shared` file
+(`touch notes/team/.aniflow-shared`), which the web cannot create. Refresh the browser
 after saving changes to a document.
 
 ## Write a walkthrough

@@ -307,3 +307,115 @@ def human_size(size: int) -> str:
             return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
         value /= 1024
     return f"{value:.1f} TB"
+
+
+# The web editor: Markdown on the left, the rendered page on the right, saved with Ctrl+S.
+EDITOR_CSS = """
+  body.aniflow-editing .page.reader { width:100%; max-width:none; display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); column-gap:32px; align-items:start; padding-inline:max(20px, env(safe-area-inset-left)); }
+  body.aniflow-editing .page.reader > * { grid-column:auto; }
+  body.aniflow-editing .page.reader > .toc { display:none; }
+  body.aniflow-editing .reader .markdown-body { max-width:none; }
+  .editor { position:sticky; top:68px; }
+  .editor textarea { display:block; width:100%; height:calc(100vh - 96px); padding:16px 18px; border:1px solid var(--borderColor-default); border-radius:12px; background:var(--bgColor-muted); color:var(--fgColor-default); font:14px/1.65 ui-monospace,"JetBrains Mono","SF Mono",Menlo,Consolas,monospace; resize:none; tab-size:2; }
+  .editor textarea:focus { outline:2px solid var(--fgColor-accent); outline-offset:-1px; }
+  .editor-status { color:var(--fgColor-muted); font-size:13px; white-space:nowrap; }
+  .editor-status.error { color:var(--fgColor-danger); }
+  .bar nav button.editor-save { padding:5px 14px; border-radius:999px; background:var(--fgColor-accent); color:var(--bgColor-default); }
+  .bar nav button.editor-save:disabled { opacity:.6; }
+  .bar nav button.editor-delete { color:var(--fgColor-danger); }
+  @media (max-width:900px) {
+    body.aniflow-editing .page.reader { grid-template-columns:minmax(0, 1fr); row-gap:24px; }
+    .editor { position:static; }
+    .editor textarea { height:55vh; }
+  }
+  .new-note { display:flex; gap:8px; align-items:center; }
+  .new-note input { width:12em; padding:8px 10px; border:1px solid var(--borderColor-default); border-radius:8px; background:var(--bgColor-default); color:var(--fgColor-default); font:inherit; font-size:14px; }
+  .new-note button { padding:8px 14px; border:0; border-radius:8px; background:var(--fgColor-accent); color:var(--bgColor-default); font:600 14px/1.4 system-ui,sans-serif; cursor:pointer; white-space:nowrap; }
+"""
+
+EDITOR_JS = """
+(() => {
+  const data = JSON.parse(document.getElementById('aniflow-editor').textContent);
+  const area = document.getElementById('editor-text');
+  const status = document.getElementById('editor-status');
+  const saveButton = document.getElementById('editor-save');
+  const back = document.querySelector('.bar > a');
+  let version = data.version;
+  let saved = data.exists ? area.value : null;
+  let timer = 0;
+  const dirty = () => area.value !== saved;
+  function say(text, bad) {
+    status.textContent = text;
+    status.classList.toggle('error', Boolean(bad));
+  }
+  const mark = () => say(dirty() ? 'Unsaved changes' : 'Saved');
+  area.addEventListener('input', () => {
+    mark();
+    clearTimeout(timer);
+    timer = setTimeout(() => window.aniflowReader?.update(area.value), 300);
+  });
+  async function post(url, body) {
+    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const answer = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(answer.error || response.statusText);
+    return answer;
+  }
+  async function save() {
+    saveButton.disabled = true;
+    try {
+      const answer = await post(data.save, { text: area.value, version: version });
+      version = answer.version;
+      saved = area.value;
+      back.href = answer.url;
+      back.textContent = '← View';
+      mark();
+    } catch (error) {
+      say(error.message, true);
+    }
+    saveButton.disabled = false;
+  }
+  saveButton.addEventListener('click', save);
+  document.addEventListener('keydown', (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+      event.preventDefault();
+      save();
+    }
+  });
+  document.getElementById('editor-diagram').addEventListener('click', () => {
+    const start = area.selectionStart;
+    const before = area.value.slice(0, start);
+    const gap = !before || before.endsWith('\\n\\n') ? '' : before.endsWith('\\n') ? '\\n' : '\\n\\n';
+    area.setRangeText(gap + data.example + '\\n', start, area.selectionEnd, 'end');
+    area.focus();
+    area.dispatchEvent(new Event('input'));
+  });
+  document.getElementById('editor-delete')?.addEventListener('click', async () => {
+    if (!confirm('Delete ' + data.name + '? This cannot be undone.')) return;
+    try {
+      await post(data.remove, { version: version });
+      saved = area.value;
+      location.href = data.folder;
+    } catch (error) {
+      say(error.message, true);
+    }
+  });
+  addEventListener('beforeunload', (event) => {
+    if (dirty()) event.preventDefault();
+  });
+  mark();
+})();
+"""
+
+NEW_NOTE_JS = """
+(() => {
+  const input = document.getElementById('new-note-name');
+  function open() {
+    let name = input.value.trim().replace(/\\s+/g, '-');
+    if (!name) return input.focus();
+    if (!/\\.(md|markdown)$/i.test(name)) name += '.md';
+    location.href = location.pathname.replace(/\\/?$/, '/') + encodeURIComponent(name) + '?edit';
+  }
+  document.getElementById('new-note').addEventListener('click', open);
+  input.addEventListener('keydown', (event) => { if (event.key === 'Enter') open(); });
+})();
+"""

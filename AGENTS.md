@@ -83,6 +83,10 @@ the wheel, so `uvx --from git+...` works without Node.
   403 page and no session. With sign-in on, `account_menu()` puts a GitHub
   button at the right end of every page's bar: "Sign in" (back to the same
   page), or the avatar and login with the profile and "Sign out".
+  `--user-folders` gives each member `<root>/<login>/`, made on first
+  sign-in with `templates/welcome.md`; `editor_page()` shows the Markdown in
+  a textarea beside the reader, which `EDITOR_JS` updates through
+  `window.aniflowReader` (set by `BOOT_JS`).
   With `--allow-host` and comments on, `main()` refuses to start without
   `--github-oauth`, so a missing client id cannot open the comments to all.
 - `src/aniflow/web.py`: `Handler`, a `BaseHTTPRequestHandler` with the
@@ -157,7 +161,9 @@ Markdown only), renders a Markdown file, or serves any other file through
 (`?lines=A-B`, `?format=prompt`), and POST `/comments/{add,edit,delete}/...`
 changes them. Comments live in
 `$XDG_CACHE_HOME/aniflow/comments/<root hash>/<document hash>.json`, so
-source files are never written. Any other POST is a 405.
+source files are never written, except with `--user-folders`: then
+`/files/<path>?edit` is the web editor, and POST `/notes/{save,delete}/<path>`
+writes Markdown for a signed-in member (see below). Any other POST is a 405.
 
 ## Reader internals
 
@@ -310,6 +316,13 @@ Keep these when changing code.
   files with `sandbox allow-scripts allow-forms`.
 - Comment text and every walkthrough label reach the page through
   `textContent`, never as HTML.
+- `--user-folders` is the only way the web writes source files. `note_path()`
+  takes `.md`/`.markdown` only, inside a folder (never at the top), with no
+  hidden part and no symlink leading out; `may_write()` allows the member's
+  own `<root>/<login>/`, any folder under one holding a `.aniflow-shared`
+  file, or everything for the admin. A save carries the version it was
+  opened at and is refused (409) when the file changed since. The mark is a
+  hidden file, so the web can never create or remove it.
 - With sign-in on, a comment carries its author's GitHub id and only that
   account, or the admin, may edit or delete it. The session cookie is
   sealed with `ANIFLOW_SIGNIN_SECRET`, so a forged or edited cookie signs

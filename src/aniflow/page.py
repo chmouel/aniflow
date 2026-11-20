@@ -27,7 +27,7 @@ BOOT_JS = """
   const data = (id) => JSON.parse(document.getElementById(id).textContent);
   const options = data('aniflow-options');
   if (options.root) options.resolveImage = options.resolveLink = Aniflow.directoryResolver(options.root, options.base);
-  Aniflow.reader(Object.assign(options, {
+  window.aniflowReader = Aniflow.reader(Object.assign(options, {
     source: data('markdown-source'),
     nonce: document.currentScript.nonce,
     toc: '#toc',

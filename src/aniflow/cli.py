@@ -4,6 +4,7 @@ import argparse
 import base64
 import hashlib
 import html
+import json
 import os
 import re
 import secrets
@@ -22,8 +23,11 @@ from aniflow.brand import BRAND_CSS, DEFAULT, favicon, masthead
 from aniflow.themes import THEME_READER_CSS, theme_script, theme_select
 from aniflow.ui import (
     DIRECTORY_CSS,
+    EDITOR_CSS,
+    EDITOR_JS,
     FOLDER_ICON,
     GITHUB_MARK,
+    NEW_NOTE_JS,
     NOTE_ICON,
     SEARCH_ICON,
     UI_CSS,
@@ -144,7 +148,97 @@ def breadcrumbs(root: Path, path: Path, base: str = "") -> list[tuple[str, str]]
     ]
 
 
-def account_menu(base: str, session: dict | None, here: str) -> str:
+# Writing from the web, with --user-folders: each signed-in member owns <root>/<login>/,
+# and a folder holding this hidden file (and everything under it) is open to all of them.
+SHARED_MARK = ".aniflow-shared"
+NOTE_MAX_BYTES = 1024**2
+WELCOME = Path(__file__).with_name("templates") / "welcome.md"
+LOGIN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})")
+DIAGRAM_EXAMPLE = """```mermaid
+flowchart LR
+  A[Start] --> B[Do the work]
+  B --> C[Done]
+
+%% play: How it goes
+%% A -> B : begin | The first step
+%% B -> C : finish | And it is done
+```"""
+
+
+def note_path(root: Path, key: str) -> Path | None:
+    """A Markdown file the web may write: inside a folder under root (never at the top),
+    no hidden part, and no symlink leading out, whether it exists yet or not."""
+    relative = Path(key)
+    if not key or relative.is_absolute() or "\\" in key or "\x00" in key:
+        return None
+    if any(part in (".", "..") or part.startswith(".") for part in relative.parts):
+        return None
+    if len(relative.parts) < 2 or not web.is_markdown(relative.name):
+        return None
+    path = root / relative
+    try:
+        existing = path.parent
+        while not existing.exists():
+            existing = existing.parent
+        existing.resolve().relative_to(root)
+        if path.is_symlink() or (path.exists() and not path.is_file()):
+            return None
+    except (OSError, ValueError, RuntimeError):
+        return None
+    return path
+
+
+def may_write(root: Path, path: Path, session: dict | None) -> bool:
+    """Whether this signed-in account may change path: its own folder, a shared one, or
+    anything for the admin."""
+    if not session:
+        return False
+    if session.get("admin"):
+        return True
+    relative = path.relative_to(root)
+    if relative.parts[0].lower() == str(session.get("login", "")).lower():
+        return True
+    folder = path.parent
+    while folder != root:
+        if (folder / SHARED_MARK).is_file():
+            return True
+        folder = folder.parent
+    return False
+
+
+def note_version(path: Path) -> str:
+    """What the editor saw: a later save from it must match, so it never overwrites a
+    change made meanwhile. Empty for a note that does not exist yet."""
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except FileNotFoundError:
+        return ""
+
+
+def write_note(path: Path, text: str) -> None:
+    """Replace the note in one step, so a reader never sees half of it."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{secrets.token_hex(4)}.part")
+    temporary.write_text(text, "utf-8")
+    os.replace(temporary, path)
+
+
+def user_folder(root: Path, login: str) -> Path | None:
+    """The member's own folder, made on first sign-in with a welcome note in it."""
+    if not LOGIN.fullmatch(login):
+        return None
+    folder = root / login.lower()
+    if not folder.exists():
+        folder.mkdir()
+        write_note(
+            folder / "welcome.md", WELCOME.read_text("utf-8").replace("{login}", login)
+        )
+    return folder if folder.is_dir() and not folder.is_symlink() else None
+
+
+def account_menu(
+    base: str, session: dict | None, here: str, folders: bool = False
+) -> str:
     """The GitHub account at the end of the bar: a sign-in link back to here, or who is
     signed in with a way out. Empty when the server has no sign-in."""
     back = quote(here, safe="")
@@ -160,7 +254,12 @@ def account_menu(base: str, session: dict | None, here: str) -> str:
         f'<img class="account-avatar" src="{avatar}" alt="">'
         f'<span class="account-login">{login}</span></summary><div class="menu-items">'
         f'<p class="account-who">Signed in as <b>{login}</b></p>'
-        f'<a href="https://github.com/{quote(session.get("login", ""))}">GitHub profile</a>'
+        + (
+            f'<a href="{base}{FILES}{quote(session.get("login", "").lower())}/">My folder</a>'
+            if folders
+            else ""
+        )
+        + f'<a href="https://github.com/{quote(session.get("login", ""))}">GitHub profile</a>'
         f'<a href="{base}/auth/logout?next={back}">Sign out</a></div></details>'
     )
 
@@ -173,6 +272,7 @@ def directory_page(
     logo: str = "",
     icon: str = "",
     account: str = "",
+    new_note: bool = False,
 ) -> tuple[bytes, str]:
     entries = []
     for child in path.iterdir():
@@ -253,6 +353,14 @@ def directory_page(
         f'<a href="{base}/help">Try the demo while you’re here</a></div>'
     )
     description = f'{folders} {"folder" if folders == 1 else "folders"} <span aria-hidden="true">/</span> {documents} {"document" if documents == 1 else "documents"}'
+    new_box = (
+        '<div class="new-note"><input id="new-note-name" placeholder="name.md" '
+        'aria-label="Name of the new note" autocomplete="off">'
+        '<button type="button" id="new-note">New note</button></div>'
+        if new_note
+        else ""
+    )
+    new_script = f'<script nonce="{nonce}">{NEW_NOTE_JS}</script>' if new_note else ""
     # The demo is for a folder with nothing to read yet; once there are notes it is noise.
     demo = (
         ""
@@ -274,8 +382,8 @@ def directory_page(
 <main class="browser-shell"><div class="browser-masthead">{masthead(base, brand_name, logo)}
 {demo}</div>
 <nav class="browser-trail" aria-label="Folders"><ol>{trail}</ol></nav>
-<div class="browser-heading"><div><h1>{title}</h1><p class="folder-summary">{description}</p></div>{parent}</div>
-{content}</main><script nonce="{nonce}">{UI_JS}</script></body></html>"""
+<div class="browser-heading"><div><h1>{title}</h1><p class="folder-summary">{description}</p></div>{new_box}{parent}</div>
+{content}</main><script nonce="{nonce}">{UI_JS}</script>{new_script}</body></html>"""
     return body.encode("utf-8"), nonce
 
 
@@ -294,8 +402,10 @@ def reader_page(
     logo: str = "",
     icon: str = "",
     account: str = "",
+    edit: str = "",
 ) -> tuple[bytes, str]:
-    """A markdown file in the reader, with links kept under root_url."""
+    """A markdown file in the reader, with links kept under root_url. edit is the editor's
+    URL, for a note the reader may change."""
     nonce = secrets.token_urlsafe(16)
     help_link = (
         f'<a class="reader-help" href="{base}/help">Help</a>'
@@ -307,10 +417,17 @@ def reader_page(
         for label, href in links
         if label != "Help"
     )
-    actions = help_link + (
-        f'<details class="aniflow-menu"><summary>More</summary><div class="menu-items">{menu_links}</div></details>'
-        if menu_links
-        else ""
+    edit_link = (
+        f'<a class="reader-edit" href="{html.escape(edit)}">Edit</a>' if edit else ""
+    )
+    actions = (
+        edit_link
+        + help_link
+        + (
+            f'<details class="aniflow-menu"><summary>More</summary><div class="menu-items">{menu_links}</div></details>'
+            if menu_links
+            else ""
+        )
     )
     trail = (
         '<nav class="bar-trail" aria-label="Folders">'
@@ -350,6 +467,68 @@ def reader_page(
     return body, nonce
 
 
+def editor_page(
+    root: Path,
+    note: Path,
+    base: str,
+    brand_name: str,
+    logo: str,
+    icon: str,
+    account: str,
+) -> tuple[bytes, str]:
+    """The web editor for one note: its Markdown beside the page it renders to."""
+    nonce = secrets.token_urlsafe(16)
+    exists = note.is_file()
+    text = note.read_text("utf-8", errors="replace") if exists else f"# {note.stem}\n\n"
+    key = quote(note.relative_to(root).as_posix())
+    folder = file_url(root, note.parent, base) if note.parent.is_dir() else base + FILES
+    data = {
+        "name": note.name,
+        "exists": exists,
+        "version": note_version(note),
+        "save": f"{base}/notes/save/{key}",
+        "remove": f"{base}/notes/delete/{key}",
+        "folder": folder,
+        "example": DIAGRAM_EXAMPLE,
+    }
+    controls = (
+        '<span class="editor-status" id="editor-status" role="status"></span>'
+        '<button type="button" id="editor-diagram" title="Insert an animated diagram">'
+        "Insert diagram</button>"
+        + (
+            '<button type="button" class="editor-delete" id="editor-delete">Delete</button>'
+            if exists
+            else ""
+        )
+        + '<button type="button" class="editor-save" id="editor-save" title="Ctrl+S">'
+        "Save</button>"
+    )
+    editor = (
+        '<div class="editor"><textarea id="editor-text" spellcheck="true" '
+        f'aria-label="Markdown of {html.escape(note.name)}">{html.escape(text)}</textarea></div>'
+    )
+    body = page.reader_page(
+        title=f"Editing {note.name}",
+        text=text,
+        nonce=nonce,
+        back=(("View", file_url(root, note, base)) if exists else ("Folder", folder)),
+        options=page.reader_options(root=base + FILES, base=base),
+        base=base,
+        actions=controls,
+        account=account,
+        theme=True,
+        top=editor,
+        favicon=favicon(brand_name, icon or logo),
+        style=BRAND_CSS + UI_CSS + EDITOR_CSS,
+        body_class="aniflow-local aniflow-editing",
+        after=(
+            f'<script type="application/json" id="aniflow-editor">{page.json_script(data)}</script>'
+            f'<script nonce="{nonce}">{EDITOR_JS}</script>'
+        ),
+    )
+    return body, nonce
+
+
 class Server(ThreadingHTTPServer):
     def __init__(
         self,
@@ -362,6 +541,7 @@ class Server(ThreadingHTTPServer):
         brand_name: str = DEFAULT,
         logo: str = "",
         icon: str = "",
+        user_folders: bool = False,
     ):
         self.root = root.resolve()
         self.base = base
@@ -371,6 +551,7 @@ class Server(ThreadingHTTPServer):
         self.brand_name = brand_name
         self.chosen_logo = logo
         self.chosen_icon = icon
+        self.user_folders = user_folders
         identity = hashlib.sha256(os.fsencode(self.root)).hexdigest()
         cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
         self.comments_root = cache / "aniflow" / "comments" / identity
@@ -447,11 +628,116 @@ class Handler(web.Handler):
         signin = self.server.signin
         return signin.session(self.cookie(oauth.SESSION_COOKIE)) if signin else None
 
+    def writable(self, path: Path) -> bool:
+        """Whether whoever is asking may change the note at path from the web."""
+        if not self.server.user_folders or self.server.signin is None:
+            return False
+        note = note_path(
+            self.server.root, path.relative_to(self.server.root).as_posix()
+        )
+        return note is not None and may_write(self.server.root, note, self.session())
+
+    def edit_note(self, key: str) -> None:
+        """GET /files/<path>?edit: the editor, for a note the reader may write."""
+        if not self.server.user_folders or self.server.signin is None:
+            self.send_error(404)
+            return
+        note = note_path(self.server.root, key)
+        if note is None:
+            self.send_error(404)
+            return
+        session = self.session()
+        if session is None:
+            self.redirect(
+                self.server.url("/auth/github/start?next=") + quote(self.path, safe="")
+            )
+            return
+        if not may_write(self.server.root, note, session):
+            self.send_bytes(
+                b"aniflow: this folder is not yours; you can read it, not change it.\n",
+                "text/plain; charset=utf-8",
+                {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+                status=403,
+            )
+            return
+        try:
+            body, nonce = editor_page(
+                self.server.root,
+                note,
+                self.server.base,
+                self.server.brand_name,
+                self.server.logo,
+                self.server.icon,
+                self.account(),
+            )
+        except OSError:
+            self.send_error(404)
+            return
+        self.send_html(body, page.reader_headers(nonce))
+
+    def change_note(self, path: str) -> None:
+        """POST /notes/save/<path> or /notes/delete/<path>, from the editor."""
+        if not self.server.user_folders or self.server.signin is None:
+            self.send_json({"error": "not found"}, status=404)
+            return
+        action, _, key = path.removeprefix("/notes/").partition("/")
+        session = self.session()
+        if session is None:
+            self.send_json({"error": "sign in with GitHub to write"}, status=401)
+            return
+        note = note_path(self.server.root, unquote(key))
+        if note is None:
+            self.send_json({"error": "not a note this server writes"}, status=404)
+            return
+        if not may_write(self.server.root, note, session):
+            self.send_json({"error": "this folder is not yours"}, status=403)
+            return
+        body = self.read_body(NOTE_MAX_BYTES * 2)
+        try:
+            data = json.loads(body or b"null")
+        except ValueError:
+            data = None
+        if body is None or not isinstance(data, dict):
+            self.send_json({"error": "send JSON, under 1 MB"}, status=400)
+            return
+        if data.get("version", "") != note_version(note):
+            self.send_json(
+                {"error": "changed since you opened it: copy your text, then reload"},
+                status=409,
+            )
+            return
+        try:
+            if action == "delete":
+                if not note.exists():
+                    self.send_json({"error": "not found"}, status=404)
+                    return
+                note.unlink()
+                self.send_json({"deleted": True})
+                return
+            text = data.get("text")
+            if not isinstance(text, str) or len(text.encode("utf-8")) > NOTE_MAX_BYTES:
+                self.send_json(
+                    {"error": "text must be a string under 1 MB"}, status=400
+                )
+                return
+            write_note(note, text)
+        except OSError as error:
+            self.send_json({"error": f"could not write: {error.strerror}"}, status=500)
+            return
+        self.send_json(
+            {
+                "version": note_version(note),
+                "url": file_url(self.server.root, note, self.server.base),
+            }
+        )
+
     def account(self) -> str:
         """The bar's GitHub button for this request, when the server offers sign-in."""
         if self.server.signin is None:
             return ""
-        return account_menu(self.server.base, self.session(), self.path)
+        return account_menu(
+            self.server.base, self.session(), self.path, self.server.user_folders
+        )
 
     def signin_route(self, path: str, parsed: object) -> None:
         """The three routes of the GitHub sign-in: start, callback and sign out."""
@@ -528,6 +814,13 @@ class Handler(web.Handler):
                 status=400,
             )
             return
+        if self.server.user_folders:
+            try:
+                user_folder(self.server.root, session["login"])
+            except OSError as error:
+                self.log_error(
+                    "could not make the folder of %s: %s", session["login"], error
+                )
         self.redirect(
             target,
             [
@@ -607,6 +900,9 @@ class Handler(web.Handler):
             base = self.server.base
             root = self.server.root
             key = unquote(path.removeprefix(FILES))
+            if "edit" in parse_qs(parsed.query, keep_blank_values=True):
+                self.edit_note(key)
+                return
             local = local_path(root, key)
             if local is not None:
                 try:
@@ -622,6 +918,7 @@ class Handler(web.Handler):
                             self.server.logo,
                             self.server.icon,
                             self.account(),
+                            new_note=local != root and self.writable(local / "new.md"),
                         )
                     elif web.is_markdown(local.name) and not raw:
                         body, nonce = reader_page(
@@ -644,6 +941,9 @@ class Handler(web.Handler):
                             logo=self.server.logo,
                             icon=self.server.icon,
                             account=self.account(),
+                            edit=file_url(root, local, base) + "?edit"
+                            if self.writable(local)
+                            else "",
                         )
                     else:
                         self.send_local_file(local, raw=raw)
@@ -659,6 +959,9 @@ class Handler(web.Handler):
             return
         parsed = urlsplit(self.path)
         path = self.under_base(parsed.path)
+        if path.startswith(("/notes/save/", "/notes/delete/")):
+            self.change_note(path)
+            return
         if path.startswith("/comments/"):
             session = self.session()
             if self.server.signin is not None and session is None:
@@ -770,6 +1073,13 @@ def main() -> None:
         ],
         help="with --github-oauth, only members of this GitHub organisation may sign "
         "in to comment (repeatable; default: ANIFLOW_GITHUB_ORGS, comma separated)",
+    )
+    parser.add_argument(
+        "--user-folders",
+        action="store_true",
+        help="with --github-oauth, give each signed-in member a folder of their own "
+        "to write Markdown in from the web; a folder holding a .aniflow-shared file "
+        "is writable by all of them",
     )
     parser.add_argument(
         "--comments-admin",
@@ -944,6 +1254,10 @@ def main() -> None:
             "--allow-host serves the comments to the public: add --github-oauth "
             "(or set ANIFLOW_GITHUB_CLIENT_ID), or --no-comments"
         )
+    if args.user_folders and not args.github_oauth:
+        parser.error(
+            "--user-folders needs --github-oauth: writing needs a signed-in account"
+        )
     if args.github_oauth:
         secret = os.environ.get("ANIFLOW_GITHUB_SECRET", "")
         signing = os.environ.get("ANIFLOW_SIGNIN_SECRET", "")
@@ -972,6 +1286,7 @@ def main() -> None:
             base=base,
             comments=not args.no_comments,
             signin=signin,
+            user_folders=args.user_folders,
             hosts=frozenset(
                 name.strip().lower() for name in args.allow_host if name.strip()
             ),
