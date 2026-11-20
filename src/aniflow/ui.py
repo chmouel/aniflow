@@ -180,6 +180,22 @@ UI_CSS = """
   }
   .aniflow-local .reader-help { white-space:nowrap; color:var(--fgColor-muted); font-weight:600; }
   .aniflow-local .reader-help:hover { color:var(--fgColor-default); }
+  .aniflow-local .search-open svg { width:16px; height:16px; }
+  dialog.aniflow-search { width:min(620px, calc(100vw - 24px)); max-height:min(75vh, 560px); margin:10vh auto auto; padding:0; border:1px solid var(--borderColor-default); border-radius:14px; background:var(--bgColor-default); color:var(--fgColor-default); box-shadow:0 24px 64px rgba(0,0,0,.38); overflow:hidden; }
+  dialog.aniflow-search::backdrop { background:rgba(0,0,0,.48); backdrop-filter:blur(3px); }
+  dialog.aniflow-search[open] { display:flex; flex-direction:column; }
+  .aniflow-search .search-head { display:flex; align-items:center; gap:10px; padding:12px 16px; border-bottom:1px solid var(--borderColor-muted); color:var(--fgColor-muted); }
+  .aniflow-search .search-head svg { flex-shrink:0; }
+  .aniflow-search input { flex:1; min-width:0; border:0; background:none; color:var(--fgColor-default); font:16px/1.4 inherit; outline:none; }
+  .aniflow-search .search-close { padding:3px 8px; border:1px solid var(--borderColor-default); border-radius:6px; background:none; color:var(--fgColor-muted); font:600 11px/1.3 ui-monospace,monospace; cursor:pointer; }
+  .aniflow-search .search-close:hover { color:var(--fgColor-default); border-color:var(--fgColor-muted); }
+  .aniflow-search .search-results { overflow:auto; padding:8px; }
+  .aniflow-search .search-empty { margin:0; padding:24px 12px; text-align:center; color:var(--fgColor-muted); font-size:14px; }
+  .aniflow-search .search-hit { display:block; padding:10px 12px; border-radius:9px; color:inherit; text-decoration:none; }
+  .aniflow-search .search-hit:hover, .aniflow-search .search-hit[aria-selected="true"] { background:var(--bgColor-muted); }
+  .aniflow-search .search-hit-path { display:block; color:var(--fgColor-accent); font-size:14px; font-weight:600; overflow-wrap:anywhere; }
+  .aniflow-search .search-hit-line { display:block; margin-top:3px; color:var(--fgColor-muted); font-size:12.5px; line-height:1.45; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .aniflow-search .search-hit-num { margin-right:6px; font-family:ui-monospace,monospace; opacity:.7; }
   .aniflow-help .aniflow-brand { width:min(260px, 62%); margin:0 0 14px; }
   .aniflow-help .reader .markdown-body h1 { font-size:clamp(1.8rem, 4vw, 2.5rem); }
   .aniflow-help .reader .aniflow-demo { margin:20px 0 28px; }
@@ -274,6 +290,98 @@ UI_JS = """
     }
     document.addEventListener('click', event => {
       for (const menu of menus) if (menu.open && !menu.contains(event.target)) menu.open = false;
+    });
+  }
+  const searchButton = document.getElementById('search-open');
+  const searchDialog = document.getElementById('aniflow-search');
+  if (searchButton && searchDialog) {
+    const input = document.getElementById('aniflow-search-input');
+    const results = document.getElementById('aniflow-search-results');
+    const endpoint = searchButton.dataset.searchUrl;
+    let timer = 0, active = -1, pending = null, seq = 0;
+    const setEmpty = (text) => {
+      results.replaceChildren();
+      active = -1;
+      const p = document.createElement('p');
+      p.className = 'search-empty';
+      p.textContent = text;
+      results.append(p);
+    };
+    const pick = (index) => {
+      const items = [...results.querySelectorAll('.search-hit')];
+      if (!items.length) { active = -1; return; }
+      active = ((index % items.length) + items.length) % items.length;
+      items.forEach((el, i) => el.setAttribute('aria-selected', String(i === active)));
+      items[active].scrollIntoView({ block: 'nearest' });
+    };
+    const run = async (gen) => {
+      const q = input.value.trim();
+      if (!q) { setEmpty('Type to search across all notes.'); return; }
+      pending = new AbortController();
+      try {
+        const resp = await fetch(endpoint + '?q=' + encodeURIComponent(q), { cache: 'no-store', signal: pending.signal });
+        if (gen !== seq) return;
+        if (!resp.ok) throw new Error(resp.statusText);
+        const data = await resp.json();
+        if (gen !== seq) return;
+        results.replaceChildren();
+        active = -1;
+        if (!data.results || !data.results.length) { setEmpty('No notes match "' + q + '".'); return; }
+        for (const item of data.results) {
+          const link = document.createElement('a');
+          link.className = 'search-hit';
+          link.setAttribute('role', 'option');
+          link.href = item.url;
+          const title = document.createElement('span');
+          title.className = 'search-hit-path';
+          title.textContent = item.path;
+          link.append(title);
+          for (const match of item.matches || []) {
+            const row = document.createElement('span');
+            row.className = 'search-hit-line';
+            const num = document.createElement('span');
+            num.className = 'search-hit-num';
+            num.textContent = ':' + match.line;
+            row.append(num, document.createTextNode(match.text));
+            link.append(row);
+          }
+          results.append(link);
+        }
+        pick(0);
+      } catch (error) {
+        if (gen === seq && error.name !== 'AbortError') setEmpty('Search failed.');
+      }
+    };
+    const openSearch = () => {
+      if (!searchDialog.open) searchDialog.showModal();
+      input.focus();
+      input.select();
+      if (!input.value.trim()) setEmpty('Type to search across all notes.');
+    };
+    searchButton.addEventListener('click', openSearch);
+    document.getElementById('aniflow-search-close')?.addEventListener('click', () => searchDialog.close());
+    searchDialog.addEventListener('click', event => { if (event.target === searchDialog) searchDialog.close(); });
+    input.addEventListener('input', () => {
+      clearTimeout(timer);
+      if (pending) { pending.abort(); pending = null; }
+      const gen = ++seq;
+      if (!input.value.trim()) { setEmpty('Type to search across all notes.'); return; }
+      timer = setTimeout(() => run(gen), 180);
+    });
+    input.addEventListener('keydown', event => {
+      if (event.key === 'ArrowDown') { event.preventDefault(); pick(active + 1); }
+      else if (event.key === 'ArrowUp') { event.preventDefault(); pick(active - 1); }
+      else if (event.key === 'Enter' && active >= 0) {
+        const chosen = results.querySelectorAll('.search-hit')[active];
+        if (chosen) { event.preventDefault(); location.href = chosen.href; }
+      }
+    });
+    document.addEventListener('keydown', event => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        if (document.body.classList.contains('presenting')) return;
+        event.preventDefault();
+        openSearch();
+      }
     });
   }
   const remove = document.querySelector('button[data-delete-url]');

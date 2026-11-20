@@ -301,6 +301,27 @@ def account_menu(
     )
 
 
+def search_ui(base: str) -> tuple[str, str]:
+    """Top-bar search trigger and its native <dialog> modal."""
+    button = (
+        f'<button type="button" class="renderer search-open" id="search-open"'
+        f' data-search-url="{html.escape(base)}/api/search"'
+        ' aria-label="Search notes" title="Search notes (Ctrl+K)">'
+        f"{SEARCH_ICON}</button>"
+    )
+    dialog = (
+        '<dialog class="aniflow-search" id="aniflow-search" aria-label="Search notes">'
+        '<div class="search-head">'
+        f"{SEARCH_ICON}"
+        '<input type="search" id="aniflow-search-input" placeholder="Search all notes…"'
+        ' autocomplete="off" aria-label="Search all notes">'
+        '<button type="button" class="search-close" id="aniflow-search-close" aria-label="Close search">Esc</button></div>'
+        '<div class="search-results" id="aniflow-search-results" role="listbox"></div>'
+        "</dialog>"
+    )
+    return button, dialog
+
+
 def directory_page(
     root: Path,
     path: Path,
@@ -406,6 +427,7 @@ def directory_page(
         "<span><strong>Try animated diagrams</strong><span>Play the demo, then make your own.</span></span>"
         f"{NEXT_ICON}</a>"
     )
+    search_btn, search_dlg = search_ui(base)
     body = f"""<!doctype html>
 <html lang="en" data-theme-default="dark"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -415,12 +437,12 @@ def directory_page(
 <link rel="stylesheet" href="{base}/static/page.css">
 <style>{THEME_READER_CSS}{BRAND_CSS}{UI_CSS}{DIRECTORY_CSS}</style>
 </head><body class="aniflow-local aniflow-browser"><header class="bar"><a href="{base}{FILES}">{html.escape(brand_name)}</a><span class="name">{title}</span>
-<nav><a href="{base}/help">Demo &amp; help</a>{theme_select(nonce)}{account}</nav></header>
+<nav>{search_btn}<a href="{base}/help">Demo &amp; help</a>{theme_select(nonce)}{account}</nav></header>
 <main class="browser-shell"><div class="browser-masthead">{masthead(base, brand_name, logo)}
 {demo}</div>
 <nav class="browser-trail" aria-label="Folders"><ol>{trail}</ol></nav>
 <div class="browser-heading"><div><h1>{title}</h1><p class="folder-summary">{description}</p></div>{new_box}{parent}</div>
-{content}</main><script nonce="{nonce}">{UI_JS}</script>{new_script}</body></html>"""
+{content}</main>{search_dlg}<script nonce="{nonce}">{UI_JS}</script>{new_script}</body></html>"""
     return body.encode("utf-8"), nonce
 
 
@@ -468,8 +490,10 @@ def reader_page(
     edit_link = (
         f'<a class="reader-edit" href="{html.escape(edit)}">Edit</a>' if edit else ""
     )
+    search_btn, search_dlg = search_ui(base)
     actions = (
         edit_link
+        + search_btn
         + help_link
         + (
             f'<details class="aniflow-menu"><summary>More</summary><div class="menu-items">{menu_links}</div></details>'
@@ -510,7 +534,7 @@ def reader_page(
         favicon=favicon(brand_name, icon or logo),
         style=BRAND_CSS + UI_CSS,
         body_class="aniflow-local",
-        after=f'<script nonce="{nonce}">{UI_JS}</script>',
+        after=f'{search_dlg}<script nonce="{nonce}">{UI_JS}</script>',
     )
     return body, nonce
 
@@ -924,9 +948,6 @@ class Handler(web.Handler):
 
     def api_search(self, query_string: str) -> None:
         """GET /api/search?q=QUERY[&folder=FOLDER]: case-insensitive search in filenames and text."""
-        if self.server.tokens is None:
-            self.send_json({"error": "not found"}, status=404)
-            return
         params = parse_qs(query_string)
         needle = ((params.get("q") or [""])[-1]).strip()
         if not needle:

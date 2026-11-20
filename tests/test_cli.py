@@ -141,6 +141,22 @@ def aniflow_server(local_docs, aniflow_servers):
     return aniflow_servers(local_docs)
 
 
+def test_global_search_ui_and_api(local_docs, aniflow_servers):
+    request = aniflow_servers(local_docs, base="/pub")
+    for path in ("/pub/files/", "/pub/files/README.md"):
+        status, _, body = request(path)
+        assert status == 200
+        assert b'data-search-url="/pub/api/search"' in body
+        assert b'id="aniflow-search"' in body
+    status, _, body = request("/pub/api/search?q=guides")
+    assert status == 200
+    data = json.loads(body)
+    assert any(
+        r["path"].startswith("guides/") and r["url"].startswith("/pub/files/")
+        for r in data["results"]
+    )
+
+
 def test_browse_folders_and_markdown(aniflow_server):
     status, headers, _ = aniflow_server("/")
     assert status == 302 and headers["Location"] == "/files/"
