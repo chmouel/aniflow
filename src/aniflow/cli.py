@@ -329,14 +329,19 @@ class Server(ThreadingHTTPServer):
         self.signin = signin
         self.hosts = hosts
         self.brand_name = brand_name
-        # A logo dropped in the served folder is picked up here, for every caller.
-        self.logo = logo or logo_url(self.root, "", base)
+        self.chosen_logo = logo
         identity = hashlib.sha256(os.fsencode(self.root)).hexdigest()
         cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
         self.comments_root = cache / "aniflow" / "comments" / identity
         if ":" in address[0]:
             self.address_family = socket.AF_INET6
         super().__init__(address, Handler)
+
+    @property
+    def logo(self) -> str:
+        """The --logo picture, or a logo.svg/logo.png in the folder, looked for on every
+        page so one dropped there while the server runs shows up on the next load."""
+        return self.chosen_logo or logo_url(self.root, "", self.base)
 
     def url(self, path: str) -> str:
         """A path under the base prefix this server was started with."""

@@ -227,8 +227,11 @@ def test_brand_names_the_page_and_the_tab(local_docs, aniflow_servers):
 
 
 def test_logo_replaces_the_wordmark(local_docs, aniflow_servers):
-    (local_docs / "logo.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"/>')
     request = aniflow_servers(local_docs, base="/pub", brand_name="Chmouel's Notes")
+    _, _, body = request("/pub/files/")
+    assert b'class="brand-logo"' not in body
+    # Dropped in while the server runs: the next page has it.
+    (local_docs / "logo.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"/>')
     assert cli.logo_url(local_docs, "", "/pub") == "/pub/files/logo.svg"
     _, _, body = request("/pub/files/")
     assert b'<img class="brand-logo" src="/pub/files/logo.svg" alt="">' in body
