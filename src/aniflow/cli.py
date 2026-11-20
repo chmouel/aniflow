@@ -479,6 +479,15 @@ class Handler(web.Handler):
                     base,
                 ),
             )
+        except oauth.NotMember as error:
+            self.send_bytes(
+                f"aniflow: {error}, so this account cannot comment here. Reading the "
+                f"notes stays open: {target}\n".encode(),
+                "text/plain; charset=utf-8",
+                {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+                status=403,
+            )
+            return
         except oauth.SignInFailed as error:
             self.send_bytes(
                 f"aniflow: sign-in failed: {error}\n".encode(),
@@ -716,6 +725,18 @@ def main() -> None:
         "that forwards the public Host (repeatable)",
     )
     parser.add_argument(
+        "--github-org",
+        metavar="ORG",
+        action="append",
+        default=[
+            org
+            for org in os.environ.get("ANIFLOW_GITHUB_ORGS", "").split(",")
+            if org.strip()
+        ],
+        help="with --github-oauth, only members of this GitHub organisation may sign "
+        "in to comment (repeatable; default: ANIFLOW_GITHUB_ORGS, comma separated)",
+    )
+    parser.add_argument(
         "--comments-admin",
         metavar="LOGIN",
         default=os.environ.get("ANIFLOW_COMMENTS_ADMIN", ""),
@@ -902,6 +923,7 @@ def main() -> None:
             signing,
             path=base + "/",
             admin=args.comments_admin,
+            orgs=tuple(args.github_org),
         )
     try:
         logo = logo_url(args.directory, args.logo, base)

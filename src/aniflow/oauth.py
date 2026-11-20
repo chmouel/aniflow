@@ -19,7 +19,8 @@ import urllib.request
 
 AUTHORIZE = "https://github.com/login/oauth/authorize"
 TOKEN_URL = "https://github.com/login/oauth/access_token"
-USER_URL = "https://api.github.com/user"
+API = "https://api.github.com"
+USER_URL = f"{API}/user"
 STATE_COOKIE = "aniflow-signin"
 SESSION_COOKIE = "aniflow-user"
 STATE_TTL = 600
@@ -30,6 +31,10 @@ AGENT = "aniflow"
 
 class SignInFailed(Exception):
     """The code, the state or GitHub's answer could not be trusted."""
+
+
+class NotMember(SignInFailed):
+    """GitHub has no membership to show: the account is not in the organisation."""
 
 
 def _signature(value: str, secret: str) -> str:
@@ -98,12 +103,14 @@ def next_path(value: str, base: str) -> str:
     return value if value.startswith(prefix) else home
 
 
-def authorize_url(client_id: str, redirect_uri: str, state: str) -> str:
+def authorize_url(
+    client_id: str, redirect_uri: str, state: str, scope: str = "read:user"
+) -> str:
     query = urllib.parse.urlencode(
         {
             "client_id": client_id,
             "redirect_uri": redirect_uri,
-            "scope": "read:user",
+            "scope": scope,
             "state": state,
             "allow_signup": "false",
         }
@@ -154,10 +161,38 @@ def user(token: str) -> dict:
     }
 
 
+def member(token: str, org: str) -> bool:
+    """Whether the signed-in account is an active member of org, private memberships
+    included (the token carries read:org). An org that restricts OAuth apps answers 403
+    until an owner approves this one, which is reported rather than taken as a no."""
+    request = urllib.request.Request(
+        f"{API}/user/memberships/orgs/{urllib.parse.quote(org, safe='')}",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": AGENT,
+            "Authorization": f"Bearer {token}",
+        },
+    )
+    try:
+        answer = _json(request)
+    except NotMember:
+        return False
+    return answer.get("state") == "active"
+
+
 def _json(request: urllib.request.Request) -> dict:
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
             answer = json.loads(response.read())
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            raise NotMember() from error
+        if error.code == 403:
+            raise SignInFailed(
+                "GitHub would not show the organisation membership; the organisation "
+                "may need to approve this OAuth app"
+            ) from error
+        raise SignInFailed(f"GitHub answered {error.code}") from error
     except (urllib.error.URLError, OSError, ValueError) as error:
         raise SignInFailed(f"GitHub did not answer: {error}") from error
     if not isinstance(answer, dict):
@@ -176,7 +211,9 @@ class SignIn:
         *,
         path: str = "/",
         admin: str = "",
+        orgs: tuple[str, ...] = (),
     ):
+        self.orgs = tuple(org.strip() for org in orgs if org.strip())
         self.client_id = client_id
         self.client_secret = client_secret
         self.secret = secret
@@ -195,7 +232,8 @@ class SignIn:
             {"state": state, "next": target, "exp": time.time() + STATE_TTL},
             self.secret,
         )
-        return authorize_url(self.client_id, redirect, state), sealed
+        scope = "read:user read:org" if self.orgs else "read:user"
+        return authorize_url(self.client_id, redirect, state, scope), sealed
 
     def finish(
         self, code: str, state: str, state_cookie: str, redirect_uri: str
@@ -211,6 +249,10 @@ class SignIn:
             raise SignInFailed("the sign-in did not start here, or it took too long")
         token = exchange(code, self.client_id, self.client_secret, redirect_uri)
         account = user(token)
+        if self.orgs and not any(member(token, org) for org in self.orgs):
+            raise NotMember(
+                f"{account['login']} is not a member of " + " or ".join(self.orgs)
+            )
         return {
             **account,
             "admin": bool(self.admin) and account["login"].lower() == self.admin,

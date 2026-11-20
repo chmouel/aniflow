@@ -102,7 +102,9 @@ Serving a folder to other people, start the server with `--github-oauth
 CLIENT_ID`, an OAuth app whose callback is `<public-url>/auth/github/callback`,
 and the two secrets in `ANIFLOW_GITHUB_SECRET` and `ANIFLOW_SIGNIN_SECRET`.
 Reading stays open; writing needs a GitHub account, a comment belongs to the
-account that wrote it, and `--comments-admin LOGIN` may edit anyone's. Add
+account that wrote it, and `--comments-admin LOGIN` may edit anyone's.
+`--github-org ORG` keeps the sign-in to members of a GitHub organisation;
+if the organisation restricts OAuth apps, an owner has to approve yours. Add
 `--base /pub` to mount all of it under a path, or `--no-comments` to turn the
 comments off altogether. Refresh the browser
 after saving changes to a document.

@@ -1,11 +1,14 @@
 import http.client
+import io
 import json
 import re
 import shutil
 import sys
 import threading
 import time
+import urllib.error
 import urllib.parse
+import urllib.request
 from urllib.parse import urlsplit
 
 import pytest
@@ -497,6 +500,57 @@ def test_forwarded_host_is_allowed_by_name(local_docs, aniflow_servers):
         body='{"start":1,"end":1,"body":"hi"}',
     )
     assert status == 403
+
+
+def test_only_org_members_sign_in(github, monkeypatch, local_docs, aniflow_servers):
+    members = {"alice"}
+    seen = []
+
+    def member(token, org):
+        seen.append(org)
+        return token.removeprefix("token-code-") in members
+
+    monkeypatch.setattr(oauth, "member", member)
+    request = aniflow_servers(
+        local_docs,
+        signin=oauth.SignIn(
+            "client-id", "s", "signing-key", orgs=("openshift-pipelines",)
+        ),
+    )
+    status, headers, _ = request("/auth/github/start")
+    assert "read%3Aorg" in headers["Location"]
+    assert sign_in(request, "alice")
+    assert seen == ["openshift-pipelines"]
+    # bob signs in to GitHub fine, but is not let in to comment.
+    status, headers, _ = request("/auth/github/start?next=/files/README.md")
+    state = cookie_wanted(headers, oauth.STATE_COOKIE)
+    value = urllib.parse.parse_qs(urlsplit(headers["Location"]).query)["state"][0]
+    status, headers, body = request(
+        f"/auth/github/callback?code=code-bob&state={value}", headers={"Cookie": state}
+    )
+    assert status == 403
+    assert b"bob is not a member of openshift-pipelines" in body
+    assert not cookie_wanted(headers, oauth.SESSION_COOKIE)
+
+
+def test_membership_answers(monkeypatch):
+    def answer(code, payload=b"{}"):
+        def opener(request, timeout):
+            if code != 200:
+                raise urllib.error.HTTPError(request.full_url, code, "", {}, None)
+            return io.BytesIO(payload)
+
+        return opener
+
+    monkeypatch.setattr(urllib.request, "urlopen", answer(200, b'{"state": "active"}'))
+    assert oauth.member("t", "org") is True
+    monkeypatch.setattr(urllib.request, "urlopen", answer(200, b'{"state": "pending"}'))
+    assert oauth.member("t", "org") is False
+    monkeypatch.setattr(urllib.request, "urlopen", answer(404))
+    assert oauth.member("t", "org") is False
+    monkeypatch.setattr(urllib.request, "urlopen", answer(403))
+    with pytest.raises(oauth.SignInFailed, match="approve this OAuth app"):
+        oauth.member("t", "org")
 
 
 def test_sign_out_clears_the_cookie(github, local_docs, aniflow_servers):
