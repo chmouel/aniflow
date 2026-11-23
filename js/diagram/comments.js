@@ -1,6 +1,6 @@
 import { host } from '../host.js';
 import { SVG_NS, diagramLinks, diagramNodes } from './graph.js';
-import { diagramIcon } from './icons.js';
+import { showIcon } from './icons.js';
 import { copyText } from '../reader/code.js';
 
 // In full screen a box, an arrow or the whole diagram takes review comments. Each is an ordinary
@@ -119,7 +119,7 @@ export function diagramComments(stage, svg, after, about) {
   }
 
   const toggle = make('button', 'note-toggle');
-  toggle.innerHTML = diagramIcon('comment');
+  showIcon(toggle, 'comment');
   const count = make('span', 'count');
   count.hidden = true;
   toggle.append(count);
@@ -131,7 +131,7 @@ export function diagramComments(stage, svg, after, about) {
   const head = make('header');
   const title = make('h2', '', 'Comments');
   const closeButton = make('button', 'diagram-notes-close');
-  closeButton.innerHTML = diagramIcon('close');
+  showIcon(closeButton, 'close');
   closeButton.title = 'Close comments';
   closeButton.setAttribute('aria-label', 'Close comments');
   head.append(title, closeButton);

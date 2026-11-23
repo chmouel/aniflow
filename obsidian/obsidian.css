@@ -1,0 +1,34 @@
+/* aniflow's diagram.css reads GitHub's colour names; these give them Obsidian's theme colours. */
+body {
+  --bgColor-default: var(--background-primary);
+  --bgColor-muted: var(--background-secondary);
+  --fgColor-default: var(--text-normal);
+  --fgColor-muted: var(--text-muted);
+  --fgColor-accent: var(--text-accent);
+  --fgColor-attention: var(--color-yellow);
+  --fgColor-danger: var(--text-error);
+  --fgColor-success: var(--text-success);
+  --borderColor-default: var(--background-modifier-border);
+  --borderColor-muted: var(--background-modifier-border);
+}
+
+/* Obsidian dresses every button and select; the diagram tools bring their own look. */
+:is(.mermaid-diagram, .diagram-dialog) button {
+  box-shadow: none;
+  height: auto;
+}
+:is(.mermaid-diagram, .diagram-dialog) .diagram-tools button {
+  height: 30px;
+}
+:is(.mermaid-diagram, .diagram-dialog) select {
+  box-shadow: none;
+  height: auto;
+}
+.diagram-dialog {
+  font-family: var(--font-interface);
+}
+
+/* A diagram link would point at Obsidian's own page. */
+.diagram-export button[data-kind="link"] {
+  display: none;
+}

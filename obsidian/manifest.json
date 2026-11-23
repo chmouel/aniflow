@@ -1,0 +1,10 @@
+{
+  "id": "aniflow",
+  "name": "Aniflow",
+  "version": "0.1.0",
+  "minAppVersion": "1.4.0",
+  "description": "Animate Mermaid diagrams in reading view: a dot follows the arrows and a caption explains each step.",
+  "author": "Chmouel Boudjnah",
+  "authorUrl": "https://github.com/chmouel/aniflow",
+  "isDesktopOnly": false
+}

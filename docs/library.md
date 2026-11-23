@@ -89,7 +89,13 @@ fails. The wrapper is observed for lazy loading.
 - `root`: the element or selector holding the blocks, `document.body` by
   default
 - `mermaid`, `nonce`, `resolveImage`, `save`: as for `reader()`; use
-  `resolveImage` to serve the built-in `/icons/` from another path
+  `resolveImage` to serve the built-in `/icons/` from another path.
+  `mermaid` may also be a function returning the mermaid object or a
+  promise of it, for a page whose `window.mermaid` is another library's.
+  `resolveImage(value, block)` also receives the diagram's block and may
+  return a promise
+- `pageName`: a function giving the document's name, which starts the
+  names of saved PNG, GIF and video files; the page's file name by default
 - `dark`: a function that says whether to draw the dark palette, read at
   every draw
 - `lazy`: load Mermaid and draw a diagram only when it nears the screen,
@@ -101,7 +107,12 @@ fails. The wrapper is observed for lazy loading.
 and `data-autoplay` turns autoplay on for that block alone. Diagram colours
 come from the Primer variables (`--bgColor-default`, `--fgColor-accent`...)
 set on the root, so map the site's palette onto them. The call returns
-`{ redraw() }`; call it when the theme changes.
+`{ redraw(), draw(element, signal), close() }`. Call `redraw()` when the
+theme changes, and `close()` to drop its listeners when the page goes. A page that renders parts of itself later, like an editor's
+preview, calls `draw(element, signal)` for each new part: the diagram's
+document and window listeners stop when `signal` aborts.
+`redraw(element, signal)` draws one part again under a new signal. The
+Obsidian plugin in [`obsidian/`](../obsidian/) uses both.
 
 ## Python server modules
 

@@ -1,6 +1,7 @@
 import { host } from './host.js';
 import { addBusyCheck, isBusy } from './diagram/busy.js';
-import { drawDiagrams, redrawDiagrams } from './diagram/draw.js';
+import { redrawDiagrams } from './diagram/draw.js';
+import { diagrams } from './diagram/index.js';
 import { diagramFromHash } from './diagram/hash.js';
 import { diagramLines, flowchartLines, playScript } from './diagram/parse.js';
 import { saveBlob } from './diagram/share.js';
@@ -80,44 +81,6 @@ export function reader(options = {}) {
   };
 }
 
-// Draws the Mermaid blocks already on a page, for a site that renders its own Markdown. A block
-// is a .highlight-source-mermaid element holding the diagram source as text; data-story and
-// data-autoplay on it choose the story shown first and play it once it is on screen.
-export function diagrams(options = {}) {
-  const root = element(options.root || document.body);
-  if (!root) throw new Error('aniflow: no root element');
-  Object.assign(host, {
-    article: root,
-    nonce: options.nonce || '',
-    resolveImage: options.resolveImage || none,
-    mermaid: options.mermaid || 'mermaid.min.js',
-    dark: options.dark || null,
-    lazy: options.lazy !== false,
-    autoplay: Boolean(options.autoplay),
-    commentsUrl: '',
-    save: options.save || ((name, blob) => saveBlob(blob, name)),
-    onShow: null,
-    onDiagram: null,
-    onSlideDiagram: null,
-  });
-  const fresh = () => {
-    host.render?.abort();
-    host.render = new AbortController();
-  };
-  fresh();
-  drawDiagrams();
-  addEventListener('hashchange', () => {
-    for (const stage of root.querySelectorAll('.diagram-stage[data-diagram]')) if (diagramFromHash(stage)) break;
-  });
-  return {
-    // Draws every diagram again, after the page switched between light and dark.
-    redraw() {
-      fresh();
-      redrawDiagrams();
-    },
-  };
-}
-
 // Keeps links and pictures that point inside the served directory root, for resolveLink/resolveImage.
 export const directoryResolver = (root, base = '') => (value) => directoryUrl(value, root, base);
 
@@ -141,6 +104,7 @@ export async function diagramExport(stage, kind) {
 
 export {
   addBusyCheck,
+  diagrams,
   deckCheck,
   deckSettings,
   diagramLines,

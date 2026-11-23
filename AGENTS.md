@@ -16,9 +16,11 @@ the wheel, so `uvx --from git+...` works without Node.
 
 - `js/index.js`: the public API. `reader(options)` copies the options into
   the shared `host` object (`js/host.js`), renders, then wires slides,
-  review and diagram deep links. `diagrams(options)` animates the Mermaid
-  blocks already in a page rendered elsewhere (a static site) and returns
-  `{redraw()}`. Also exports `directoryResolver(root)`,
+  review and diagram deep links. `diagrams(options)` (in
+  `js/diagram/index.js`, re-exported) animates the Mermaid blocks already in
+  a page rendered elsewhere (a static site) and returns
+  `{redraw(element?, signal?), draw(element, signal), close()}`. Also
+  exports `directoryResolver(root)`,
   `diagramExport(stage, kind)` for a gif, mp4, webm or png of one diagram,
   `addBusyCheck`, `busy`, `parse` (`playScript`), `diagramLines`,
   `flowchartLines`, `readFrontMatter` and `setSpeed`.
@@ -44,6 +46,26 @@ the wheel, so `uvx --from git+...` works without Node.
 - `build.mjs`: esbuild to `aniflow.min.js` (IIFE, global `Aniflow`),
   `aniflow.esm.js`, `aniflow.css`, `page.css`. `--check` fails when the
   committed files differ from a fresh build.
+- `obsidian/`: the Obsidian plugin. `main.js` claims reading view's
+  ```` ```mermaid ```` blocks that hold a `%% play:` story (all of them with
+  the "Draw every Mermaid diagram" setting) in a post processor that runs
+  before Obsidian's, and draws each section through `diagrams().draw(element,
+  signal)` from a `MarkdownRenderChild` whose unload aborts the signal.
+  Obsidian's `loadMermaid()` is a different renderer (pele) whose SVG the
+  player cannot follow, so `build.mjs` bundles the vendored
+  `mermaid.min.js` inside a function (it never sets `window.mermaid`) and
+  the built-in icons as data URLs. Vault pictures go in as data URLs, since
+  mermaid drops `app://` links; exports become attachments of the open
+  note. `obsidian.css` maps the Primer colour names onto Obsidian's and is
+  appended to `diagram.css` as `styles.css`. It imports `js/diagram/` only,
+  never the reader. `npm run obsidian` builds to the ignored
+  `obsidian/dist/`; `-- --vault DIR` also installs it there. A tag
+  `obsidian-X.Y.Z` (equal to `obsidian/manifest.json`'s version, listed in
+  `versions.json`) runs `.github/workflows/obsidian.yml`, which copies the
+  manifest, README and licences to chmouel/aniflow-obsidian and creates its
+  `X.Y.Z` release; the community directory reads that repository. The
+  diagram code never sets `innerHTML` (`showIcon()` puts in a parsed SVG),
+  since Obsidian's review flags it.
 - `js-test/`: `node --test` unit tests for the pure parts (story parsing,
   front matter, the GIF encoder).
 - `src/aniflow/cli.py`: the `aniflow` command (`main`), its `Server` and

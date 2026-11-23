@@ -1,6 +1,6 @@
 import { host } from '../host.js';
 import { diagramHash } from './hash.js';
-import { diagramIcon } from './icons.js';
+import { showIcon } from './icons.js';
 import { diagramCanvas } from './picture.js';
 import { copyText } from '../reader/code.js';
 
@@ -19,7 +19,7 @@ export function diagramVideoType(kind) {
 
 export function diagramExportName(title, extension) {
   const slug = (text) => text.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-  let page = location.pathname.split('/').pop() || '';
+  let page = host.pageName?.() ?? location.pathname.split('/').pop() ?? '';
   try { page = decodeURIComponent(page); } catch (error) { /* keep it encoded */ }
   page = page.replace(/\.(md|markdown)$/i, '');
   return ([slug(page), slug(title || '')].filter(Boolean).join('-').slice(0, 120) || 'diagram') + '.' + extension;
@@ -45,7 +45,7 @@ export function diagramShare(stage, svg, tools) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'play-record';
-  button.innerHTML = diagramIcon('share');
+  showIcon(button, 'share');
   const menu = document.createElement('div');
   menu.className = 'diagram-export';
   menu.hidden = true;

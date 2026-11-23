@@ -22,3 +22,9 @@ export const DIAGRAM_ICONS = {
   laser: '<circle cx="8" cy="8" r="2"/><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2"/>',
 };
 export const diagramIcon = (name) => '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">' + DIAGRAM_ICONS[name] + '</svg>';
+
+// Parsed rather than set as an HTML string, which Obsidian's plugin review rejects.
+export function showIcon(element, name) {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">' + DIAGRAM_ICONS[name] + '</svg>';
+  element.replaceChildren(document.importNode(new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement, true));
+}

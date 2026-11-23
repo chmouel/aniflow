@@ -2,7 +2,7 @@ import { host } from '../host.js';
 import { diagramBusy } from './busy.js';
 import { gifWriter } from './gif.js';
 import { SVG_NS, diagramLinks, diagramNodes } from './graph.js';
-import { diagramIcon } from './icons.js';
+import { showIcon } from './icons.js';
 import { diagramCanvas } from './picture.js';
 import { diagramExportName, diagramVideoType } from './share.js';
 import { DIAGRAM_PACE, diagramRate, diagramSpeed, setDiagramSpeed } from './speed.js';
@@ -153,7 +153,7 @@ export function playDiagram(stage, svg, tools, scripts, home, share, edges) {
     const element = document.createElement('button');
     element.type = 'button';
     element.className = name;
-    element.innerHTML = diagramIcon(icon);
+    showIcon(element, icon);
     element.title = label;
     element.setAttribute('aria-label', label);
     controls.append(element);
@@ -219,7 +219,7 @@ export function playDiagram(stage, svg, tools, scripts, home, share, edges) {
 
   const scenario = () => scenarios[picker ? Number(picker.value) : 0];
   function label(icon, text) {
-    playButton.innerHTML = diagramIcon(icon);
+    showIcon(playButton, icon);
     playButton.title = text;
     playButton.setAttribute('aria-label', text);
   }
@@ -591,7 +591,7 @@ export function playDiagram(stage, svg, tools, scripts, home, share, edges) {
     busy(false);
     stage.classList.remove('recording');
     recordButton.classList.remove('busy');
-    recordButton.innerHTML = diagramIcon('share');
+    showIcon(recordButton, 'share');
     for (const element of [backButton, playButton, nextButton, stopButton, speedButton]) element.disabled = false;
     if (picker) picker.disabled = false;
     share.label(error ? 'Could not save the ' + exportLabel(kind) + ': ' + (error.message || error) : '');

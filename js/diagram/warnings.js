@@ -1,5 +1,5 @@
 import { host } from '../host.js';
-import { diagramIcon } from './icons.js';
+import { showIcon } from './icons.js';
 
 // A walkthrough step that cannot play is dropped, and this badge says which and why, so a
 // broken story never plays short without a word.
@@ -11,7 +11,7 @@ export function diagramWarnings(stage, tools, scenarios) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'play-warn';
-  button.innerHTML = diagramIcon('warn');
+  showIcon(button, 'warn');
   const count = document.createElement('span');
   count.textContent = String(rows.length);
   button.append(count);

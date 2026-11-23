@@ -107,7 +107,7 @@ function diagramNodes(svg) {
   }
   return nodes;
 }
-async function diagramEdges(source) {
+async function diagramEdges(source, mermaid = window.mermaid) {
   if (!flowchartLines(source)) return null;
   try {
     const parsed = await mermaid.mermaidAPI.getDiagramFromText(source);
@@ -171,8 +171,8 @@ function diagramFromHash(stage) {
 var DIAGRAM_IMAGE = /(\bimg\s*:\s*)(?:(["'])(.*?)\2|([^\s,}"']+))/g;
 var DIAGRAM_IMAGE_SAFE = /^(?:https:\/\/|\/(?![\/\\])|data:image\/(?:png|jpe?g|gif|webp|svg\+xml)[;,])/i;
 var DIAGRAM_IMAGE_MISSING = "data:image/svg+xml;base64," + btoa('<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="#888" stroke-width="2" stroke-linejoin="round"><rect x="5" y="9" width="38" height="30" rx="4" stroke-dasharray="4 3"/><path d="M11 33l9-10 7 7 4-4 6 7"/><circle cx="31" cy="18" r="3"/></svg>');
-function diagramImageUrl(value) {
-  const url = host.resolveImage(value);
+async function diagramImageUrl(value, block) {
+  const url = await host.resolveImage(value, block);
   if (url) return url;
   return DIAGRAM_IMAGE_SAFE.test(value) && !/["'{}\s]/.test(value) ? value : null;
 }
@@ -191,24 +191,26 @@ function loadImage(url) {
     image.src = url;
   });
 }
-async function diagramImages(source) {
+async function diagramImages(source, block = null) {
   const shapes = /@\{[^}]*\}/g;
   if (!flowchartLines(source)) return { source, problems: [] };
   const wanted = /* @__PURE__ */ new Map();
   for (const shape of source.matchAll(shapes)) {
     for (const match of shape[0].matchAll(DIAGRAM_IMAGE)) {
       const value = match[3] ?? match[4];
-      if (!wanted.has(value)) wanted.set(value, diagramImageUrl(value));
+      if (!wanted.has(value)) wanted.set(value, null);
     }
   }
   if (!wanted.size) return { source, problems: [] };
   const problems = [];
-  await Promise.all([...wanted].map(async ([value, url]) => {
+  await Promise.all([...wanted.keys()].map(async (value) => {
+    const url = await diagramImageUrl(value, block).catch(() => null);
     if (!url) {
       problems.push(value + " (not allowed)");
       wanted.set(value, DIAGRAM_IMAGE_MISSING);
       return;
     }
+    wanted.set(value, url);
     try {
       await loadImage(url);
     } catch (error) {
@@ -248,6 +250,10 @@ var DIAGRAM_ICONS = {
   laser: '<circle cx="8" cy="8" r="2"/><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2"/>'
 };
 var diagramIcon = (name) => '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">' + DIAGRAM_ICONS[name] + "</svg>";
+function showIcon(element3, name) {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">' + DIAGRAM_ICONS[name] + "</svg>";
+  element3.replaceChildren(document.importNode(new DOMParser().parseFromString(svg, "image/svg+xml").documentElement, true));
+}
 
 // js/reader/code.js
 var COPY_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"></path><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path></svg>';
@@ -320,11 +326,11 @@ function diagramComments(stage, svg, after, about) {
   const links = diagramLinks(svg, nodes, about.edges);
   const source = about.source.split(/\r?\n/);
   const make = (tag, className, text) => {
-    const element2 = document.createElement(tag);
-    if (className) element2.className = className;
-    if (text !== void 0) element2.textContent = text;
-    if (tag === "button") element2.type = "button";
-    return element2;
+    const element3 = document.createElement(tag);
+    if (className) element3.className = className;
+    if (text !== void 0) element3.textContent = text;
+    if (tag === "button") element3.type = "button";
+    return element3;
   };
   const clean = (text, fallback) => (text || "").replace(/\s+/g, " ").trim().slice(0, 120) || fallback;
   const nodeName = (name) => clean(nodes.get(name)?.textContent, name);
@@ -378,8 +384,8 @@ function diagramComments(stage, svg, after, about) {
     if (!under || !stage.contains(under) || under.closest(".diagram-tools, .diagram-caption")) return null;
     const pin = under.closest(".diagram-pin");
     if (pin) return { pin: pin.dataset.key };
-    const inside = (element2) => {
-      const rect = element2.getBoundingClientRect();
+    const inside = (element3) => {
+      const rect = element3.getBoundingClientRect();
       return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
     };
     const group = under.closest(":is(g.node, g.image-shape)") || [...names.keys()].find(inside);
@@ -411,7 +417,7 @@ function diagramComments(stage, svg, after, about) {
     return { kind: target.kind, id: target.id || "", label: target.label || target.id || "", line: comment.start, parts: [], lost: true };
   }
   const toggle = make("button", "note-toggle");
-  toggle.innerHTML = diagramIcon("comment");
+  showIcon(toggle, "comment");
   const count = make("span", "count");
   count.hidden = true;
   toggle.append(count);
@@ -422,7 +428,7 @@ function diagramComments(stage, svg, after, about) {
   const head = make("header");
   const title = make("h2", "", "Comments");
   const closeButton = make("button", "diagram-notes-close");
-  closeButton.innerHTML = diagramIcon("close");
+  showIcon(closeButton, "close");
   closeButton.title = "Close comments";
   closeButton.setAttribute("aria-label", "Close comments");
   head.append(title, closeButton);
@@ -728,9 +734,9 @@ function diagramComments(stage, svg, after, about) {
   function light(key) {
     const group = groups.find((other) => other.key === key);
     if (!group) return;
-    for (const element2 of panel.querySelectorAll(".diagram-note.lit")) element2.classList.remove("lit");
-    for (const element2 of svg.querySelectorAll(".note-lit")) element2.classList.remove("note-lit");
-    const card = [...list.children].find((element2) => element2.dataset.key === key);
+    for (const element3 of panel.querySelectorAll(".diagram-note.lit")) element3.classList.remove("lit");
+    for (const element3 of svg.querySelectorAll(".note-lit")) element3.classList.remove("note-lit");
+    const card = [...list.children].find((element3) => element3.dataset.key === key);
     card?.classList.add("lit");
     card?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     mark(group.target.parts, "note-lit", true);
@@ -835,7 +841,7 @@ function focusDiagram(stage, svg, edges) {
   const selected = /* @__PURE__ */ new Set();
   let held = false;
   function paint() {
-    for (const element2 of svg.querySelectorAll(".focus-on, .focus-near")) element2.classList.remove("focus-on", "focus-near");
+    for (const element3 of svg.querySelectorAll(".focus-on, .focus-near")) element3.classList.remove("focus-on", "focus-near");
     for (const name of selected) nodes.get(name).classList.add("focus-on");
     for (const link of links) {
       if (!selected.has(link.from) && !selected.has(link.to)) continue;
@@ -854,8 +860,8 @@ function focusDiagram(stage, svg, edges) {
     if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 6) return;
     const under = document.elementFromPoint(event.clientX, event.clientY);
     if (!under || !stage.contains(under) || under.closest(".diagram-tools, .diagram-pins") || stage.classList.contains("commenting")) return;
-    const inside = (element2) => {
-      const rect = element2.getBoundingClientRect();
+    const inside = (element3) => {
+      const rect = element3.getBoundingClientRect();
       return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
     };
     const group = under.closest(":is(g.node, g.image-shape)") || [...names.keys()].find(inside);
@@ -1087,13 +1093,13 @@ function diagramPicture(svg, home, size, images, still) {
   const from = svg.querySelectorAll("*");
   const to = copy.querySelectorAll("*");
   for (let at = 0; at < from.length; at++) {
-    const element2 = from[at];
+    const element3 = from[at];
     let names = null;
-    if (element2 instanceof SVGTextContentElement) names = PICTURE_SHAPE.concat(PICTURE_TEXT);
-    else if (element2 instanceof SVGGraphicsElement) names = PICTURE_SHAPE;
-    else if (element2 instanceof HTMLElement) names = PICTURE_TEXT;
+    if (element3 instanceof SVGTextContentElement) names = PICTURE_SHAPE.concat(PICTURE_TEXT);
+    else if (element3 instanceof SVGGraphicsElement) names = PICTURE_SHAPE;
+    else if (element3 instanceof HTMLElement) names = PICTURE_TEXT;
     if (!names) continue;
-    const computed = getComputedStyle(element2);
+    const computed = getComputedStyle(element3);
     for (const name of names) to[at].style.setProperty(name, computed.getPropertyValue(name), "important");
   }
   copy.setAttribute("viewBox", [home.x, home.y, home.w, home.h].join(" "));
@@ -1116,12 +1122,12 @@ async function diagramCanvas(svg, home, limit, captioned, still) {
   const scale = Math.min(still ? Infinity : 2, (limit - 2 * PAD) / Math.max(home.w, home.h), Math.sqrt((still ? 8e6 : 19e5) / (home.w * home.h)));
   const size = { w: home.w * scale, h: home.h * scale };
   const even = (value) => Math.max(2, Math.round(value / 2) * 2);
-  const element2 = document.createElement("canvas");
-  element2.width = even(size.w + 2 * PAD);
-  const fontSize = Math.round(Math.max(15, Math.min(30, element2.width / 40)));
+  const element3 = document.createElement("canvas");
+  element3.width = even(size.w + 2 * PAD);
+  const fontSize = Math.round(Math.max(15, Math.min(30, element3.width / 40)));
   const band = captioned ? Math.round(fontSize * 2 * 1.35 + PAD) : 0;
-  element2.height = even(size.h + 2 * PAD + band);
-  const context = element2.getContext("2d", { willReadFrequently: true });
+  element3.height = even(size.h + 2 * PAD + band);
+  const context = element3.getContext("2d", { willReadFrequently: true });
   const style = getComputedStyle(host.article);
   const colour = (name, fallback) => style.getPropertyValue(name).trim() || fallback;
   const background = colour("--bgColor-default", getComputedStyle(document.body).backgroundColor);
@@ -1130,7 +1136,7 @@ async function diagramCanvas(svg, home, limit, captioned, still) {
   const font = "500 " + fontSize + "px system-ui, -apple-system, sans-serif";
   const images = await diagramImageData(svg);
   function lines(text) {
-    const room = element2.width - 2 * PAD;
+    const room = element3.width - 2 * PAD;
     const result = [""];
     for (const word of text.split(/\s+/)) {
       const last = result.length - 1;
@@ -1146,18 +1152,18 @@ async function diagramCanvas(svg, home, limit, captioned, still) {
     return result;
   }
   return {
-    element: element2,
-    width: element2.width,
-    height: element2.height,
+    element: element3,
+    width: element3.width,
+    height: element3.height,
     async draw(text) {
       const picture = await diagramPicture(svg, home, size, images, still);
       context.fillStyle = background;
-      context.fillRect(0, 0, element2.width, element2.height);
-      context.drawImage(picture, (element2.width - size.w) / 2, (element2.height - band - size.h) / 2, size.w, size.h);
+      context.fillRect(0, 0, element3.width, element3.height);
+      context.drawImage(picture, (element3.width - size.w) / 2, (element3.height - band - size.h) / 2, size.w, size.h);
       if (!band || !text) return;
-      const top = element2.height - band;
+      const top = element3.height - band;
       context.fillStyle = rule;
-      context.fillRect(PAD, top, element2.width - 2 * PAD, 1);
+      context.fillRect(PAD, top, element3.width - 2 * PAD, 1);
       context.font = font;
       context.fillStyle = ink;
       context.textAlign = "center";
@@ -1165,9 +1171,9 @@ async function diagramCanvas(svg, home, limit, captioned, still) {
       const rows = lines(text);
       const height = fontSize * 1.35;
       const first = top + band / 2 - (rows.length - 1) * height / 2;
-      rows.forEach((row, at) => context.fillText(row, element2.width / 2, first + at * height));
+      rows.forEach((row, at) => context.fillText(row, element3.width / 2, first + at * height));
     },
-    pixels: () => context.getImageData(0, 0, element2.width, element2.height).data
+    pixels: () => context.getImageData(0, 0, element3.width, element3.height).data
   };
 }
 
@@ -1183,7 +1189,7 @@ function diagramVideoType(kind) {
 }
 function diagramExportName(title, extension) {
   const slug = (text) => text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  let page = location.pathname.split("/").pop() || "";
+  let page = host.pageName?.() ?? location.pathname.split("/").pop() ?? "";
   try {
     page = decodeURIComponent(page);
   } catch (error) {
@@ -1208,7 +1214,7 @@ function diagramShare(stage, svg, tools) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "play-record";
-  button.innerHTML = diagramIcon("share");
+  showIcon(button, "share");
   const menu = document.createElement("div");
   menu.className = "diagram-export";
   menu.hidden = true;
@@ -1225,16 +1231,16 @@ function diagramShare(stage, svg, tools) {
       button.setAttribute("aria-label", button.title);
     },
     choice(kind, text, note) {
-      const element2 = document.createElement("button");
-      element2.type = "button";
-      element2.dataset.kind = kind;
-      element2.dataset.note = note;
-      element2.textContent = text;
+      const element3 = document.createElement("button");
+      element3.type = "button";
+      element3.dataset.kind = kind;
+      element3.dataset.note = note;
+      element3.textContent = text;
       const small = document.createElement("small");
       small.textContent = note;
-      element2.append(small);
-      menu.append(element2);
-      return element2;
+      element3.append(small);
+      menu.append(element3);
+      return element3;
     }
   };
   share.link = share.choice("link", "Copy link", "To this diagram and spotlight");
@@ -1317,7 +1323,7 @@ function diagramWarnings(stage, tools, scenarios) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "play-warn";
-  button.innerHTML = diagramIcon("warn");
+  showIcon(button, "warn");
   const count = document.createElement("span");
   count.textContent = String(rows.length);
   button.append(count);
@@ -1369,10 +1375,10 @@ function playDiagram(stage, svg, tools, scripts, home, share, edges) {
   if (sequence) {
     nodes = /* @__PURE__ */ new Map();
     const lifelines = [];
-    for (const element2 of svg.querySelectorAll("rect.actor[name], g.actor-man[name], line.actor-line[name]")) {
-      const name = element2.getAttribute("name");
-      const part = element2.tagName === "rect" ? element2.parentNode : element2;
-      if (element2.tagName === "line") lifelines.push({ name, x: Number(element2.getAttribute("x1")) });
+    for (const element3 of svg.querySelectorAll("rect.actor[name], g.actor-man[name], line.actor-line[name]")) {
+      const name = element3.getAttribute("name");
+      const part = element3.tagName === "rect" ? element3.parentNode : element3;
+      if (element3.tagName === "line") lifelines.push({ name, x: Number(element3.getAttribute("x1")) });
       if (!nodes.has(name)) {
         nodes.set(name, part);
         parts.set(part, []);
@@ -1495,14 +1501,14 @@ function playDiagram(stage, svg, tools, scripts, home, share, edges) {
     controls.append(picker);
   }
   const make = (icon, label2, name) => {
-    const element2 = document.createElement("button");
-    element2.type = "button";
-    element2.className = name;
-    element2.innerHTML = diagramIcon(icon);
-    element2.title = label2;
-    element2.setAttribute("aria-label", label2);
-    controls.append(element2);
-    return element2;
+    const element3 = document.createElement("button");
+    element3.type = "button";
+    element3.className = name;
+    showIcon(element3, icon);
+    element3.title = label2;
+    element3.setAttribute("aria-label", label2);
+    controls.append(element3);
+    return element3;
   };
   const backButton = make("back", "Previous step", "play-back");
   const playButton = make("play", "Play", "play-toggle");
@@ -1558,7 +1564,7 @@ function playDiagram(stage, svg, tools, scripts, home, share, edges) {
   let stepping = false;
   const scenario = () => scenarios[picker ? Number(picker.value) : 0];
   function label(icon, text) {
-    playButton.innerHTML = diagramIcon(icon);
+    showIcon(playButton, icon);
     playButton.title = text;
     playButton.setAttribute("aria-label", text);
   }
@@ -1632,10 +1638,10 @@ function playDiagram(stage, svg, tools, scripts, home, share, edges) {
     active.delete(node);
   }
   function clearMarks() {
-    for (const element2 of svg.querySelectorAll(".play-active, .play-done, .play-skipped, .play-edge, .play-edge-done")) {
-      element2.classList.remove("play-active", "play-done", "play-skipped", "play-edge", "play-edge-done");
+    for (const element3 of svg.querySelectorAll(".play-active, .play-done, .play-skipped, .play-edge, .play-edge-done")) {
+      element3.classList.remove("play-active", "play-done", "play-skipped", "play-edge", "play-edge-done");
     }
-    for (const element2 of svg.querySelectorAll(".play-check")) element2.remove();
+    for (const element3 of svg.querySelectorAll(".play-check")) element3.remove();
     for (const dot of tokens) dot.remove();
     tokens = [];
     active.clear();
@@ -1672,10 +1678,10 @@ function playDiagram(stage, svg, tools, scripts, home, share, edges) {
     if (!root) return null;
     const inverse = root.inverse();
     let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
-    for (const element2 of elements) {
-      const own = element2 && element2.getScreenCTM();
+    for (const element3 of elements) {
+      const own = element3 && element3.getScreenCTM();
       if (!own) continue;
-      const box2 = element2.getBBox();
+      const box2 = element3.getBBox();
       const to = inverse.multiply(own);
       for (const [x, y] of [[box2.x, box2.y], [box2.x + box2.width, box2.y], [box2.x, box2.y + box2.height], [box2.x + box2.width, box2.y + box2.height]]) {
         const point = new DOMPoint(x, y).matrixTransform(to);
@@ -1740,9 +1746,9 @@ function playDiagram(stage, svg, tools, scripts, home, share, edges) {
         run.token?.remove();
         tokens = tokens.filter((dot) => dot !== run.token);
         run.token = null;
-        for (const element2 of lit(run.move)) {
-          element2.classList.remove("play-edge");
-          element2.classList.add("play-edge-done");
+        for (const element3 of lit(run.move)) {
+          element3.classList.remove("play-edge");
+          element3.classList.add("play-edge-done");
         }
         setActive(run.move.to);
       };
@@ -1754,9 +1760,9 @@ function playDiagram(stage, svg, tools, scripts, home, share, edges) {
           runs.forEach((run, at) => {
             run.arrived = false;
             run.token = null;
-            for (const element2 of lit(run.move)) {
-              element2.classList.remove("play-edge-done");
-              element2.classList.add("play-edge");
+            for (const element3 of lit(run.move)) {
+              element3.classList.remove("play-edge-done");
+              element3.classList.add("play-edge");
             }
             if (calm) return;
             const own = run.move.path.getScreenCTM();
@@ -1915,8 +1921,8 @@ function playDiagram(stage, svg, tools, scripts, home, share, edges) {
     busy(false);
     stage.classList.remove("recording");
     recordButton.classList.remove("busy");
-    recordButton.innerHTML = diagramIcon("share");
-    for (const element2 of [backButton, playButton, nextButton, stopButton, speedButton]) element2.disabled = false;
+    showIcon(recordButton, "share");
+    for (const element3 of [backButton, playButton, nextButton, stopButton, speedButton]) element3.disabled = false;
     if (picker) picker.disabled = false;
     share.label(error ? "Could not save the " + exportLabel(kind) + ": " + (error.message || error) : "");
     sync();
@@ -1928,7 +1934,7 @@ function playDiagram(stage, svg, tools, scripts, home, share, edges) {
     const job = exporting;
     pause();
     busy(true);
-    for (const element2 of [backButton, playButton, nextButton, stopButton, speedButton]) element2.disabled = true;
+    for (const element3 of [backButton, playButton, nextButton, stopButton, speedButton]) element3.disabled = true;
     if (picker) picker.disabled = true;
     recordButton.classList.add("busy");
     recordButton.textContent = "0%";
@@ -2083,13 +2089,13 @@ function panZoom(holder, scenarios, edges, about) {
   const tools = document.createElement("div");
   tools.className = "diagram-tools";
   const button = (name, label) => {
-    const element2 = document.createElement("button");
-    element2.type = "button";
-    element2.title = label;
-    element2.setAttribute("aria-label", label);
-    element2.innerHTML = diagramIcon(name);
-    tools.append(element2);
-    return element2;
+    const element3 = document.createElement("button");
+    element3.type = "button";
+    element3.title = label;
+    element3.setAttribute("aria-label", label);
+    showIcon(element3, name);
+    tools.append(element3);
+    return element3;
   };
   const penButton = button("pen", "Draw on the diagram");
   const followButton = scenarios.length ? button("follow", "Follow the story") : null;
@@ -2206,14 +2212,14 @@ function panZoom(holder, scenarios, edges, about) {
     }
     holder.style.minHeight = holder.offsetHeight + "px";
     diagramDialog.append(stage);
-    fullButton.innerHTML = diagramIcon("close");
+    showIcon(fullButton, "close");
     fullButton.title = "Close";
     fullButton.setAttribute("aria-label", "Close");
     diagramDialog.addEventListener("close", () => {
       stage.diagramNotes?.hidden();
       holder.append(stage);
       holder.style.minHeight = "";
-      fullButton.innerHTML = diagramIcon("full");
+      showIcon(fullButton, "full");
       fullButton.title = "Full screen";
       fullButton.setAttribute("aria-label", "Full screen");
       reset();
@@ -2224,6 +2230,9 @@ function panZoom(holder, scenarios, edges, about) {
     stage.diagramNotes?.shown();
   }
   fullButton.addEventListener("click", () => full() ? diagramDialog.close() : openFull());
+  host.render?.signal.addEventListener("abort", () => {
+    if (full()) diagramDialog.close();
+  }, { once: true });
   stage.diagramFull = () => {
     if (full()) return;
     if (!diagramDialog || !diagramDialog.open) {
@@ -2398,8 +2407,8 @@ function panZoom(holder, scenarios, edges, about) {
 }
 
 // js/diagram/theme.js
-function diagramColours(dark) {
-  const style = getComputedStyle(host.article);
+function diagramColours(dark, element3 = host.article) {
+  const style = getComputedStyle(element3);
   const context = document.createElement("canvas").getContext("2d");
   const rgb = (name) => {
     context.fillStyle = "#808080";
@@ -2452,6 +2461,37 @@ function storyNumber(wanted, scenarios) {
   const found = scenarios.findIndex((scenario) => scenario.title.toLowerCase() === wanted.trim().toLowerCase());
   return found + 1;
 }
+var loading = null;
+function loadMermaid() {
+  const factory = typeof host.mermaid === "function";
+  if (!factory && window.mermaid) return Promise.resolve(window.mermaid);
+  return loading ||= (factory ? Promise.resolve().then(host.mermaid) : mermaidScript()).catch((error) => {
+    loading = null;
+    throw error;
+  });
+}
+function mermaidScript() {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    if (host.nonce) script.nonce = host.nonce;
+    script.src = host.mermaid;
+    script.onload = () => resolve(window.mermaid);
+    script.onerror = () => {
+      script.remove();
+      reject(new Error("mermaid did not load"));
+    };
+    document.head.append(script);
+  });
+}
+function withRender(render, build) {
+  const outer = host.render;
+  host.render = render;
+  try {
+    return build();
+  } finally {
+    host.render = outer;
+  }
+}
 function autoplay(stage) {
   if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const watcher = new IntersectionObserver((entries) => {
@@ -2462,29 +2502,32 @@ function autoplay(stage) {
   watcher.observe(stage);
   host.render?.signal.addEventListener("abort", () => watcher.disconnect(), { once: true });
 }
-function nearScreen(blocks) {
+function nearScreen(blocks, signal) {
   if (!host.lazy || !("IntersectionObserver" in window)) return Promise.resolve();
   return new Promise((resolve) => {
+    if (signal?.aborted) return;
     const watcher = new IntersectionObserver((entries) => {
       if (!entries.some((entry) => entry.isIntersecting)) return;
       watcher.disconnect();
       resolve();
     }, { rootMargin: "600px 0px" });
     for (const block of blocks) watcher.observe(block.closest(".aniflow-figure") || block);
+    signal?.addEventListener("abort", () => watcher.disconnect(), { once: true });
   });
 }
-function drawDiagrams() {
-  const diagrams2 = [...host.article.querySelectorAll(".highlight-source-mermaid")];
+function drawDiagrams(root = host.article, render = host.render) {
+  const diagrams2 = [...root.querySelectorAll(".highlight-source-mermaid")];
   if (!diagrams2.length) return;
-  const draw = async () => {
+  const draw = async (mermaid) => {
     const dark = host.dark ? Boolean(host.dark()) : document.documentElement.dataset.mode === "dark";
     let themeVariables = null;
     try {
-      themeVariables = diagramColours(dark);
+      themeVariables = diagramColours(dark, root);
     } catch (error) {
     }
     mermaid.initialize(themeVariables ? { startOnLoad: false, securityLevel: "strict", theme: "base", themeVariables } : { startOnLoad: false, securityLevel: "strict", theme: dark ? "dark" : "default" });
     for (const [position, block] of diagrams2.entries()) {
+      if (render?.signal.aborted) return;
       if (!block.isConnected) continue;
       const id = "mermaid-" + diagramCount++;
       let holder;
@@ -2492,10 +2535,10 @@ function drawDiagrams() {
       const source = block.textContent;
       try {
         const scenarios = playScript(source, Number(block.dataset.line) || 0);
-        const pictures2 = await diagramImages(source);
-        const edges = await diagramEdges(pictures2.source);
+        const pictures2 = await diagramImages(source, block);
+        const edges = await diagramEdges(pictures2.source, mermaid);
         const result = await mermaid.render(id, pictures2.source);
-        if (!block.isConnected) {
+        if (!block.isConnected || render?.signal.aborted) {
           document.getElementById("d" + id)?.remove();
           continue;
         }
@@ -2505,24 +2548,27 @@ function drawDiagrams() {
           holder.dataset.line = block.dataset.line;
           holder.dataset.lineEnd = block.dataset.lineEnd;
         }
-        holder.innerHTML = result.svg;
+        holder.append(new DOMParser().parseFromString(result.svg, "text/html").body.firstElementChild);
         holder.diagramBlock = block;
         block.before(holder);
         holder.style.visibility = "hidden";
         if (block.classList.contains("slide-on")) holder.classList.add("slide-on");
-        panZoom(holder, scenarios, edges, { source, line: block.dataset.line, lineEnd: block.dataset.lineEnd, index: position + 1 });
-        const stage = holder.querySelector(":scope > .diagram-stage");
-        if (fallback && !stage) throw new Error("Diagram stage did not initialize");
-        if (stage) {
-          stage.dataset.diagram = String(position + 1);
-          const story = storyNumber(block.dataset.story, scenarios);
-          if (stage.diagramPlay && story) stage.diagramPlay.restore(story, null);
-          const wanted = stage.diagramPlay && !block.diagramPlayed && (host.autoplay || "autoplay" in block.dataset);
-          if (!diagramFromHash(stage) && wanted) {
-            block.diagramPlayed = true;
-            autoplay(stage);
+        const stage = withRender(render, () => {
+          panZoom(holder, scenarios, edges, { source, line: block.dataset.line, lineEnd: block.dataset.lineEnd, index: position + 1 });
+          const stage2 = holder.querySelector(":scope > .diagram-stage");
+          if (fallback && !stage2) throw new Error("Diagram stage did not initialize");
+          if (stage2) {
+            stage2.dataset.diagram = String(position + 1);
+            const story = storyNumber(block.dataset.story, scenarios);
+            if (stage2.diagramPlay && story) stage2.diagramPlay.restore(story, null);
+            const wanted = stage2.diagramPlay && !block.diagramPlayed && (host.autoplay || "autoplay" in block.dataset);
+            if (!diagramFromHash(stage2) && wanted) {
+              block.diagramPlayed = true;
+              autoplay(stage2);
+            }
           }
-        }
+          return stage2;
+        });
         if (stage && holder.classList.contains("slide-on")) host.onSlideDiagram?.();
         if (pictures2.problems.length) holder.title += "\nPictures not shown: " + pictures2.problems.join(", ");
         if (host.onDiagram) host.onDiagram();
@@ -2537,30 +2583,66 @@ function drawDiagrams() {
       }
     }
   };
-  if (window.mermaid) {
-    draw().catch(console.error);
-    return;
-  }
-  nearScreen(diagrams2).then(() => {
-    if (window.mermaid) return draw().catch(console.error);
-    const script = document.createElement("script");
-    if (host.nonce) script.nonce = host.nonce;
-    script.src = host.mermaid;
-    script.onload = () => draw().catch(console.error);
-    script.onerror = () => {
-      script.remove();
-    };
-    document.head.append(script);
-  });
+  const ready = window.mermaid && typeof host.mermaid !== "function" ? Promise.resolve() : nearScreen(diagrams2, render?.signal);
+  ready.then(loadMermaid).then(draw).catch(console.error);
 }
-function redrawDiagrams() {
+function redrawDiagrams(root = host.article, render = host.render) {
   if (diagramDialog?.open) diagramDialog.close();
-  for (const holder of host.article.querySelectorAll(".mermaid-diagram")) {
+  for (const holder of root.querySelectorAll(".mermaid-diagram")) {
     const fallback = holder.closest(".aniflow-figure")?.querySelector(".aniflow-fallback");
     if (fallback) fallback.hidden = false;
     if (holder.diagramBlock) holder.replaceWith(holder.diagramBlock);
   }
+  drawDiagrams(root, render);
+}
+
+// js/diagram/index.js
+var element = (value) => typeof value === "string" ? document.querySelector(value) : value || null;
+var none = () => null;
+function diagrams(options = {}) {
+  const root = element(options.root || document.body);
+  if (!root) throw new Error("aniflow: no root element");
+  Object.assign(host, {
+    article: root,
+    nonce: options.nonce || "",
+    resolveImage: options.resolveImage || none,
+    mermaid: options.mermaid || "mermaid.min.js",
+    dark: options.dark || null,
+    lazy: options.lazy !== false,
+    autoplay: Boolean(options.autoplay),
+    pageName: options.pageName || null,
+    commentsUrl: "",
+    save: options.save || ((name, blob) => saveBlob(blob, name)),
+    onShow: null,
+    onDiagram: null,
+    onSlideDiagram: null
+  });
+  const fresh = () => {
+    host.render?.abort();
+    host.render = new AbortController();
+  };
+  const life = new AbortController();
+  const part = (signal) => signal ? { signal } : host.render;
+  fresh();
   drawDiagrams();
+  addEventListener("hashchange", () => {
+    for (const stage of root.querySelectorAll(".diagram-stage[data-diagram]")) if (diagramFromHash(stage)) break;
+  }, { signal: life.signal });
+  return {
+    // With element, abort that part's old signal before calling.
+    redraw(element3, signal) {
+      if (element3) return redrawDiagrams(element3, part(signal));
+      fresh();
+      redrawDiagrams();
+    },
+    draw(element3, signal) {
+      drawDiagrams(element3, part(signal));
+    },
+    close() {
+      life.abort();
+      host.render?.abort();
+    }
+  };
 }
 
 // js/reader/frontmatter.js
@@ -3184,11 +3266,11 @@ function initReview() {
       link.href = host.commentsSignin + "?next=" + encodeURIComponent(back);
       return link;
     }, make = function(tag, className, text) {
-      const element2 = document.createElement(tag);
-      if (className) element2.className = className;
-      if (text !== void 0) element2.textContent = text;
-      if (tag === "button") element2.type = "button";
-      return element2;
+      const element3 = document.createElement(tag);
+      if (className) element3.className = className;
+      if (text !== void 0) element3.textContent = text;
+      if (tag === "button") element3.type = "button";
+      return element3;
     }, ago = function(date) {
       const seconds = (date.getTime() - Date.now()) / 1e3;
       const format = new Intl.RelativeTimeFormat(void 0, { numeric: "auto" });
@@ -3220,10 +3302,10 @@ function initReview() {
       paint();
     }, collect = function() {
       const found = [];
-      for (const element2 of host.article.querySelectorAll("[data-line]")) {
-        if (element2.closest(".code-body, .review-thread, .review-composer")) continue;
-        const start = Number(element2.dataset.line);
-        if (start) found.push({ element: element2, start, end: Number(element2.dataset.lineEnd) || start, code: false });
+      for (const element3 of host.article.querySelectorAll("[data-line]")) {
+        if (element3.closest(".code-body, .review-thread, .review-composer")) continue;
+        const start = Number(element3.dataset.line);
+        if (start) found.push({ element: element3, start, end: Number(element3.dataset.lineEnd) || start, code: false });
       }
       for (const box of host.article.querySelectorAll(".code-body [data-code]")) {
         const first = Number(box.dataset.code);
@@ -3303,7 +3385,7 @@ function initReview() {
         body.append(band);
       }
     }, paint = function() {
-      for (const element2 of host.article.querySelectorAll(".review-selected")) element2.classList.remove("review-selected");
+      for (const element3 of host.article.querySelectorAll(".review-selected")) element3.classList.remove("review-selected");
       for (const mark of marks) {
         const on = inside(mark);
         mark.button.classList.toggle("selected", on);
@@ -3348,11 +3430,11 @@ function initReview() {
       for (const mark of marks) if (mark.start <= line) best = mark;
       return best || marks[0] || null;
     }, slot = function(mark, start) {
-      const element2 = mark.element;
-      if (mark.code) return [element2.closest(".code-block"), "after"];
-      if (element2.tagName === "TR") return [element2.closest("table"), "after"];
-      const own = element2.tagName === "LI" ? element2 : element2.parentElement?.tagName === "LI" ? element2.parentElement : null;
-      if (!own) return [element2, "after"];
+      const element3 = mark.element;
+      if (mark.code) return [element3.closest(".code-block"), "after"];
+      if (element3.tagName === "TR") return [element3.closest("table"), "after"];
+      const own = element3.tagName === "LI" ? element3 : element3.parentElement?.tagName === "LI" ? element3.parentElement : null;
+      if (!own) return [element3, "after"];
       let item = own;
       let list = null;
       while (item && start < lineOf(item) && lineOf(item.parentElement.firstElementChild) >= start) {
@@ -3360,7 +3442,7 @@ function initReview() {
         item = list.parentElement?.tagName === "LI" ? list.parentElement : null;
       }
       if (list) return [list, "after"];
-      if (element2 !== own) return [element2, "after"];
+      if (element3 !== own) return [element3, "after"];
       const nested = own.querySelector(":scope > ul, :scope > ol");
       return nested ? [nested, "before"] : [own, "append"];
     }, insertAt = function([node, how], content) {
@@ -3685,21 +3767,21 @@ function initReview() {
     }, arrange = function() {
       if (!side) return;
       if (!margin.isConnected) host.article.append(margin);
-      const items = [...margin.children].map((element2) => ({ element: element2, want: topOf(element2.anchorStart) }));
+      const items = [...margin.children].map((element3) => ({ element: element3, want: topOf(element3.anchorStart) }));
       let floor = 0;
-      for (const { element: element2, want } of items.sort((a, b) => a.want - b.want)) {
-        sizes.observe(element2);
+      for (const { element: element3, want } of items.sort((a, b) => a.want - b.want)) {
+        sizes.observe(element3);
         const top = Math.max(want, floor);
-        element2.style.top = top + "px";
-        floor = top + element2.offsetHeight + 12;
+        element3.style.top = top + "px";
+        floor = top + element3.offsetHeight + 12;
       }
       host.article.style.minHeight = floor ? floor + "px" : "";
-    }, linkLines = function(element2) {
-      const lit = () => marks.filter((mark) => !mark.code && mark.start <= element2.anchorEnd && mark.end >= element2.anchorStart);
-      element2.addEventListener("pointerenter", () => {
+    }, linkLines = function(element3) {
+      const lit = () => marks.filter((mark) => !mark.code && mark.start <= element3.anchorEnd && mark.end >= element3.anchorStart);
+      element3.addEventListener("pointerenter", () => {
         for (const mark of lit()) mark.element.classList.add("review-linked");
       });
-      element2.addEventListener("pointerleave", () => {
+      element3.addEventListener("pointerleave", () => {
         for (const mark of lit()) mark.element.classList.remove("review-linked");
       });
     }, put = function(holder, start) {
@@ -3727,14 +3809,14 @@ function initReview() {
       selection = null;
       remember();
       gutter.remove();
-      for (const element2 of host.article.querySelectorAll(".code-gutter, .code-band, .review-thread")) element2.remove();
+      for (const element3 of host.article.querySelectorAll(".code-gutter, .code-band, .review-thread")) element3.remove();
       margin.remove();
       margin.replaceChildren();
       host.article.style.minHeight = "";
       host.article.classList.remove("review-side");
       document.body.classList.remove("review-side");
-      for (const element2 of host.article.querySelectorAll(".review-linked")) element2.classList.remove("review-linked");
-      for (const element2 of host.article.querySelectorAll(".review-selected")) element2.classList.remove("review-selected");
+      for (const element3 of host.article.querySelectorAll(".review-linked")) element3.classList.remove("review-linked");
+      for (const element3 of host.article.querySelectorAll(".review-selected")) element3.classList.remove("review-selected");
       marks = [];
       host.article.classList.remove("reviewing");
       document.body.classList.remove("reviewing");
@@ -3815,7 +3897,7 @@ function initReview() {
       redraw();
     }
     const inside = (mark) => Boolean(selection) && mark.start <= selection.end && mark.end >= selection.start;
-    const lineOf = (element2) => Number(element2?.dataset.line || element2?.querySelector("[data-line]")?.dataset.line || 0);
+    const lineOf = (element3) => Number(element3?.dataset.line || element3?.querySelector("[data-line]")?.dataset.line || 0);
     host.onShow = () => {
       if (reviewing) leave();
     };
@@ -3999,15 +4081,15 @@ function slideThumb(index, width, doc = document, complete = true) {
   reader2.className = "reader";
   const canvas = doc.createElement("div");
   canvas.className = "markdown-body slide-canvas";
-  const copies = group.map((element2) => {
-    const copy = element2.cloneNode(true);
+  const copies = group.map((element3) => {
+    const copy = element3.cloneNode(true);
     copy.classList.add("slide-on");
     copy.style.removeProperty("view-transition-name");
     if (complete) for (const each of [copy, ...copy.querySelectorAll(".slide-hidden, .slide-latest")]) each.classList.remove("slide-hidden", "slide-latest");
     for (const each of [copy, ...copy.querySelectorAll("[id]")]) each.removeAttribute("id");
     for (const each of copy.querySelectorAll("button, .diagram-tools, .diagram-caption, .play-warn, .code-block-head")) each.remove();
     const holders = copy.matches(".mermaid-diagram") ? [copy] : [...copy.querySelectorAll(".mermaid-diagram")];
-    const originals = element2.matches(".mermaid-diagram") ? [element2] : [...element2.querySelectorAll(".mermaid-diagram")];
+    const originals = element3.matches(".mermaid-diagram") ? [element3] : [...element3.querySelectorAll(".mermaid-diagram")];
     holders.forEach((holder, at) => {
       const stage = originals[at]?.querySelector(".diagram-stage");
       const image = doc.createElement("img");
@@ -4168,7 +4250,7 @@ function paintPresenter() {
   };
   place(doc.querySelector(".presenter-now .presenter-slot"), slideAt, false);
   place(doc.querySelector(".presenter-next .presenter-slot"), slideAt + 1, true);
-  const notes = groups[slideAt].filter((element2) => element2.matches(".slide-notes"));
+  const notes = groups[slideAt].filter((element3) => element3.matches(".slide-notes"));
   const body = doc.querySelector(".presenter-notes");
   body.replaceChildren(...notes.flatMap((note) => [...note.cloneNode(true).childNodes]));
   if (!notes.length) {
@@ -4231,7 +4313,7 @@ function pictureLoads(url) {
 var DECK_KEYS = ["accent", "font", "footer", "logo", "logo-dark", "numbers", "aspect", "transition", "style", "motion"];
 async function deckCheck() {
   const problems = [];
-  const lineOf = (element2) => Number(element2?.dataset?.line || element2?.querySelector?.("[data-line]")?.dataset.line) || 0;
+  const lineOf = (element3) => Number(element3?.dataset?.line || element3?.querySelector?.("[data-line]")?.dataset.line) || 0;
   const front = readFrontMatter(host.source || "")?.entries || [];
   const explicit = front.some((entry) => DECK_KEYS.includes(entry.key)) || host.article.querySelector(".slide-mark:not([data-auto]), .slide-notes, .slide-column-mark, .slide-reveal-mark");
   if (!explicit) return problems;
@@ -4245,15 +4327,15 @@ async function deckCheck() {
   for (let index = 0; index < groups.length; index++) {
     await showSlide(index);
     const group = slideGroups()[index];
-    const line = lineOf(group.find((element2) => !element2.matches(".slide-mark") && lineOf(element2))) || lineOf(group[0]);
+    const line = lineOf(group.find((element3) => !element3.matches(".slide-mark") && lineOf(element3))) || lineOf(group[0]);
     const where = "slide " + (index + 1) + " (" + slideTitle(group, index) + ")";
     const { mark, layout, media, summary } = slideLayout(group, index);
-    for (const element2 of group.flatMap((each) => [each, ...each.querySelectorAll("[data-problem]")])) {
-      if (element2.dataset?.problem) problems.push({ line: lineOf(element2) || line, message: where + ": " + element2.dataset.problem });
+    for (const element3 of group.flatMap((each) => [each, ...each.querySelectorAll("[data-problem]")])) {
+      if (element3.dataset?.problem) problems.push({ line: lineOf(element3) || line, message: where + ": " + element3.dataset.problem });
     }
     if (host.article.hasAttribute("data-overflow")) problems.push({ line, message: where + ": does not fit even with smaller text; split it or cut words" });
     else if (summary.words > WORDS_MAX && layout !== "full") problems.push({ line, message: where + ": " + summary.words + " words; keep a slide under " + WORDS_MAX });
-    if (mark?.dataset.layout === "columns" && !group.some((element2) => element2.matches(".slide-columns"))) problems.push({ line: lineOf(mark), message: where + ": layout=columns needs a <!-- column --> between the columns" });
+    if (mark?.dataset.layout === "columns" && !group.some((element3) => element3.matches(".slide-columns"))) problems.push({ line: lineOf(mark), message: where + ": layout=columns needs a <!-- column --> between the columns" });
     if (["split", "full"].includes(mark?.dataset.layout) && !media) problems.push({ line: lineOf(mark), message: where + ": layout=" + mark.dataset.layout + " needs a picture or a diagram on the slide" });
     if (mark?.dataset.image && !await pictureLoads(slidePicture(mark.dataset.image))) problems.push({ line: lineOf(mark), message: where + ": background picture not found: " + mark.dataset.image });
     for (const image of host.article.querySelectorAll(".slide-on img")) {
@@ -4279,60 +4361,60 @@ var slideFrame = null;
 var steps = [];
 var themeBefore = null;
 var slideReturn = "";
-var isHeading = (element2) => /^H[1-6]$/.test(element2.tagName);
+var isHeading = (element3) => /^H[1-6]$/.test(element3.tagName);
 var MARKERS = ".slide-mark, .slide-column-mark, .slide-reveal-mark, .slide-notes";
 var SLIDE_CONTROLS = 'a[href], button, input, select, textarea, summary, label, video, audio, iframe, [contenteditable="true"], [contenteditable=""], .slide-dock, .diagram-tools, .diagram-pins, .diagram-notes, .play-warn';
 var reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 function slideGroups() {
-  const blocks = [...host.article.children].filter((element2) => !element2.matches(".frontmatter, .frontmatter-raw, .review-gutter"));
-  const marked = blocks.some((element2) => element2.matches(".slide-mark"));
-  const level = blocks.some((element2) => element2.tagName === "H2") ? "H2" : blocks.filter((element2) => element2.tagName === "H1").length > 1 ? "H1" : "";
+  const blocks = [...host.article.children].filter((element3) => !element3.matches(".frontmatter, .frontmatter-raw, .review-gutter"));
+  const marked = blocks.some((element3) => element3.matches(".slide-mark"));
+  const level = blocks.some((element3) => element3.tagName === "H2") ? "H2" : blocks.filter((element3) => element3.tagName === "H1").length > 1 ? "H1" : "";
   if (!level && !marked) return [];
   const groups = [[]];
   let previous = null;
-  for (const element2 of blocks) {
-    const opens = element2.matches(".slide-mark") || element2.tagName === level && !previous?.matches(".slide-mark");
+  for (const element3 of blocks) {
+    const opens = element3.matches(".slide-mark") || element3.tagName === level && !previous?.matches(".slide-mark");
     if (opens && groups[groups.length - 1].length) groups.push([]);
-    groups[groups.length - 1].push(element2);
-    previous = element2;
+    groups[groups.length - 1].push(element3);
+    previous = element3;
   }
-  return groups.filter((group) => group.some((element2) => !element2.matches(MARKERS) && (element2.textContent.trim() || element2.querySelector("img, svg"))));
+  return groups.filter((group) => group.some((element3) => !element3.matches(MARKERS) && (element3.textContent.trim() || element3.querySelector("img, svg"))));
 }
 var slideTitle = (group, index) => {
-  const heading = group.find(isHeading) || group.find((element2) => element2.matches(".slide-autocover"))?.querySelector(".slide-cover-title");
+  const heading = group.find(isHeading) || group.find((element3) => element3.matches(".slide-autocover"))?.querySelector(".slide-cover-title");
   if (heading) return heading.textContent.replace(/^#/, "").trim();
-  const text = group.find((element2) => element2.matches("blockquote, p") && element2.textContent.trim())?.textContent.trim().replace(/\s+/g, " ");
+  const text = group.find((element3) => element3.matches("blockquote, p") && element3.textContent.trim())?.textContent.trim().replace(/\s+/g, " ");
   if (!text) return "Slide " + (index + 1);
   return text.length > 48 ? text.slice(0, 47).trimEnd() + "\u2026" : text;
 };
 var slideStory = () => [...host.article.querySelectorAll(".slide-on .diagram-stage")].map((stage) => stage.diagramPlay).find(Boolean);
-function blockKind(element2) {
-  if (element2.matches(".mermaid-diagram, .highlight-source-mermaid")) return "diagram";
-  if (element2.matches(".slide-columns")) return "columns";
-  if (element2.matches(".slide-autocover")) return "cover";
-  if (element2.tagName === "P") {
-    const media = element2.querySelectorAll("img, svg, video");
-    return media.length === 1 && !element2.textContent.trim() ? "picture" : "p";
+function blockKind(element3) {
+  if (element3.matches(".mermaid-diagram, .highlight-source-mermaid")) return "diagram";
+  if (element3.matches(".slide-columns")) return "columns";
+  if (element3.matches(".slide-autocover")) return "cover";
+  if (element3.tagName === "P") {
+    const media = element3.querySelectorAll("img, svg, video");
+    return media.length === 1 && !element3.textContent.trim() ? "picture" : "p";
   }
-  if (/^[UO]L$/.test(element2.tagName)) return "list";
-  if (element2.tagName === "BLOCKQUOTE") return "quote";
-  if (element2.matches(".code-block, .highlight, pre")) return "code";
-  if (element2.matches("table") || element2.querySelector(":scope > table")) return "table";
+  if (/^[UO]L$/.test(element3.tagName)) return "list";
+  if (element3.tagName === "BLOCKQUOTE") return "quote";
+  if (element3.matches(".code-block, .highlight, pre")) return "code";
+  if (element3.matches("table") || element3.querySelector(":scope > table")) return "table";
   return "other";
 }
-var leadNumber = (element2) => {
-  const lead = element2.querySelector(":scope > strong:first-child");
-  return Boolean(lead && /\d/.test(lead.textContent) && lead.textContent.length <= 14 && element2.textContent.trimStart().startsWith(lead.textContent));
+var leadNumber = (element3) => {
+  const lead = element3.querySelector(":scope > strong:first-child");
+  return Boolean(lead && /\d/.test(lead.textContent) && lead.textContent.length <= 14 && element3.textContent.trimStart().startsWith(lead.textContent));
 };
 function slideLayout(group, index) {
   const mark = group[0]?.matches(".slide-mark") ? group[0] : null;
-  const content = group.filter((element2) => !element2.matches(MARKERS) && !isHeading(element2));
+  const content = group.filter((element3) => !element3.matches(MARKERS) && !isHeading(element3));
   const kinds = content.map(blockKind);
   const heading = group.find(isHeading);
-  const words = content.filter((element2) => !element2.matches(".mermaid-diagram, .highlight-source-mermaid")).reduce((sum, element2) => sum + (element2.textContent.trim().match(/\S+/g) || []).length, 0);
-  const lists = content.filter((element2) => /^[UO]L$/.test(element2.tagName));
+  const words = content.filter((element3) => !element3.matches(".mermaid-diagram, .highlight-source-mermaid")).reduce((sum, element3) => sum + (element3.textContent.trim().match(/\S+/g) || []).length, 0);
+  const lists = content.filter((element3) => /^[UO]L$/.test(element3.tagName));
   const items = lists.flatMap((list) => [...list.children]);
-  const texts = content.filter((element2) => element2.tagName === "P").concat(items);
+  const texts = content.filter((element3) => element3.tagName === "P").concat(items);
   const summary = {
     kinds,
     heading: heading ? heading.tagName.toLowerCase() : null,
@@ -4343,7 +4425,7 @@ function slideLayout(group, index) {
     cover: kinds.includes("cover")
   };
   const layout = mark?.dataset.layout || pickLayout(summary);
-  const media = layout === "split" || layout === "full" ? content.find((element2) => ["picture", "diagram"].includes(blockKind(element2))) || null : null;
+  const media = layout === "split" || layout === "full" ? content.find((element3) => ["picture", "diagram"].includes(blockKind(element3))) || null : null;
   return { mark, layout, media, heading, content, summary };
 }
 function dressCanvas(canvas, group, index) {
@@ -4365,22 +4447,22 @@ function dressCanvas(canvas, group, index) {
       canvas.style.setProperty("background-image", "linear-gradient(var(--slide-scrim), var(--slide-scrim)), url(" + JSON.stringify(url) + ")");
     }
   }
-  for (const element2 of group) {
-    element2.classList.remove("slide-media");
-    element2.style.removeProperty("grid-row");
+  for (const element3 of group) {
+    element3.classList.remove("slide-media");
+    element3.style.removeProperty("grid-row");
   }
   if (media) {
     media.classList.add("slide-media");
     canvas.dataset.full = media.matches(".mermaid-diagram, .highlight-source-mermaid") ? "diagram" : "picture";
   }
   if (layout === "split" && media) {
-    const text = group.filter((element2) => element2 !== media && !element2.matches(MARKERS));
+    const text = group.filter((element3) => element3 !== media && !element3.matches(MARKERS));
     canvas.style.setProperty("grid-template-rows", "1fr repeat(" + Math.max(1, text.length) + ", auto) 1fr");
-    text.forEach((element2, at) => element2.style.setProperty("grid-row", String(at + 2)));
+    text.forEach((element3, at) => element3.style.setProperty("grid-row", String(at + 2)));
   }
   canvas.style.setProperty("--slide-cards", String(Math.min(3, info.summary.cards === 4 ? 2 : info.summary.cards || 1)));
   if (info.layout === "grid") {
-    for (const label of group.flatMap((element2) => [...element2.querySelectorAll(":scope > li > strong:first-child, :scope > li > p:first-child > strong:first-child")])) {
+    for (const label of group.flatMap((element3) => [...element3.querySelectorAll(":scope > li > strong:first-child, :scope > li > p:first-child > strong:first-child")])) {
       const next = label.nextSibling;
       const separator = next?.nodeType === Node.TEXT_NODE && /^\s*[:,;\u2013\u2014-]\s*/.exec(next.data);
       if (!separator) continue;
@@ -4428,23 +4510,23 @@ function fitSlide(canvas = host.article) {
 function slideSteps(group) {
   const found = [];
   const marked = group[0]?.matches(".slide-mark") && group[0].dataset.reveal !== void 0;
-  const reveal = (element2) => {
-    if (/^[UO]L$/.test(element2.tagName)) found.push(...[...element2.children].map((item) => ({ show: item })));
-    else found.push({ show: element2 });
+  const reveal = (element3) => {
+    if (/^[UO]L$/.test(element3.tagName)) found.push(...[...element3.children].map((item) => ({ show: item })));
+    else found.push({ show: element3 });
   };
   const walk = (elements) => {
-    for (const element2 of elements) {
-      if (element2.matches(".slide-columns")) {
-        walk([...element2.querySelectorAll(":scope > .slide-column > *")]);
+    for (const element3 of elements) {
+      if (element3.matches(".slide-columns")) {
+        walk([...element3.querySelectorAll(":scope > .slide-column > *")]);
         continue;
       }
-      if (element2.matches(".slide-reveal-mark")) {
-        const next = element2.nextElementSibling;
+      if (element3.matches(".slide-reveal-mark")) {
+        const next = element3.nextElementSibling;
         if (next && !next.matches(MARKERS)) reveal(next);
         continue;
       }
-      if (marked && /^[UO]L$/.test(element2.tagName) && !found.some((step) => step.show?.parentElement === element2)) reveal(element2);
-      for (const code of element2.matches("[data-steps]") ? [element2] : element2.querySelectorAll("[data-steps]")) {
+      if (marked && /^[UO]L$/.test(element3.tagName) && !found.some((step) => step.show?.parentElement === element3)) reveal(element3);
+      for (const code of element3.matches("[data-steps]") ? [element3] : element3.querySelectorAll("[data-steps]")) {
         const ranges = codeSteps(code.dataset.steps) || [];
         for (let at = 1; at < ranges.length; at++) found.push({ code, at });
       }
@@ -4631,19 +4713,19 @@ function startPresenting() {
   deckTheme(true);
 }
 function leaveSlide() {
-  for (const element2 of host.article.querySelectorAll(":scope > .slide-on")) element2.classList.remove("slide-on");
-  for (const element2 of host.article.querySelectorAll(".slide-hidden, .slide-latest")) element2.classList.remove("slide-hidden", "slide-latest");
-  for (const element2 of host.article.querySelectorAll(".slide-media")) element2.classList.remove("slide-media");
-  for (const element2 of host.article.children) {
-    element2.style.removeProperty("grid-row");
-    element2.style.removeProperty("--slide-i");
-    element2.style.removeProperty("view-transition-name");
+  for (const element3 of host.article.querySelectorAll(":scope > .slide-on")) element3.classList.remove("slide-on");
+  for (const element3 of host.article.querySelectorAll(".slide-hidden, .slide-latest")) element3.classList.remove("slide-hidden", "slide-latest");
+  for (const element3 of host.article.querySelectorAll(".slide-media")) element3.classList.remove("slide-media");
+  for (const element3 of host.article.children) {
+    element3.style.removeProperty("grid-row");
+    element3.style.removeProperty("--slide-i");
+    element3.style.removeProperty("view-transition-name");
   }
 }
 function swapSlide(groups, at, step) {
   leaveSlide();
-  for (const element2 of groups[at]) element2.classList.add("slide-on");
-  groups[at].filter((element2) => !element2.matches(MARKERS)).forEach((element2, index) => element2.style.setProperty("--slide-i", String(index)));
+  for (const element3 of groups[at]) element3.classList.add("slide-on");
+  groups[at].filter((element3) => !element3.matches(MARKERS)).forEach((element3, index) => element3.style.setProperty("--slide-i", String(index)));
   const { layout } = dressCanvas(host.article, groups[at], at);
   document.body.dataset.slideLayout = layout;
   if (host.article.dataset.bg) document.body.dataset.slideBg = host.article.dataset.bg;
@@ -4657,11 +4739,11 @@ function swapSlide(groups, at, step) {
 }
 function morphNames(group, on) {
   const heading = group.find(isHeading);
-  const diagram = group.find((element2) => element2.matches(".mermaid-diagram"));
-  for (const [element2, name] of [[heading, "slide-title"], [diagram, "slide-diagram"]]) {
-    if (!element2) continue;
-    if (on) element2.style.setProperty("view-transition-name", name);
-    else element2.style.removeProperty("view-transition-name");
+  const diagram = group.find((element3) => element3.matches(".mermaid-diagram"));
+  for (const [element3, name] of [[heading, "slide-title"], [diagram, "slide-diagram"]]) {
+    if (!element3) continue;
+    if (on) element3.style.setProperty("view-transition-name", name);
+    else element3.style.removeProperty("view-transition-name");
   }
 }
 var morphing = null;
@@ -4843,7 +4925,7 @@ function initSlides() {
       }
       let at = 0;
       slideGroups().forEach((group, index) => {
-        const shown = group.find((element2) => !element2.matches(MARKERS) && element2.getClientRects().length);
+        const shown = group.find((element3) => !element3.matches(MARKERS) && element3.getClientRects().length);
         if (shown && shown.getBoundingClientRect().top <= 96) at = index;
       });
       if (!present(at)) return;
@@ -4901,7 +4983,7 @@ function initSlides() {
       const selection = String(document.getSelection() || "");
       if (selection && selection !== start.selection) return;
       const under = document.elementFromPoint(start.endX, start.endY) || event.target;
-      if ([under, event.target].some((element2) => element2.closest?.(SLIDE_CONTROLS) || element2.closest?.(".diagram-stage.drawing, .diagram-stage.commenting"))) return;
+      if ([under, event.target].some((element3) => element3.closest?.(SLIDE_CONTROLS) || element3.closest?.(".diagram-stage.drawing, .diagram-stage.commenting"))) return;
       event.preventDefault();
       event.stopPropagation();
       const direction = start.endX < innerWidth / 2 ? -1 : 1;
@@ -4927,24 +5009,24 @@ function initSlides() {
 }
 
 // js/index.js
-var element = (value) => typeof value === "string" ? document.querySelector(value) : value || null;
-var none = () => null;
+var element2 = (value) => typeof value === "string" ? document.querySelector(value) : value || null;
+var none2 = () => null;
 function reader(options = {}) {
-  const article = element(options.article || "article.markdown-body");
+  const article = element2(options.article || "article.markdown-body");
   if (!article) throw new Error("aniflow: no article element");
   const comments = options.comments || {};
   Object.assign(host, {
     article,
     source: options.source ?? "",
-    toc: element(options.toc),
-    bar: element(options.bar),
+    toc: element2(options.toc),
+    bar: element2(options.bar),
     nonce: options.nonce || "",
     breaks: Boolean(options.breaks),
     callouts: Boolean(options.callouts),
     plugins: options.plugins || [],
     preprocess: options.preprocess || ((text) => text),
-    resolveImage: options.resolveImage || none,
-    resolveLink: options.resolveLink || none,
+    resolveImage: options.resolveImage || none2,
+    resolveLink: options.resolveLink || none2,
     mermaid: options.mermaid || "mermaid.min.js",
     commentsUrl: comments.url || "",
     commentMax: comments.max || 4e3,
@@ -4953,9 +5035,9 @@ function reader(options = {}) {
     commentsSignout: comments.signout || "",
     commentsMe: comments.me || null,
     save: options.save || ((name, blob) => saveBlob(blob, name)),
-    reviewToggle: element(options.reviewButton),
-    dock: element(options.reviewDock),
-    presentButton: element(options.presentButton),
+    reviewToggle: element2(options.reviewButton),
+    dock: element2(options.reviewDock),
+    presentButton: element2(options.presentButton),
     onShow: null,
     onDiagram: null
   });
@@ -4992,52 +5074,18 @@ function reader(options = {}) {
     }
   };
 }
-function diagrams(options = {}) {
-  const root = element(options.root || document.body);
-  if (!root) throw new Error("aniflow: no root element");
-  Object.assign(host, {
-    article: root,
-    nonce: options.nonce || "",
-    resolveImage: options.resolveImage || none,
-    mermaid: options.mermaid || "mermaid.min.js",
-    dark: options.dark || null,
-    lazy: options.lazy !== false,
-    autoplay: Boolean(options.autoplay),
-    commentsUrl: "",
-    save: options.save || ((name, blob) => saveBlob(blob, name)),
-    onShow: null,
-    onDiagram: null,
-    onSlideDiagram: null
-  });
-  const fresh = () => {
-    host.render?.abort();
-    host.render = new AbortController();
-  };
-  fresh();
-  drawDiagrams();
-  addEventListener("hashchange", () => {
-    for (const stage of root.querySelectorAll(".diagram-stage[data-diagram]")) if (diagramFromHash(stage)) break;
-  });
-  return {
-    // Draws every diagram again, after the page switched between light and dark.
-    redraw() {
-      fresh();
-      redrawDiagrams();
-    }
-  };
-}
 var directoryResolver = (root, base = "") => (value) => directoryUrl(value, root, base);
 async function diagramExport(stage, kind) {
-  const element2 = stage instanceof Element ? stage : document.querySelector(stage);
-  if (!element2) throw new Error("aniflow: no diagram to export");
+  const element3 = stage instanceof Element ? stage : document.querySelector(stage);
+  if (!element3) throw new Error("aniflow: no diagram to export");
   if (!["gif", "mp4", "webm", "png"].includes(kind)) throw new Error("aniflow: " + kind + " is not an export kind");
   let result = null;
   if (kind === "png") {
-    if (!element2.diagramPicture) throw new Error("aniflow: that diagram is not drawn yet");
-    result = await element2.diagramPicture();
+    if (!element3.diagramPicture) throw new Error("aniflow: that diagram is not drawn yet");
+    result = await element3.diagramPicture();
   } else {
-    if (!element2.diagramExport) throw new Error("aniflow: that diagram has no walkthrough to save");
-    result = await element2.diagramExport(kind);
+    if (!element3.diagramExport) throw new Error("aniflow: that diagram has no walkthrough to save");
+    result = await element3.diagramExport(kind);
   }
   if (!result) throw new Error("aniflow: the " + kind + " was cancelled");
   return result;

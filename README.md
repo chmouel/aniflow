@@ -180,6 +180,13 @@ an existing static site) plus Python server modules (`aniflow.web`,
 
 See [`docs/library.md`](docs/library.md) for the API and embed examples.
 
+## Obsidian
+
+[`obsidian/`](obsidian/) is an Obsidian plugin that plays walkthroughs in
+reading view with the same diagram code. `npm run obsidian -- --vault
+~/Notes` builds it and installs it in that vault; see
+[`obsidian/README.md`](obsidian/README.md).
+
 ## Develop
 
 ```sh

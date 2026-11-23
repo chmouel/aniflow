@@ -13,7 +13,7 @@ export function diagramNodes(svg) {
 
 // Every drawn flowchart edge with its two ends. mermaid's parser knows them, including the
 // edges declared with an id (A ok@--> B), whose data-id is that id and names neither end.
-export async function diagramEdges(source) {
+export async function diagramEdges(source, mermaid = window.mermaid) {
   if (!flowchartLines(source)) return null;
   try {
     const parsed = await mermaid.mermaidAPI.getDiagramFromText(source);

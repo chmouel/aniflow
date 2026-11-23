@@ -2,7 +2,7 @@ import { host } from '../host.js';
 import { addBusyCheck, diagramBusy } from './busy.js';
 import { diagramComments } from './comments.js';
 import { focusDiagram } from './focus.js';
-import { diagramIcon } from './icons.js';
+import { showIcon } from './icons.js';
 import { playDiagram } from './player.js';
 import { diagramShare } from './share.js';
 
@@ -26,7 +26,7 @@ export function panZoom(holder, scenarios, edges, about) {
     element.type = 'button';
     element.title = label;
     element.setAttribute('aria-label', label);
-    element.innerHTML = diagramIcon(name);
+    showIcon(element, name);
     tools.append(element);
     return element;
   };
@@ -150,14 +150,14 @@ export function panZoom(holder, scenarios, edges, about) {
     }
     holder.style.minHeight = holder.offsetHeight + 'px';
     diagramDialog.append(stage);
-    fullButton.innerHTML = diagramIcon('close');
+    showIcon(fullButton, 'close');
     fullButton.title = 'Close';
     fullButton.setAttribute('aria-label', 'Close');
     diagramDialog.addEventListener('close', () => {
       stage.diagramNotes?.hidden();
       holder.append(stage);
       holder.style.minHeight = '';
-      fullButton.innerHTML = diagramIcon('full');
+      showIcon(fullButton, 'full');
       fullButton.title = 'Full screen';
       fullButton.setAttribute('aria-label', 'Full screen');
       reset();
@@ -168,6 +168,10 @@ export function panZoom(holder, scenarios, edges, about) {
     stage.diagramNotes?.shown();
   }
   fullButton.addEventListener('click', () => (full() ? diagramDialog.close() : openFull()));
+  // Closing puts the stage back in its holder, which leaves the page with its part.
+  host.render?.signal.addEventListener('abort', () => {
+    if (full()) diagramDialog.close();
+  }, { once: true });
   stage.diagramFull = () => {
     if (full()) return;
     if (!diagramDialog || !diagramDialog.open) {

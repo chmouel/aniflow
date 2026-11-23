@@ -1,8 +1,8 @@
 import { host } from '../host.js';
 
 // Mermaid's base theme recoloured from the page, so diagrams follow the picked theme.
-export function diagramColours(dark) {
-  const style = getComputedStyle(host.article);
+export function diagramColours(dark, element = host.article) {
+  const style = getComputedStyle(element);
   const context = document.createElement('canvas').getContext('2d');
   const rgb = (name) => {
     context.fillStyle = '#808080';
