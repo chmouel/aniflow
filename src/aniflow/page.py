@@ -114,6 +114,7 @@ def reader_page(
     theme_default: str = "dark",
     theme_key: str = "aniflow-theme",
     theme: bool = False,
+    credit: str = "",
     before: str = "",
     after: str = "",
 ) -> bytes:
@@ -122,7 +123,7 @@ def reader_page(
     sign-in at the end of the bar, top above the contents,
     before and after are scripts around the one that renders. theme adds a theme picker to
     the bar; slides always offer one in their dock. base prefixes the reader's own
-    stylesheets and scripts."""
+    stylesheets and scripts. credit is the footer under the document, trusted HTML."""
     review = (REVIEW_BUTTON, REVIEW_DOCK) if options.get("comments") else ("", "")
     highlight = len(text.encode("utf-8")) <= HIGHLIGHT_MAX_BYTES
     scripts = "".join(
@@ -143,7 +144,7 @@ def reader_page(
 <header class="bar progress"><a href="{html.escape(back[1])}">← {html.escape(back[0])}</a>{trail or '<span class="name">' + html.escape(title) + "</span>"}<nav>{actions}{PRESENT_BUTTON}{review[0]}{tools}{theme_select(nonce) if theme else ""}{account}</nav></header>
 <main class="page reader">{top}
 <details class="toc" id="toc" hidden><summary>Contents</summary><ol></ol></details>
-<article class="markdown-body"><noscript><pre>{html.escape(text)}</pre></noscript></article></main>
+<article class="markdown-body"><noscript><pre>{html.escape(text)}</pre></noscript></article>{credit}</main>
 {review[1]}
 <script type="application/json" id="markdown-source">{json_script(text)}</script>
 <script type="application/json" id="aniflow-options">{json_script(options)}</script>

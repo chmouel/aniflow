@@ -24,7 +24,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from aniflow import client, comments, export, oauth, page, tokens, web
-from aniflow.brand import BRAND_CSS, DEFAULT, favicon, masthead
+from aniflow.brand import BRAND_CSS, DEFAULT, credit, favicon, masthead
 from aniflow.themes import THEME_READER_CSS, theme_script, theme_select
 from aniflow.ui import (
     DIRECTORY_CSS,
@@ -734,6 +734,7 @@ def reader_page(
         trail=trail,
         account=account,
         top=masthead(base, brand_name, logo),
+        credit=credit(),
         favicon=favicon(brand_name, icon or logo),
         style=BRAND_CSS + UI_CSS,
         body_class="aniflow-local",

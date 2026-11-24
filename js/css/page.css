@@ -24,4 +24,7 @@
   .bar nav .renderer[hidden] { display:none; }
   .renderer svg { display:block; fill:currentColor; }
   .page { width:min(100%, 980px); margin:0 auto; padding:24px 16px 64px; }
+  .aniflow-credit { margin:40px 0 0; padding-top:14px; border-top:1px solid var(--borderColor-default); color:var(--fgColor-muted); font-size:13px; }
+  .aniflow-credit a { color:var(--fgColor-accent); text-decoration:none; }
+  .aniflow-credit a:hover { text-decoration:underline; }
   .notice { margin:0 0 16px; padding:10px 14px; border:1px solid color-mix(in srgb, var(--borderColor-attention-emphasis) 45%, transparent); border-radius:6px; background:var(--bgColor-attention-muted); color:var(--fgColor-default); font-size:14px; }

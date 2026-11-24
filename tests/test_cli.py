@@ -330,6 +330,13 @@ def test_reader_page(aniflow_server):
         assert aniflow_server("/static/" + name)[0] == 200
 
 
+def test_reader_page_credits_aniflow(aniflow_server):
+    _, _, body = aniflow_server("/files/guides/start.md")
+    footer = body.split(b'<footer class="aniflow-credit">')[1].split(b"</footer>")[0]
+    assert b'href="https://github.com/chmouel/aniflow"' in footer
+    assert b"generated with" in footer
+
+
 def test_reader_path_sits_in_the_bar(aniflow_server):
     _, _, body = aniflow_server("/files/guides/start.md")
     bar = body.split(b"</header>")[0]

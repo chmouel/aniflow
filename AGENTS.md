@@ -125,6 +125,8 @@ the wheel, so `uvx --from git+...` works without Node.
   `handle_comment`). Also `vector_headers`, `is_markdown`, `ICON_NAMES`.
 - `src/aniflow/page.py`: `reader_page()` builds the HTML document,
   `reader_options()` the JSON options, `reader_headers()` the CSP.
+  `reader_page()` takes a `credit` slot for the footer the `aniflow` command
+  fills with `brand.credit()`.
   `BOOT_JS` reads `#markdown-source` and `#aniflow-options`, merges
   `window.aniflowPage` (hooks an embedding app sets in an earlier script)
   and calls `Aniflow.reader`.
@@ -158,7 +160,8 @@ the wheel, so `uvx --from git+...` works without Node.
   `theme_script(nonce, key)`, which applies the choice kept in localStorage
   under `key` (`aniflow-theme` here; an embedding app passes its own).
 - `src/aniflow/brand.py`, `ui.py`: the aniflow wordmark (`WORDMARK`),
-  `masthead()` which trades it for a name or a logo, `favicon()` for the tab
+  `masthead()` which trades it for a name or a logo, `credit()` for the line
+  under a document, `favicon()` for the tab
   icon, and the file browser.
 - `src/aniflow/help.md`: the `/help` demo and walkthrough.
 - `src/aniflow/spec.md`: the walkthrough syntax reference for agents.

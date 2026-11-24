@@ -123,6 +123,7 @@ WORDMARK = """
 
 
 DEFAULT = "aniflow"
+REPO = "https://github.com/chmouel/aniflow"
 
 
 def masthead(base: str = "", name: str = DEFAULT, logo: str = "") -> str:
@@ -141,6 +142,15 @@ def masthead(base: str = "", name: str = DEFAULT, logo: str = "") -> str:
     return (
         f'<a class="aniflow-brand{" plain" if plain else " brand-name"}" '
         f'href="{html.escape(base)}/files/" aria-label="{label}">{inner}</a>'
+    )
+
+
+def credit() -> str:
+    """The line under a document saying what drew it and where to find it."""
+    return (
+        '<footer class="aniflow-credit">This page was generated with '
+        f'<a href="{REPO}">aniflow</a>, your friendly Markdown and flow generator.'
+        "</footer>"
     )
 
 

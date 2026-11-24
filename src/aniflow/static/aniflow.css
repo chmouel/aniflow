@@ -426,7 +426,7 @@
   html[data-mode="light"] body[data-accent-dark="true"], html[data-mode="dark"] body[data-accent-dark="false"] { --slide-accent-contrast:var(--bgColor-default); }
 
   body.presenting { overflow:hidden; }
-  body.presenting > .bar, body.presenting :is(.reader .toc, .reader .notice, .review-dock, .review-gutter, .code-gutter, .review-thread, .review-composer) { display:none !important; }
+  body.presenting > .bar, body.presenting :is(.reader .toc, .reader .notice, .reader .aniflow-credit, .review-dock, .review-gutter, .code-gutter, .review-thread, .review-composer) { display:none !important; }
   body.presenting .page.reader { position:fixed; inset:0; display:block; width:auto; max-width:none; margin:0; padding:0; background:color-mix(in srgb, var(--fgColor-default) 7%, var(--bgColor-default)); }
 
   .reader .markdown-body.slide-canvas { --diagram-done:var(--slide-accent); --slide-scrim:color-mix(in srgb, var(--bgColor-default) 72%, transparent); --slide-gradient:radial-gradient(ellipse 70% 90% at 92% 0%, color-mix(in srgb, var(--slide-accent) 24%, transparent), transparent 70%), radial-gradient(ellipse 60% 70% at 0% 100%, color-mix(in srgb, var(--slide-accent) 12%, transparent), transparent 70%);
