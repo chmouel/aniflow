@@ -2123,7 +2123,8 @@ refuse the change when someone edited the note in between.
                 return
             local = local_path(root, key)
             if local is not None:
-                if not visible(root, local, self.who()):
+                self.private_view = is_private(root, local)
+                if self.private_view and self.who() is None:
                     if (
                         local.is_dir() or (web.is_markdown(local.name) and not raw)
                     ) and self.wants_html():

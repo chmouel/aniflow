@@ -699,7 +699,7 @@ EDITOR_JS = """
       if (!block) return false;
       for (let i = 1; i < block.end; i++) {
         const found = /^private[ \\t]*:[ \\t]*(.*)$/i.exec(block.lines[i]);
-        if (found) return /^(true|yes|on|1)$/i.test(found[1].split('#')[0].trim().replace(/^["']|["']$/g, ''));
+        if (found && /^(true|yes|on|1)$/i.test(found[1].split('#')[0].trim().replace(/^["']|["']$/g, ''))) return true;
       }
       return false;
     };

@@ -170,13 +170,28 @@ private: true
 # Board notes
 ```
 
-Anyone signed in may read a private note, whatever their account: with
-`--github-org`, that means the active members of the organisation, since
-nobody else can sign in. Anonymous visitors see nothing of it: private
+Anyone signed in may read a private note, whatever their account. **Without
+`--github-org`, that means any GitHub account at all**, so set it when
+"private" should mean "my team". With it, only the active members of the
+organisation can sign in. Membership is checked at sign-in, so someone who
+leaves keeps reading until their 30-day session cookie expires or the
+`ANIFLOW_SIGNIN_SECRET` changes.
+
+Anonymous visitors see nothing of it: private
 folders and notes are left out of the file browser, `/api/notes` and
 `/api/search`, and a direct URL answers a 401 page inviting them to sign in
-with GitHub (the raw Markdown, pictures and downloads answer 404, so nothing
-leaks). After signing in they land back on the page they asked for.
+with GitHub (the raw Markdown, pictures and downloads answer 404). After
+signing in they land back on the page they asked for. The gate page never
+shows the name or content, but it does tell a visitor that something exists
+at the URL they typed, since a missing one answers 404.
+
+Private pages go out with `Cache-Control: private, no-store`, and every page
+with `Vary: Cookie, Authorization`, so a caching proxy in front never hands a
+signed-in copy to someone else.
+
+The marker is read the safe way round: a front matter block that is never
+closed, or is longer than 8 KB, counts as private, and any truthy `private:`
+line wins over a `private: false` one.
 
 The **Make private** / **Make public** buttons — on a folder row, in a note's
 More menu, or in the editor's toolbar — need `--user-folders` and write only

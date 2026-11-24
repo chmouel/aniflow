@@ -28,7 +28,6 @@ def test_private_front_matter(value):
         "---\nprivate: off\n---\n",
         "---\n  private: true\n---\n",
         "\n---\nprivate: true\n---\n",
-        "---\nprivate: true\n",
         "# Public\nprivate: true\n",
     ],
 )
@@ -42,7 +41,7 @@ def test_private_reads_and_gate(local_docs, aniflow_servers):
     request = aniflow_servers(local_docs, signin=oauth.SignIn("id", "secret", "key"))
     status, headers, body = request("/files/guides/secret.md")
     assert status == 401
-    assert headers["Cache-Control"] == "no-store"
+    assert "no-store" in headers["Cache-Control"]
     assert b"You shall not pass" in body
     assert b"Sign in with GitHub" in body
     assert b"CONFIDENTIAL" not in body
@@ -129,3 +128,45 @@ def test_large_front_matter_fails_closed(tmp_path):
     path = tmp_path / "note.md"
     path.write_text("---\nsummary: " + "x" * 9000 + "\nprivate: true\n---\n")
     assert cli.is_private(tmp_path, path)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "\ufeff---\nprivate: true\n---\n",
+        "---\r\nprivate: true\r\n---\r\n",
+        "---\nprivate: false\nprivate: true\n---\n",
+        "---\n" + "k: v\n" * 250 + "private: true\n---\n",
+        "---\nprivate: true\n",
+    ],
+)
+def test_front_matter_fails_closed(source):
+    assert cli.front_private(source)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "\ufeff---\nprivate: true\n---\nBody\n",
+        "---\r\nprivate: true\r\n---\r\nBody\r\n",
+        "---\nprivate: yes\ntitle: x\nprivate: true\n---\nBody\n",
+    ],
+)
+def test_make_public_clears_every_private_line(source):
+    text = cli.set_front_private(source, False)
+    assert not cli.front_private(text)
+    assert "Body" in text
+
+
+def test_private_pages_are_not_cached(local_docs, aniflow_servers):
+    (local_docs / "guides" / cli.PRIVATE_MARK).touch()
+    request = aniflow_servers(local_docs, signin=oauth.SignIn("id", "secret", "key"))
+    cookie = oauth.seal({"id": 1, "login": "alice", "exp": 9999999999}, "key")
+    _, headers, _ = request(
+        "/files/guides/start.md",
+        headers={"Cookie": f"{oauth.SESSION_COOKIE}={cookie}"},
+    )
+    assert headers["Cache-Control"] == "private, no-store"
+    assert headers["Vary"] == "Cookie, Authorization"
+    _, headers, _ = request("/files/README.md")
+    assert headers["Vary"] == "Cookie, Authorization"
