@@ -170,3 +170,27 @@ def test_private_pages_are_not_cached(local_docs, aniflow_servers):
     assert headers["Vary"] == "Cookie, Authorization"
     _, headers, _ = request("/files/README.md")
     assert headers["Vary"] == "Cookie, Authorization"
+
+
+def test_private_is_shown_when_signed_in(local_docs, aniflow_servers):
+    vault = local_docs / "alice" / "vault"
+    (vault / "sub").mkdir(parents=True)
+    (vault / cli.PRIVATE_MARK).touch()
+    (vault / "plan.md").write_text("# Plan\n")
+    request = aniflow_servers(
+        local_docs, signin=oauth.SignIn("id", "secret", "key"), user_folders=True
+    )
+    cookie = oauth.seal({"id": 1, "login": "alice", "exp": 9999999999}, "key")
+    signed = {"Cookie": f"{oauth.SESSION_COOKIE}={cookie}"}
+    body = request("/files/alice/vault/", headers=signed)[2]
+    assert b'class="folder-privacy"' in body and b"Make public" in body
+    assert b'class="folder-private"' in body
+    body = request("/files/alice/vault/sub/", headers=signed)[2]
+    assert b"from a parent folder" in body
+    assert b'class="folder-privacy"' not in body
+    assert (
+        b'class="private-badge"'
+        in request("/files/alice/vault/plan.md", headers=signed)[2]
+    )
+    body = request("/files/alice/", headers=signed)[2]
+    assert b'class="folder-privacy"' in body and b"Make private" in body

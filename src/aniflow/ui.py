@@ -97,8 +97,15 @@ DIRECTORY_CSS = """
   .aniflow-browser .browser-empty h2 { margin:0 0 8px; font-size:20px; font-weight:600; }
   .aniflow-browser .browser-empty p { max-width:32em; margin:0 0 20px; font-size:14px; line-height:1.6; color:var(--fgColor-muted); }
   .aniflow-browser .folders-list li { position:relative; }
-  .aniflow-browser .private-mark { display:inline-flex; align-items:center; margin-left:6px; vertical-align:-2px; color:var(--fgColor-muted); }
+  .aniflow-browser .private-mark { display:inline-flex; align-items:center; margin-left:6px; vertical-align:-2px; color:var(--fgColor-attention); }
   .aniflow-browser .private-mark svg { width:14px; height:14px; }
+  .aniflow-browser .folder-privacy { display:inline-flex; align-items:center; gap:7px; padding:7px 13px; border:1px solid var(--borderColor-default); border-radius:999px; background:var(--bgColor-default); color:var(--fgColor-default); font:inherit; font-size:13px; cursor:pointer; white-space:nowrap; }
+  .aniflow-browser .folder-privacy:hover { border-color:var(--fgColor-muted); }
+  .aniflow-browser .folder-privacy[aria-pressed="true"] { border-color:color-mix(in srgb, var(--fgColor-attention) 45%, var(--borderColor-default)); color:var(--fgColor-attention); }
+  .aniflow-browser .folder-privacy svg { width:14px; height:14px; }
+  .aniflow-browser .folder-privacy:focus-visible { outline:2px solid var(--document-color); outline-offset:2px; }
+  .aniflow-browser .folder-private { display:inline-flex; align-items:center; gap:5px; margin-top:10px; padding:2px 10px; border:1px solid color-mix(in srgb, var(--fgColor-attention) 45%, transparent); border-radius:999px; background:color-mix(in srgb, var(--fgColor-attention) 12%, transparent); color:var(--fgColor-attention); font-size:12px; font-weight:600; vertical-align:1px; }
+  .aniflow-browser .folder-private svg { width:13px; height:13px; }
   .aniflow-browser .private-toggle { position:absolute; top:8px; right:8px; display:grid; place-items:center; width:30px; height:30px; padding:0; border:1px solid var(--borderColor-default); border-radius:8px; background:var(--bgColor-default); color:var(--fgColor-muted); cursor:pointer; }
   .aniflow-browser .private-toggle:hover { border-color:var(--fgColor-muted); color:var(--fgColor-default); }
   .aniflow-browser .private-toggle[aria-pressed="true"] { border-color:color-mix(in srgb, var(--fgColor-attention) 45%, var(--borderColor-default)); color:var(--fgColor-attention); }
@@ -145,6 +152,8 @@ DIRECTORY_CSS = """
 """
 
 UI_CSS = """
+  .bar-trail .private-badge { display:inline-flex; flex:none; align-items:center; gap:4px; margin-left:8px; padding:1px 8px; border:1px solid color-mix(in srgb, var(--fgColor-attention) 45%, transparent); border-radius:999px; background:color-mix(in srgb, var(--fgColor-attention) 12%, transparent); color:var(--fgColor-attention); font-size:12px; font-weight:600; white-space:nowrap; }
+  .bar-trail .private-badge svg { width:12px; height:12px; }
   .aniflow-local .bar { z-index:6; }
   .aniflow-local.presenting .aniflow-brand { display:none; }
   .aniflow-local .bar nav { align-items:center; gap:10px; }
@@ -885,6 +894,9 @@ GATE_CSS = """
   .aniflow-gate .gate { display:flex; flex-direction:column; align-items:center; width:min(100%, 560px);
     margin:0 auto; padding:clamp(28px, 6vw, 52px) 24px 56px; text-align:center; }
   .aniflow-gate .aniflow-brand { width:min(100%, 220px); margin:0 auto 4px; }
+  .aniflow-gate .aniflow-brand.brand-name { width:auto; max-width:100%; justify-content:center; }
+  .aniflow-gate .aniflow-brand .brand-logo { height:clamp(3.5rem, 11vw, 4.75rem); }
+  .aniflow-gate .aniflow-brand .brand-word { font-size:clamp(1.6rem, 5.5vw, 2.5rem); }
   .aniflow-gate .gate-art { display:block; width:min(100%, 480px); height:auto; margin:10px auto 8px; }
   .aniflow-gate .gate-opening { fill:color-mix(in srgb, var(--gate-stone) 25%, var(--bgColor-default)); }
   .aniflow-gate h1 { margin:0 0 12px; font-size:clamp(30px, 8vw, 54px); font-weight:800; line-height:1.05; letter-spacing:-.04em; }

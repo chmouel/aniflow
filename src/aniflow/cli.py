@@ -697,17 +697,24 @@ def gate_page(
     return body.encode("utf-8"), nonce
 
 
-def private_toggle(root: Path, folder: Path, base: str) -> str:
-    """The button that hides a folder from anonymous readers, or opens it again."""
+def private_toggle(root: Path, folder: Path, base: str, labelled: bool = False) -> str:
+    """The button that hides a folder from anonymous readers, or opens it again; none
+    when a folder above already keeps it private, since the toggle could not open it."""
     private = (folder / PRIVATE_MARK).is_file()
+    if not private and is_private(root, folder):
+        return ""
     action = "Make public" if private else "Make private"
     state = "true" if private else "false"
     url = f"{base}/notes/private/{quote(folder.relative_to(root).as_posix())}/"
+    label = (
+        f"<span>{action}</span>"
+        if labelled
+        else f'<span class="sr-only">{action}</span>'
+    )
     return (
-        f'<button type="button" class="private-toggle"'
+        f'<button type="button" class="{"folder-privacy" if labelled else "private-toggle"}"'
         f' data-private-url="{html.escape(url)}" data-private="{state}"'
-        f' aria-pressed="{state}" title="{action}">'
-        f'{LOCK_ICON}<span class="sr-only">{action}</span></button>'
+        f' aria-pressed="{state}" title="{action}">{LOCK_ICON}{label}</button>'
     )
 
 
@@ -825,6 +832,15 @@ def directory_page(
         if new_note
         else ""
     )
+    privacy = ""
+    if session is not None and path != root and is_private(root, path):
+        privacy = (
+            '<span class="folder-private">'
+            f"{LOCK_ICON}Private{'' if (path / PRIVATE_MARK).is_file() else ' (from a parent folder)'}"
+            "</span>"
+        )
+    if path != root and writable and writable(path):
+        new_box += private_toggle(root, path, base, labelled=True)
     new_script = f'<script nonce="{nonce}">{NEW_NOTE_JS}</script>' if new_note else ""
     # The demo is for a folder with nothing to read yet; once there are notes it is noise.
     demo = (
@@ -848,7 +864,7 @@ def directory_page(
 <main class="browser-shell"><div class="browser-masthead">{masthead(base, brand_name, logo)}
 {demo}</div>
 <nav class="browser-trail" aria-label="Folders"><ol>{trail}</ol></nav>
-<div class="browser-heading"><div><h1>{title}</h1><p class="folder-summary">{description}</p></div>{new_box}{parent}</div>
+<div class="browser-heading"><div><h1>{title}</h1><p class="folder-summary">{description}</p>{privacy}</div>{new_box}{parent}</div>
 {content}</main>{search_dlg}<script nonce="{nonce}">{UI_JS}</script>{new_script}</body></html>"""
     return body.encode("utf-8"), nonce
 
@@ -871,9 +887,10 @@ def reader_page(
     edit: str = "",
     delete: dict[str, str] | None = None,
     private: dict[str, str] | None = None,
+    locked: bool = False,
 ) -> tuple[bytes, str]:
     """A markdown file in the reader, with links kept under root_url. edit is the editor's
-    URL, for a note the reader may change."""
+    URL, for a note the reader may change; locked marks a private one in the bar."""
     nonce = secrets.token_urlsafe(16)
     help_link = (
         f'<a class="reader-help" href="{base}/help">Help</a>'
@@ -930,7 +947,13 @@ def reader_page(
             f'<a href="{html.escape(href)}">{html.escape(label)}</a><span aria-hidden="true">/</span>'
             for label, href in crumbs
         )
-        + f'<b aria-current="page">{html.escape(title)}</b></nav>'
+        + f'<b aria-current="page">{html.escape(title)}</b>'
+        + (
+            f'<span class="private-badge" title="Only signed-in readers can see this">{LOCK_ICON}Private</span>'
+            if locked
+            else ""
+        )
+        + "</nav>"
         if crumbs
         else ""
     )
@@ -2198,6 +2221,7 @@ refuse the change when someone edited the note in between.
                             }
                             if can_write
                             else None,
+                            locked=self.private_view,
                             private={
                                 "url": f"{base}/notes/private/{relative}",
                                 "private": "true" if note_private(local) else "false",
