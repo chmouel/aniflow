@@ -17,8 +17,21 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from aniflow.privacy import set_front_private
+
 COMMANDS = frozenset(
-    {"login", "whoami", "ls", "search", "push", "pull", "rm", "comments", "skill"}
+    {
+        "login",
+        "whoami",
+        "ls",
+        "search",
+        "push",
+        "pull",
+        "rm",
+        "private",
+        "comments",
+        "skill",
+    }
 )
 TIMEOUT = 30
 AGENT = "aniflow-cli"
@@ -194,7 +207,7 @@ def web_url(base_url: str, remote_path: str) -> str:
 
 def cmd_login(args: argparse.Namespace) -> int:
     saved = load_config()
-    raw_url = args.url or ""
+    raw_url = args.server or args.url or ""
     if not raw_url:
         default = saved.get("url", "")
         prompt = (
@@ -282,10 +295,11 @@ def cmd_ls(args: argparse.Namespace) -> int:
         print(json.dumps(listing))
         return 0
     for item in listing.get("folders", []):
-        tag = " (shared)" if item.get("shared") else ""
+        tags = [name for name in ("shared", "private") if item.get(name)]
+        tag = f" ({', '.join(tags)})" if tags else ""
         print(f"{item['path']}/{tag}")
     for item in listing.get("notes", []):
-        print(f"{item['path']}")
+        print(f"{item['path']}{' (private)' if item.get('private') else ''}")
     return 0
 
 
@@ -327,6 +341,12 @@ def cmd_push(args: argparse.Namespace) -> int:
             raise SystemExit(f"aniflow: not a file: {args.file}")
         raw = src.read_bytes()
         local_name = src.name
+    if args.private:
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            raise SystemExit("aniflow: --private needs a UTF-8 note") from None
+        raw = set_front_private(text, True).encode("utf-8")
     remote = resolve_remote(raw_remote, folder, local_name)
     encoded = "/".join(urllib.parse.quote(part) for part in remote.split("/"))
     headers = {"Content-Type": "text/markdown; charset=utf-8"}
@@ -341,7 +361,14 @@ def cmd_push(args: argparse.Namespace) -> int:
         "status": status,
         "version": answer.get("version", ""),
         "view": web_url(url, remote),
+        "private": bool(answer.get("private")),
     }
+    if answer.get("was_private") and not out["private"]:
+        print(
+            f"aniflow: warning: {remote} was private and is now public; push it with "
+            "--private to keep it hidden",
+            file=sys.stderr,
+        )
     if args.json:
         print(json.dumps(out))
     else:
@@ -396,6 +423,39 @@ def cmd_rm(args: argparse.Namespace) -> int:
         print(json.dumps({"deleted": True, "path": remote}))
     else:
         print(f"Deleted {remote}")
+    return 0
+
+
+def cmd_private(args: argparse.Namespace) -> int:
+    """Hide a note or folder from readers who are not signed in, or open it again."""
+    url, token, folder = settings(args)
+    raw_remote = args.remote
+    if parsed := split_url_target(raw_remote):
+        url, raw_remote = parsed[0] or url, parsed[1]
+    url, token = need_url(url), need_token(token)
+    if raw_remote.strip().lower().endswith((".md", ".markdown")):
+        remote = resolve_remote(raw_remote, folder)
+    else:
+        remote = raw_remote.strip().strip("/")
+        if not remote:
+            raise SystemExit("aniflow: the top folder cannot be made private from here")
+    encoded = "/".join(urllib.parse.quote(part) for part in remote.split("/"))
+    wanted = not args.off
+    _, _, data = request(
+        "POST",
+        f"{url}/notes/private/{encoded}",
+        token=token,
+        body=json.dumps({"private": wanted}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    answer = json.loads(data)
+    out = {"path": remote, "private": bool(answer.get("private"))}
+    if args.json:
+        print(json.dumps(out))
+    elif out["private"] == wanted:
+        print(f"{remote}: {'private' if wanted else 'public'}")
+    else:
+        print(f"{remote}: still private (a folder above it is private)")
     return 0
 
 
@@ -531,7 +591,13 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("login", parents=[common], help="sign in with an API token")
-    p.add_argument("url", nargs="?", default="", help="server URL (any page URL works)")
+    p.add_argument(
+        "server",
+        nargs="?",
+        default="",
+        metavar="url",
+        help="server URL (any page URL works)",
+    )
     p.add_argument("--folder", default="", help="default remote folder")
     p.set_defaults(func=cmd_login)
 
@@ -568,6 +634,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--if-match", default="", help="ETag/version to guard against overwriting"
     )
+    p.add_argument(
+        "--private",
+        action="store_true",
+        help="mark the note private (front matter private: true): signed-in readers only",
+    )
     p.set_defaults(func=cmd_push)
 
     p = sub.add_parser(
@@ -587,6 +658,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="ETag/version to guard against deleting a changed note",
     )
     p.set_defaults(func=cmd_rm)
+
+    p = sub.add_parser(
+        "private",
+        parents=[common],
+        help="make a note or folder private (signed-in readers only), or --off to open it",
+    )
+    p.add_argument("remote", help="note (pac/plan.md) or folder (pac/team) to change")
+    p.add_argument("--off", action="store_true", help="make it public again")
+    p.set_defaults(func=cmd_private)
 
     p = sub.add_parser(
         "comments", parents=[common], help="read review comments on a remote note"

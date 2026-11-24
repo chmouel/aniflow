@@ -145,13 +145,16 @@ the wheel, so `uvx --from git+...` works without Node.
   `SameSite=Lax`, `Secure` when the proxy reports https. `next_path()` keeps
   the way back inside the base, so the callback cannot be an open redirect.
 - `src/aniflow/client.py`: the remote CLI (`login`, `whoami`, `ls`,
-  `search`, `push`, `pull`, `rm`, `comments`) and bundled agent skill
+  `search`, `push [--private]`, `pull`, `rm`, `private [--off]`, `comments`)
+  and bundled agent skill
   manager (`skill list|install|show|remove`). Config lives at
   `$XDG_CONFIG_HOME/aniflow/config.json` (`0600`), with `ANIFLOW_URL`,
   `ANIFLOW_TOKEN` and `ANIFLOW_FOLDER` overrides. Any pasted page URL is
   accepted and normalized to the server base (and note commands accept full
   pasted note URLs too). `skills/` is bundled into the wheel under
   `aniflow/skills/`.
+- `src/aniflow/privacy.py`: `PRIVATE_MARK`, `front_private()` and
+  `set_front_private()`, the private rule both the server and the client read.
 - `src/aniflow/tokens.py`: personal API tokens in SQLite
   (`$XDG_CACHE_HOME/aniflow/tokens.db`): `aniflow_` + 256 random bits, kept
   only as a sha256, 90 days, 10 live per member, `create()` serialized by

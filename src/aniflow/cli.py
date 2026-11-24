@@ -26,6 +26,14 @@ from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from aniflow import client, comments, export, oauth, page, tokens, web
 from aniflow.brand import BRAND_CSS, DEFAULT, credit, favicon, masthead
+from aniflow.privacy import (
+    FRONT_CLOSE,
+    FRONT_MATTER_MAX,
+    FRONT_OPEN,
+    PRIVATE_MARK,
+    front_private,
+    set_front_private,
+)
 from aniflow.themes import THEME_READER_CSS, theme_script, theme_select
 from aniflow.ui import (
     DIRECTORY_CSS,
@@ -166,17 +174,6 @@ def breadcrumbs(root: Path, path: Path, base: str = "") -> list[tuple[str, str]]
 # Writing from the web, with --user-folders: each signed-in member owns <root>/<login>/,
 # and a folder holding this hidden file (and everything under it) is open to all of them.
 SHARED_MARK = ".aniflow-shared"
-# A folder holding this hidden file, and everything under it, is only for signed-in
-# readers. A note says the same in its front matter with `private: true`.
-PRIVATE_MARK = ".aniflow-private"
-# A note at most this much is read to find its front matter; a block still open at that
-# point makes the note private.
-FRONT_MATTER_MAX = 8192
-FRONT_OPEN = re.compile(r"\ufeff?---[ \t\r]*\Z")
-FRONT_CLOSE = re.compile(r"(---|\.\.\.)[ \t\r]*\Z")
-PRIVATE_LINE = re.compile(r"private[ \t]*:.*\Z", re.IGNORECASE)
-PRIVATE_VALUE = re.compile(r"private[ \t]*:[ \t]*(.*)\Z", re.IGNORECASE)
-PRIVATE_TRUTHY = {"true", "yes", "on", "1"}
 NOTE_MAX_BYTES = 1024**2
 IMAGE_MAX_BYTES = 10 * 1024**2
 IMAGE_TYPES = {
@@ -247,61 +244,6 @@ def may_write(root: Path, path: Path, session: dict | None) -> bool:
             return True
         folder = folder.parent
     return False
-
-
-def front_private(text: str) -> bool:
-    """Whether the front matter says private: any top-level `private:` set to true, yes,
-    on or 1 (quoted or not). An indented key belongs to another block and does not
-    count. A block opened but not closed in text is read to its end, so a cut-off or
-    overlong one errs on the private side."""
-    lines = text.splitlines()
-    if not lines or not FRONT_OPEN.match(lines[0]):
-        return False
-    for line in lines[1:]:
-        if FRONT_CLOSE.match(line):
-            break
-        found = PRIVATE_VALUE.match(line)
-        if found:
-            value = found[1].split("#", 1)[0].strip().strip("\"'").strip().lower()
-            if value in PRIVATE_TRUTHY:
-                return True
-    return False
-
-
-def set_front_private(text: str, wanted: bool) -> str:
-    """text with its front matter saying private, or no longer saying it: the line is
-    added, replaced or dropped, and an emptied block goes with it."""
-    lines = text.split("\n")
-    closing = None
-    if lines and FRONT_OPEN.match(lines[0]):
-        for index in range(1, len(lines)):
-            if FRONT_CLOSE.match(lines[index]):
-                closing = index
-                break
-    if wanted:
-        if closing is None:
-            bom = "\ufeff" if text.startswith("\ufeff") else ""
-            return bom + "---\nprivate: true\n---\n" + text.removeprefix(bom)
-        for index in range(1, closing):
-            if PRIVATE_LINE.match(lines[index]):
-                lines[index] = "private: true"
-                break
-        else:
-            lines.insert(1, "private: true")
-        return "\n".join(lines)
-    if closing is None:
-        return text
-    kept = [line for line in lines[1:closing] if not PRIVATE_LINE.match(line)]
-    if len(kept) == closing - 1:
-        return text
-    if any(line.strip() and not line.lstrip().startswith("#") for line in kept):
-        lines[1:closing] = kept
-    else:
-        bom = "\ufeff" if lines[0].startswith("\ufeff") else ""
-        lines[0 : closing + 1] = []
-        if bom and lines:
-            lines[0] = bom + lines[0]
-    return "\n".join(lines)
 
 
 def note_private(path: Path) -> bool:
@@ -1374,12 +1316,18 @@ class Handler(web.Handler):
                     self.send_header("Content-Length", "0")
                     self.end_headers()
                     return
+                was_private = bool(current) and is_private(root, note)
                 version = write_note(note, text)
         except OSError as error:
             self.send_json({"error": f"could not write: {error.strerror}"}, status=500)
             return
         self.send_json(
-            {"url": file_url(root, note, self.server.base), "version": version},
+            {
+                "url": file_url(root, note, self.server.base),
+                "version": version,
+                "private": is_private(root, note),
+                "was_private": was_private,
+            },
             status=200 if current else 201,
             headers={"ETag": f'"{version}"'},
         )
@@ -1440,6 +1388,7 @@ class Handler(web.Handler):
                         "name": child.name,
                         "path": rel,
                         "shared": (child / SHARED_MARK).is_file(),
+                        "private": is_private(root, child),
                     }
                 )
             elif child.is_file() and web.is_markdown(child.name):
@@ -1450,6 +1399,7 @@ class Handler(web.Handler):
                         "url": file_url(root, child, self.server.base),
                         "size": stat.st_size,
                         "modified": stat.st_mtime,
+                        "private": is_private(root, child),
                     }
                 )
         folders.sort(key=lambda item: item["name"].casefold())
@@ -1885,7 +1835,7 @@ refuse the change when someone edited the note in between.
         if not self.server.user_folders or self.server.signin is None:
             self.send_json({"error": "not found"}, status=404)
             return
-        session = self.session()
+        session = self.session() or self.bearer()
         if session is None:
             self.send_json(
                 {
@@ -2299,7 +2249,7 @@ def main() -> None:
         raise SystemExit(client.main(sys.argv[1:]))
     parser = argparse.ArgumentParser(
         description="Present Markdown, play diagrams and browse local documents.",
-        epilog="remote client & skills: aniflow {login,whoami,ls,search,push,pull,rm,comments,skill} -h",
+        epilog="remote client & skills: aniflow {login,whoami,ls,search,push,pull,rm,private,comments,skill} -h",
     )
     parser.add_argument(
         "directory",

@@ -16,6 +16,8 @@ Create an API token under **API tokens** in the site's account menu, then run:
 aniflow login https://notes.example.com/pub
 ```
 
+(`--url https://notes.example.com/pub` works the same.)
+
 You can paste any page URL from the site (a note, `/files/`, `/tokens`, or a
 bare hostname) and aniflow extracts the server base URL. It prompts for your
 token, verifies it against `GET /api/me`, discovers your default folder and
@@ -65,6 +67,27 @@ concurrent edit returns `412 Precondition Failed` instead of being overwritten:
 ver=$(aniflow pull team/plan.md --json | jq -r .version)
 aniflow push plan.md team/plan.md --if-match "$ver" --json
 ```
+
+## Private notes and folders
+
+A private note or folder is for signed-in readers only (see
+[hosting](hosting.md#private-folders-and-notes) for who that covers):
+
+```sh
+aniflow push plan.md team/plan.md --private       # upload it already private
+aniflow private team/plan.md                      # hide an existing note
+aniflow private team/board                        # hide a folder and everything under it
+aniflow private team/plan.md --off                # make it public again
+```
+
+`--private` adds `private: true` to the note's front matter before upload, and
+`aniflow private` does the same on the server, or adds the folder's hidden
+`.aniflow-private` marker. `aniflow ls` tags private entries with
+`(private)`. A note stays private when a folder above it is, so `--off` on it
+reports `still private` until that folder is opened.
+
+Pushing a copy without `private: true` over a private note makes it public,
+and `push` warns on stderr when that happens.
 
 ## Reading review comments
 

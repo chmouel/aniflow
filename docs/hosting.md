@@ -197,7 +197,9 @@ The **Make private** / **Make public** buttons — on a folder row, in a note's
 More menu, or in the editor's toolbar — need `--user-folders` and write only
 where that member may already write: their own folder, a shared one, or
 anything for the admin. They set the marker file or the `private: true` front
-matter, nothing else.
+matter, nothing else. With an API token, `aniflow private PATH [--off]` and
+`aniflow push FILE PATH --private` do the same from a shell (see
+[cli.md](cli.md#private-notes-and-folders)).
 
 Without `--github-oauth` nobody can sign in, so private folders and notes stay
 unreadable: aniflow says so on stderr at startup. Run a read-only site with

@@ -110,7 +110,7 @@ def live_server(tmp_path, monkeypatch):
         thread.join()
 
 
-def test_client_end_to_end(live_server, tmp_path, capsys):
+def test_client_end_to_end(live_server, tmp_path, capsys, monkeypatch):
     base_url, token, root = live_server
 
     # Login accepts a pasted deep note URL and saves 0600 config.
@@ -127,6 +127,11 @@ def test_client_end_to_end(live_server, tmp_path, capsys):
     assert "pac" in out["shared"]
     mode = stat.S_IMODE(client.config_path().stat().st_mode)
     assert mode == 0o600
+
+    # --url works too, and without a URL argument nothing prompts.
+    monkeypatch.setattr("builtins.input", lambda prompt: pytest.fail(prompt))
+    assert client.main(["login", "--url", base_url, "--token", token, "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["url"] == base_url
 
     # whoami
     assert client.main(["whoami", "--json"]) == 0
@@ -234,3 +239,41 @@ def test_skill_install_list_show_remove(tmp_path, capsys):
     )
     capsys.readouterr()
     assert not link.is_symlink()
+
+
+def test_client_private_notes_and_folders(live_server, tmp_path, capsys):
+    base_url, token, root = live_server
+    login = ["--url", base_url, "--token", token]
+    note = tmp_path / "plan.md"
+    note.write_text("# Plan\n")
+
+    assert (
+        client.main(["push", str(note), "pac/plan.md", "--private", "--json", *login])
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out)["private"] is True
+    assert (root / "pac" / "plan.md").read_text() == "---\nprivate: true\n---\n# Plan\n"
+
+    assert client.main(["ls", "pac", *login]) == 0
+    assert "pac/plan.md (private)" in capsys.readouterr().out
+
+    # Pushing a copy without the line opens the note again, and says so.
+    assert client.main(["push", str(note), "pac/plan.md", *login]) == 0
+    assert "was private and is now public" in capsys.readouterr().err
+
+    assert client.main(["private", "pac/plan.md", "--json", *login]) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "path": "pac/plan.md",
+        "private": True,
+    }
+    assert client.main(["private", "pac/plan.md", "--off", *login]) == 0
+    assert capsys.readouterr().out.strip() == "pac/plan.md: public"
+
+    assert client.main(["private", f"{base_url}/files/pac/", *login]) == 0
+    assert (root / "pac" / cli.PRIVATE_MARK).is_file()
+    assert client.main(["ls", "/", *login]) == 0
+    assert "pac/ (shared, private)" in capsys.readouterr().out
+    assert client.main(["private", "pac/design.md", "--off", *login]) == 0
+    assert "still private" in capsys.readouterr().out
+    assert client.main(["private", "pac", "--off", *login]) == 0
+    assert not (root / "pac" / cli.PRIVATE_MARK).exists()
