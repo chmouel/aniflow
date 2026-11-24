@@ -145,12 +145,28 @@ def masthead(base: str = "", name: str = DEFAULT, logo: str = "") -> str:
     )
 
 
+CREDIT_MARK = (
+    '<svg class="credit-mark" viewBox="0 0 32 14" width="32" height="14" '
+    'xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">'
+    '<rect class="credit-node" x="1" y="3" width="8" height="8" rx="2.2"/>'
+    '<rect class="credit-node credit-node-end" x="23" y="3" width="8" height="8" rx="2.2"/>'
+    '<path class="credit-edge" d="M9 7H23"/>'
+    '<circle class="credit-dot" cx="9" cy="7" r="1.8"/>'
+    "</svg>"
+)
+
+
 def credit() -> str:
-    """The line under a document saying what drew it and where to find it."""
+    """The colophon under a document saying what drew it and where to find it."""
     return (
-        '<footer class="aniflow-credit">This page was generated with '
-        f'<a href="{REPO}">aniflow</a>, your friendly Markdown and flow generator.'
-        "</footer>"
+        '<footer class="aniflow-credit">'
+        f'<a class="credit-link" href="{REPO}" target="_blank" rel="noopener noreferrer">'
+        f'<span class="credit-head">{CREDIT_MARK}'
+        'Generated with <strong class="credit-name">aniflow</strong></span>'
+        '<span class="credit-sep" aria-hidden="true">·</span>'
+        '<span class="credit-sub">your friendly Markdown &amp; flow generator'
+        '<span class="credit-arrow" aria-hidden="true">↗</span></span>'
+        "</a></footer>"
     )
 
 

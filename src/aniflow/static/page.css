@@ -24,7 +24,58 @@
   .bar nav .renderer[hidden] { display:none; }
   .renderer svg { display:block; fill:currentColor; }
   .page { width:min(100%, 980px); margin:0 auto; padding:24px 16px 64px; }
-  .aniflow-credit { margin:40px 0 0; padding-top:14px; border-top:1px solid var(--borderColor-default); color:var(--fgColor-muted); font-size:13px; }
-  .aniflow-credit a { color:var(--fgColor-accent); text-decoration:none; }
-  .aniflow-credit a:hover { text-decoration:underline; }
+  .aniflow-credit {
+    --credit-cyan:#2feaff; --credit-violet:#8572ff; --credit-pink:#ff3bc8; --credit-ice:#e7f8ff;
+    position:relative; margin:48px 0 0; padding-top:18px; text-align:center;
+  }
+  .aniflow-credit::before {
+    content:""; position:absolute; top:0; left:10%; right:10%; height:1px;
+    background:linear-gradient(90deg, transparent, color-mix(in srgb, var(--credit-cyan) 65%, transparent) 28%, color-mix(in srgb, var(--credit-violet) 75%, transparent) 50%, color-mix(in srgb, var(--credit-pink) 65%, transparent) 72%, transparent);
+  }
+  .aniflow-credit .credit-link {
+    display:inline-flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:3px 7px; max-width:100%;
+    padding:5px 12px; border-radius:999px; border:1px solid transparent;
+    font-size:12.5px; line-height:1.4; color:var(--fgColor-muted); text-decoration:none;
+  }
+  .aniflow-credit .credit-head { display:inline-flex; align-items:center; gap:7px; white-space:nowrap; }
+  .aniflow-credit .credit-link:focus-visible { outline:2px solid var(--fgColor-accent); outline-offset:3px; }
+  .aniflow-credit .credit-mark { flex:0 0 auto; overflow:visible; }
+  .aniflow-credit .credit-node { fill:none; stroke:var(--credit-cyan); stroke-width:1.3; opacity:.85; }
+  .aniflow-credit .credit-node-end { stroke:var(--credit-pink); }
+  .aniflow-credit .credit-edge { stroke:color-mix(in srgb, var(--credit-violet) 60%, var(--borderColor-default)); stroke-width:1.2; stroke-dasharray:1.5 2; }
+  .aniflow-credit .credit-dot { fill:var(--credit-ice); filter:drop-shadow(0 0 3px var(--credit-cyan)); }
+  .aniflow-credit .credit-name {
+    font-weight:700; letter-spacing:-.01em;
+    background:linear-gradient(96deg, var(--credit-ice) 0%, var(--credit-cyan) 34%, var(--credit-violet) 68%, var(--credit-pink) 100%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .aniflow-credit .credit-sep { opacity:.45; }
+  .aniflow-credit .credit-sub { opacity:.85; }
+  .aniflow-credit .credit-arrow { display:inline-block; margin-left:4px; font-size:11px; opacity:.6; }
+  @media (max-width:520px) { .aniflow-credit .credit-sep { display:none; } }
+  html[data-mode="light"] .aniflow-credit {
+    --credit-cyan:#0891b2; --credit-violet:#6d28d9; --credit-pink:#db2777; --credit-ice:#1e1b4b;
+  }
+  html[data-mode="light"] .aniflow-credit .credit-name {
+    background:linear-gradient(96deg, #16133a 0%, #3730a3 36%, #7c3aed 70%, #db2777 100%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  html[data-mode="light"] .aniflow-credit .credit-dot { fill:#db2777; filter:drop-shadow(0 0 2px color-mix(in srgb, #db2777 45%, transparent)); }
+  @keyframes aniflow-credit-flow {
+    0% { transform:translateX(0); opacity:0; }
+    16% { opacity:1; }
+    84% { opacity:1; }
+    100% { transform:translateX(14px); opacity:0; }
+  }
+  @media (prefers-reduced-motion:no-preference) {
+    .aniflow-credit .credit-link { transition:color .2s, background-color .2s, border-color .2s; }
+    .aniflow-credit .credit-arrow { transition:transform .2s, opacity .2s; }
+    .aniflow-credit .credit-dot { animation:aniflow-credit-flow 2.8s cubic-bezier(.4, 0, .2, 1) infinite; }
+    .aniflow-credit .credit-link:hover {
+      color:var(--fgColor-default);
+      background:color-mix(in srgb, var(--credit-violet) 9%, transparent);
+      border-color:color-mix(in srgb, var(--credit-violet) 26%, var(--borderColor-default));
+    }
+    .aniflow-credit .credit-link:hover .credit-arrow { transform:translate(2px, -2px); opacity:1; }
+  }
   .notice { margin:0 0 16px; padding:10px 14px; border:1px solid color-mix(in srgb, var(--borderColor-attention-emphasis) 45%, transparent); border-radius:6px; background:var(--bgColor-attention-muted); color:var(--fgColor-default); font-size:14px; }
