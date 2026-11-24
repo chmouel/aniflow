@@ -393,6 +393,11 @@
 
   .review-dock { position:fixed; z-index:3; left:50%; bottom:max(16px, env(safe-area-inset-bottom)); display:flex; align-items:center; gap:8px; width:max-content; max-width:calc(100% - 24px); padding:8px 8px 8px 16px; border:1px solid var(--borderColor-default); border-radius:14px; background:color-mix(in srgb, var(--bgColor-default) 94%, transparent); box-shadow:0 12px 32px rgba(0,0,0,.3); backdrop-filter:blur(10px); color:var(--fgColor-default); font:14px/1.3 system-ui,-apple-system,sans-serif; transform:translateX(-50%); }
   .review-dock[hidden] { display:none; }
+  @media (max-width: 520px) {
+    .review-dock { flex-wrap:wrap; justify-content:flex-end; }
+    .review-dock-text { flex-basis:100%; margin-right:0; }
+    .review-session > span { max-width:9em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  }
   .review-dock-text { flex:1; min-width:0; margin-right:4px; overflow:hidden; color:var(--fgColor-muted); text-overflow:ellipsis; white-space:nowrap; }
   .review-dock.error .review-dock-text { color:var(--fgColor-danger); }
   @media (prefers-reduced-motion:no-preference) {

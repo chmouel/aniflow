@@ -22,10 +22,10 @@ export function initReview() {
     const ICON_REPLY = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M6 4.5 2.5 8 6 11.5M3 8h6.5a4 4 0 0 1 4 4v.5"/></svg>';
     const ICON_CHECK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 8.5 6.3 11.8 13 4.5"/></svg>';
     const canResolve = () => !gated || Boolean(me);
-    function signInLink(label) {
+    function signInLink(label, url = host.commentsSignin) {
       const link = make('a', 'review-signin', label);
       const back = location.pathname + location.search + location.hash;
-      link.href = host.commentsSignin + '?next=' + encodeURIComponent(back);
+      link.href = url + '?next=' + encodeURIComponent(back);
       return link;
     }
     const badge = host.reviewToggle.querySelector('.count');
@@ -52,6 +52,12 @@ export function initReview() {
     let composer = null;
     let message = '';
     let messageTimer = 0;
+    // Bumped by every request for comments, so a slow answer never replaces a newer one.
+    let version = 0;
+    // The initial load has finished, so a #L hash can be checked against the line count.
+    let settled = false;
+    // Unsaved edit and reply text by 'edit:<id>' or 'reply:<id>', reopened after a redraw.
+    const drafts = new Map();
 
     const range = (start, end) => start === end ? 'Line ' + start : 'Lines ' + start + '–' + end;
     const plural = (count) => count + (count === 1 ? ' comment' : ' comments');
@@ -90,23 +96,29 @@ export function initReview() {
 
     async function loadPrompt() {
       const response = await fetch(host.commentsUrl + '?format=prompt', { cache: 'no-store' });
-      promptText = response.ok ? await response.text() : '';
+      return response.ok ? await response.text() : '';
     }
 
-    async function refresh() {
-      view = await call(host.commentsUrl);
-      await loadPrompt();
+    async function apply(request) {
+      const ticket = ++version;
+      const next = await request;
+      const prompt = await loadPrompt().catch(() => '');
+      if (ticket !== version) return;
+      view = next;
+      promptText = prompt;
       redraw();
     }
 
-    async function post(action, query, body) {
-      view = await call(host.commentsUrl.replace('/comments/', '/comments/' + action + '/') + query, {
+    function refresh() {
+      return apply(call(host.commentsUrl));
+    }
+
+    function post(action, query, body) {
+      return apply(call(host.commentsUrl.replace('/comments/', '/comments/' + action + '/') + query, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: body === undefined ? '' : JSON.stringify(body),
-      });
-      await loadPrompt();
-      redraw();
+      }));
     }
 
     function openCount() {
@@ -182,8 +194,17 @@ export function initReview() {
     // box is not enough to tell a line is on screen.
     function shown(element) {
       if (element.checkVisibility) return element.checkVisibility();
-      const closed = element.closest('details:not([open])');
-      return !closed || Boolean(element.closest('summary')?.parentElement === closed);
+      for (let closed = element.closest('details:not([open])'); closed; closed = closed.parentElement?.closest('details:not([open])')) {
+        if (element.closest('summary')?.parentElement !== closed) return false;
+      }
+      return true;
+    }
+
+    // What stands for a hidden line on screen: the outermost closed <details> around it.
+    function onScreen(element) {
+      let box = element;
+      for (let closed = element.closest('details:not([open])'); closed; closed = closed.parentElement?.closest('details:not([open])')) box = closed;
+      return box;
     }
 
     function roomForMargin() {
@@ -281,7 +302,7 @@ export function initReview() {
       copyButton.hidden = Boolean(selection) || !count;
       session.textContent = '';
       if (gated) {
-        if (me) session.append(make('span', '', me.login), signInLink('Sign out'));
+        if (me) session.append(make('span', '', me.login), signInLink('Sign out', host.commentsSignout || host.commentsSignin));
         else session.append(signInLink('Sign in to comment'));
       }
     }
@@ -321,10 +342,14 @@ export function initReview() {
       else node.after(content);
     }
 
-    function editor(text, label, action, save, cancel) {
+    function editor(text, label, action, save, cancel, key) {
       const form = make('form', 'review-form');
       const area = make('textarea');
-      area.value = text;
+      area.value = key && drafts.has(key) ? drafts.get(key) : text;
+      if (key) {
+        area.dataset.draft = key;
+        area.addEventListener('input', () => drafts.set(key, area.value));
+      }
       area.rows = 4;
       area.maxLength = commentMax;
       area.placeholder = 'Leave a comment';
@@ -338,14 +363,18 @@ export function initReview() {
       form.append(area, row);
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
+        if (submit.disabled) return;
         if (!area.value.trim()) {
           area.focus();
           return;
         }
         submit.disabled = true;
+        // Dropped first: a successful save redraws the threads, and must not reopen this form.
+        if (key) drafts.delete(key);
         try {
           await save(area.value);
         } catch (error) {
+          if (key) drafts.set(key, area.value);
           submit.disabled = false;
           notify('!Saving failed: ' + (error.message || error));
         }
@@ -356,10 +385,14 @@ export function initReview() {
           form.requestSubmit();
         } else if (event.key === 'Escape') {
           event.preventDefault();
-          cancel();
+          close();
         }
       });
-      cancelButton.addEventListener('click', cancel);
+      const close = () => {
+        if (key) drafts.delete(key);
+        cancel();
+      };
+      cancelButton.addEventListener('click', close);
       return { form: form, area: area };
     }
 
@@ -391,8 +424,10 @@ export function initReview() {
       holder.append(make('p', 'review-composer-title', 'Comment on ' + range(target.start, target.end).toLowerCase()));
       const { form, area } = editor('', 'Comment on ' + range(target.start, target.end).toLowerCase(), 'Comment', async (text) => {
         await post('add', '', { start: target.start, end: target.end, body: text });
-        closeComposer();
-        clear();
+        if (composer === holder) {
+          closeComposer();
+          clear();
+        }
         notify('Comment added');
       }, closeComposer);
       holder.append(form);
@@ -476,7 +511,7 @@ export function initReview() {
       }
       const body = make('p', 'review-body', comment.body);
       box.append(body);
-      edit.addEventListener('click', () => {
+      const openEdit = (focus) => {
         if (box.querySelector('form')) return;
         const done = () => {
           form.remove();
@@ -486,12 +521,14 @@ export function initReview() {
         const { form, area } = editor(comment.body, 'Edit the comment on ' + range(comment.start, comment.end).toLowerCase(), 'Save', async (text) => {
           await post('edit', '?id=' + encodeURIComponent(comment.id), { body: text });
           notify('Comment saved');
-        }, done);
+        }, done, 'edit:' + comment.id);
         body.hidden = true;
         edit.disabled = true;
         body.after(form);
-        area.focus();
-      });
+        if (focus) area.focus();
+      };
+      edit.addEventListener('click', () => openEdit(true));
+      if (drafts.has('edit:' + comment.id)) openEdit(false);
       let armed = 0;
       remove.addEventListener('click', async () => {
         if (!armed) {
@@ -564,7 +601,7 @@ export function initReview() {
       const foot = make('footer', 'review-foot');
       const replyButton = make('button', 'review-reply-btn');
       replyButton.innerHTML = ICON_REPLY + '<span>Reply</span>';
-      replyButton.addEventListener('click', () => {
+      const openReply = (focus) => {
         if (item.querySelector('.review-reply-box')) return;
         const holder = make('div', 'review-reply-box');
         if (gated && !me) {
@@ -580,20 +617,24 @@ export function initReview() {
         const { form, area } = editor('', 'Reply to ' + (comment.author || 'comment'), 'Reply', async (text) => {
           await post('add', '', { parent: comment.id, body: text });
           notify('Reply added');
-        }, close);
+        }, close, 'reply:' + comment.id);
         area.rows = 2;
         area.placeholder = 'Write a reply…';
         holder.append(form);
         foot.hidden = true;
         item.append(holder);
-        area.focus();
-      });
+        if (focus) area.focus();
+      };
+      replyButton.addEventListener('click', () => openReply(true));
       foot.append(replyButton);
       item.append(foot);
+      if (drafts.has('reply:' + comment.id)) openReply(false);
       return item;
     }
 
     function drawThreads() {
+      // Moving or rebuilding a form takes the focus from it, so give it back afterwards.
+      const focused = document.activeElement?.closest?.('.review-thread, .review-composer') ? document.activeElement : null;
       for (const old of host.article.querySelectorAll('.review-thread')) old.remove();
       for (const old of margin.querySelectorAll('.review-thread')) old.remove();
       side = layout === 'side' && roomForMargin();
@@ -621,8 +662,8 @@ export function initReview() {
       const groups = [];
       for (const comment of roots) {
         const mark = spot(comment.end);
-        if (!mark) continue;
-        const where = slot(mark, comment.start);
+        // No mapped block at all (an emptied document): its comments still need a place.
+        const where = mark ? slot(mark, comment.start) : [host.article, 'append'];
         let group = groups.find((other) => other.where[0] === where[0] && other.where[1] === where[1]);
         if (!group) groups.push((group = { where, end: 0, comments: [] }));
         group.end = Math.max(group.end, comment.end);
@@ -642,6 +683,10 @@ export function initReview() {
         }
       }
       arrange();
+      if (focused && document.activeElement !== focused) {
+        const again = focused.isConnected ? focused : focused.dataset.draft && host.article.querySelector('textarea[data-draft="' + CSS.escape(focused.dataset.draft) + '"]');
+        again?.focus({ preventScroll: true });
+      }
     }
 
     // Where a line starts, in the article's coordinates: what the margin lines up with.
@@ -649,7 +694,7 @@ export function initReview() {
       const mark = spot(line);
       if (!mark) return 0;
       const target = mark.code ? mark.button : mark.element;
-      const box = (shown(target) ? target : target.closest('details:not([open])') || target).getBoundingClientRect();
+      const box = (shown(target) ? target : onScreen(target)).getBoundingClientRect();
       return box.top - host.article.getBoundingClientRect().top;
     }
 
@@ -702,6 +747,7 @@ export function initReview() {
 
     function leave() {
       reviewing = false;
+      drafts.clear();
       closeComposer();
       selection = null;
       remember();
@@ -763,12 +809,17 @@ export function initReview() {
     document.addEventListener('keydown', (event) => {
       if (reviewing && event.key === 'Escape' && selection && !composer && !event.target.closest('textarea')) clear();
     });
-    new ResizeObserver(() => { if (reviewing) requestAnimationFrame(place); }).observe(host.article);
+    const replace = () => { if (reviewing) requestAnimationFrame(place); };
+    new ResizeObserver(replace).observe(host.article);
+    // Opening a <details> need not change the article's size (a tall margin can hold its
+    // min-height), and a resize can move the article without resizing it.
+    host.article.addEventListener('toggle', replace, true);
+    addEventListener('resize', replace);
 
     // #L12 or #L12-L14 opens review mode with those lines selected, as on GitHub.
     function follow() {
       const wanted = /^#L(\d+)(?:-L(\d+))?$/.exec(location.hash);
-      if (!wanted) return;
+      if (!wanted || !settled) return;
       if (!reviewing) enter();
       const start = Math.max(1, Math.min(Number(wanted[1]), view.lines || 1));
       choose(start, Math.max(start, Math.min(Number(wanted[2] || start), view.lines || start)), false);
@@ -777,6 +828,9 @@ export function initReview() {
     }
     addEventListener('hashchange', follow);
     addEventListener('aniflow-comments', () => refresh().catch((error) => console.error('comments', error)));
-    refresh().catch((error) => console.error('comments', error)).then(follow);
+    refresh().catch((error) => console.error('comments', error)).then(() => {
+      settled = true;
+      follow();
+    });
   }
 }

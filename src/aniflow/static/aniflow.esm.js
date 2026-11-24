@@ -2571,9 +2571,9 @@ function drawDiagrams(root = host.article, render = host.render) {
         });
         if (stage && holder.classList.contains("slide-on")) host.onSlideDiagram?.();
         if (pictures2.problems.length) holder.title += "\nPictures not shown: " + pictures2.problems.join(", ");
-        if (host.onDiagram) host.onDiagram();
         holder.style.visibility = "";
         block.remove();
+        if (host.onDiagram) host.onDiagram();
         if (fallback) fallback.hidden = true;
       } catch (error) {
         document.getElementById("d" + id)?.remove();
@@ -3260,10 +3260,10 @@ function directoryUrl(value, root, base = "") {
 // js/reader/review.js
 function initReview() {
   if (host.commentsUrl && host.reviewToggle && host.dock) {
-    let signInLink = function(label) {
+    let signInLink = function(label, url = host.commentsSignin) {
       const link = make("a", "review-signin", label);
       const back = location.pathname + location.search + location.hash;
-      link.href = host.commentsSignin + "?next=" + encodeURIComponent(back);
+      link.href = url + "?next=" + encodeURIComponent(back);
       return link;
     }, make = function(tag, className, text) {
       const element3 = document.createElement(tag);
@@ -3286,6 +3286,14 @@ function initReview() {
         updateDock();
       }, 3e3);
       updateDock();
+    }, refresh = function() {
+      return apply(call(host.commentsUrl));
+    }, post = function(action, query, body) {
+      return apply(call(host.commentsUrl.replace("/comments/", "/comments/" + action + "/") + query, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: body === void 0 ? "" : JSON.stringify(body)
+      }));
     }, openCount = function() {
       const closed = new Set(view.comments.filter((c) => !c.parent && c.resolved).map((c) => c.id));
       return view.comments.filter((c) => !c.resolved && !closed.has(c.parent)).length;
@@ -3348,8 +3356,14 @@ function initReview() {
       place();
     }, shown = function(element3) {
       if (element3.checkVisibility) return element3.checkVisibility();
-      const closed = element3.closest("details:not([open])");
-      return !closed || Boolean(element3.closest("summary")?.parentElement === closed);
+      for (let closed = element3.closest("details:not([open])"); closed; closed = closed.parentElement?.closest("details:not([open])")) {
+        if (element3.closest("summary")?.parentElement !== closed) return false;
+      }
+      return true;
+    }, onScreen = function(element3) {
+      let box = element3;
+      for (let closed = element3.closest("details:not([open])"); closed; closed = closed.parentElement?.closest("details:not([open])")) box = closed;
+      return box;
     }, roomForMargin = function() {
       const right = host.article.getBoundingClientRect().right;
       return right + MARGIN_WIDTH + 40 <= document.documentElement.clientWidth;
@@ -3426,7 +3440,7 @@ function initReview() {
       copyButton.hidden = Boolean(selection) || !count;
       session.textContent = "";
       if (gated) {
-        if (me) session.append(make("span", "", me.login), signInLink("Sign out"));
+        if (me) session.append(make("span", "", me.login), signInLink("Sign out", host.commentsSignout || host.commentsSignin));
         else session.append(signInLink("Sign in to comment"));
       }
     }, spot = function(line) {
@@ -3453,10 +3467,14 @@ function initReview() {
       if (how === "before") node.before(content);
       else if (how === "append") node.append(content);
       else node.after(content);
-    }, editor = function(text, label, action, save, cancel) {
+    }, editor = function(text, label, action, save, cancel, key) {
       const form = make("form", "review-form");
       const area = make("textarea");
-      area.value = text;
+      area.value = key && drafts.has(key) ? drafts.get(key) : text;
+      if (key) {
+        area.dataset.draft = key;
+        area.addEventListener("input", () => drafts.set(key, area.value));
+      }
       area.rows = 4;
       area.maxLength = commentMax;
       area.placeholder = "Leave a comment";
@@ -3470,14 +3488,17 @@ function initReview() {
       form.append(area, row);
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
+        if (submit.disabled) return;
         if (!area.value.trim()) {
           area.focus();
           return;
         }
         submit.disabled = true;
+        if (key) drafts.delete(key);
         try {
           await save(area.value);
         } catch (error) {
+          if (key) drafts.set(key, area.value);
           submit.disabled = false;
           notify("!Saving failed: " + (error.message || error));
         }
@@ -3488,10 +3509,14 @@ function initReview() {
           form.requestSubmit();
         } else if (event.key === "Escape") {
           event.preventDefault();
-          cancel();
+          close();
         }
       });
-      cancelButton.addEventListener("click", cancel);
+      const close = () => {
+        if (key) drafts.delete(key);
+        cancel();
+      };
+      cancelButton.addEventListener("click", close);
       return { form, area };
     }, closeComposer = function() {
       if (composer) composer.remove();
@@ -3519,8 +3544,10 @@ function initReview() {
       holder.append(make("p", "review-composer-title", "Comment on " + range(target.start, target.end).toLowerCase()));
       const { form, area } = editor("", "Comment on " + range(target.start, target.end).toLowerCase(), "Comment", async (text) => {
         await post("add", "", { start: target.start, end: target.end, body: text });
-        closeComposer();
-        clear();
+        if (composer === holder) {
+          closeComposer();
+          clear();
+        }
         notify("Comment added");
       }, closeComposer);
       holder.append(form);
@@ -3602,7 +3629,7 @@ function initReview() {
       }
       const body = make("p", "review-body", comment.body);
       box.append(body);
-      edit.addEventListener("click", () => {
+      const openEdit = (focus) => {
         if (box.querySelector("form")) return;
         const done = () => {
           form.remove();
@@ -3612,12 +3639,14 @@ function initReview() {
         const { form, area } = editor(comment.body, "Edit the comment on " + range(comment.start, comment.end).toLowerCase(), "Save", async (text) => {
           await post("edit", "?id=" + encodeURIComponent(comment.id), { body: text });
           notify("Comment saved");
-        }, done);
+        }, done, "edit:" + comment.id);
         body.hidden = true;
         edit.disabled = true;
         body.after(form);
-        area.focus();
-      });
+        if (focus) area.focus();
+      };
+      edit.addEventListener("click", () => openEdit(true));
+      if (drafts.has("edit:" + comment.id)) openEdit(false);
       let armed = 0;
       remove.addEventListener("click", async () => {
         if (!armed) {
@@ -3688,7 +3717,7 @@ function initReview() {
       const foot = make("footer", "review-foot");
       const replyButton = make("button", "review-reply-btn");
       replyButton.innerHTML = ICON_REPLY + "<span>Reply</span>";
-      replyButton.addEventListener("click", () => {
+      const openReply = (focus) => {
         if (item.querySelector(".review-reply-box")) return;
         const holder = make("div", "review-reply-box");
         if (gated && !me) {
@@ -3704,18 +3733,21 @@ function initReview() {
         const { form, area } = editor("", "Reply to " + (comment.author || "comment"), "Reply", async (text) => {
           await post("add", "", { parent: comment.id, body: text });
           notify("Reply added");
-        }, close);
+        }, close, "reply:" + comment.id);
         area.rows = 2;
         area.placeholder = "Write a reply\u2026";
         holder.append(form);
         foot.hidden = true;
         item.append(holder);
-        area.focus();
-      });
+        if (focus) area.focus();
+      };
+      replyButton.addEventListener("click", () => openReply(true));
       foot.append(replyButton);
       item.append(foot);
+      if (drafts.has("reply:" + comment.id)) openReply(false);
       return item;
     }, drawThreads = function() {
+      const focused = document.activeElement?.closest?.(".review-thread, .review-composer") ? document.activeElement : null;
       for (const old of host.article.querySelectorAll(".review-thread")) old.remove();
       for (const old of margin.querySelectorAll(".review-thread")) old.remove();
       side = layout === "side" && roomForMargin();
@@ -3743,8 +3775,7 @@ function initReview() {
       const groups = [];
       for (const comment of roots) {
         const mark = spot(comment.end);
-        if (!mark) continue;
-        const where = slot(mark, comment.start);
+        const where = mark ? slot(mark, comment.start) : [host.article, "append"];
         let group = groups.find((other) => other.where[0] === where[0] && other.where[1] === where[1]);
         if (!group) groups.push(group = { where, end: 0, comments: [] });
         group.end = Math.max(group.end, comment.end);
@@ -3763,11 +3794,15 @@ function initReview() {
         }
       }
       arrange();
+      if (focused && document.activeElement !== focused) {
+        const again = focused.isConnected ? focused : focused.dataset.draft && host.article.querySelector('textarea[data-draft="' + CSS.escape(focused.dataset.draft) + '"]');
+        again?.focus({ preventScroll: true });
+      }
     }, topOf = function(line) {
       const mark = spot(line);
       if (!mark) return 0;
       const target = mark.code ? mark.button : mark.element;
-      const box = (shown(target) ? target : target.closest("details:not([open])") || target).getBoundingClientRect();
+      const box = (shown(target) ? target : onScreen(target)).getBoundingClientRect();
       return box.top - host.article.getBoundingClientRect().top;
     }, arrange = function() {
       if (!side) return;
@@ -3810,6 +3845,7 @@ function initReview() {
       paint();
     }, leave = function() {
       reviewing = false;
+      drafts.clear();
       closeComposer();
       selection = null;
       remember();
@@ -3829,7 +3865,7 @@ function initReview() {
       host.reviewToggle.setAttribute("aria-pressed", "false");
     }, follow = function() {
       const wanted = /^#L(\d+)(?:-L(\d+))?$/.exec(location.hash);
-      if (!wanted) return;
+      if (!wanted || !settled2) return;
       if (!reviewing) enter();
       const start = Math.max(1, Math.min(Number(wanted[1]), view.lines || 1));
       choose(start, Math.max(start, Math.min(Number(wanted[2] || start), view.lines || start)), false);
@@ -3874,6 +3910,9 @@ function initReview() {
     let composer = null;
     let message = "";
     let messageTimer = 0;
+    let version = 0;
+    let settled2 = false;
+    const drafts = /* @__PURE__ */ new Map();
     const range = (start, end) => start === end ? "Line " + start : "Lines " + start + "\u2013" + end;
     const plural = (count) => count + (count === 1 ? " comment" : " comments");
     addBusyCheck(() => Boolean(composer) || Boolean(host.article.querySelector(".review-comment form")));
@@ -3885,20 +3924,15 @@ function initReview() {
     }
     async function loadPrompt() {
       const response = await fetch(host.commentsUrl + "?format=prompt", { cache: "no-store" });
-      promptText = response.ok ? await response.text() : "";
+      return response.ok ? await response.text() : "";
     }
-    async function refresh() {
-      view = await call(host.commentsUrl);
-      await loadPrompt();
-      redraw();
-    }
-    async function post(action, query, body) {
-      view = await call(host.commentsUrl.replace("/comments/", "/comments/" + action + "/") + query, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: body === void 0 ? "" : JSON.stringify(body)
-      });
-      await loadPrompt();
+    async function apply(request) {
+      const ticket = ++version;
+      const next = await request;
+      const prompt = await loadPrompt().catch(() => "");
+      if (ticket !== version) return;
+      view = next;
+      promptText = prompt;
       redraw();
     }
     const inside = (mark) => Boolean(selection) && mark.start <= selection.end && mark.end >= selection.start;
@@ -3945,12 +3979,18 @@ function initReview() {
     document.addEventListener("keydown", (event) => {
       if (reviewing && event.key === "Escape" && selection && !composer && !event.target.closest("textarea")) clear();
     });
-    new ResizeObserver(() => {
+    const replace = () => {
       if (reviewing) requestAnimationFrame(place);
-    }).observe(host.article);
+    };
+    new ResizeObserver(replace).observe(host.article);
+    host.article.addEventListener("toggle", replace, true);
+    addEventListener("resize", replace);
     addEventListener("hashchange", follow);
     addEventListener("aniflow-comments", () => refresh().catch((error) => console.error("comments", error)));
-    refresh().catch((error) => console.error("comments", error)).then(follow);
+    refresh().catch((error) => console.error("comments", error)).then(() => {
+      settled2 = true;
+      follow();
+    });
   }
 }
 

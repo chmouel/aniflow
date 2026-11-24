@@ -131,9 +131,9 @@ export function drawDiagrams(root = host.article, render = host.render) {
         });
         if (stage && holder.classList.contains('slide-on')) host.onSlideDiagram?.();
         if (pictures.problems.length) holder.title += '\nPictures not shown: ' + pictures.problems.join(', ');
-        if (host.onDiagram) host.onDiagram();
         holder.style.visibility = '';
         block.remove();
+        if (host.onDiagram) host.onDiagram();
         if (fallback) fallback.hidden = true;
       } catch (error) {
         document.getElementById('d' + id)?.remove();
