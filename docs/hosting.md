@@ -147,6 +147,48 @@ Add `--user-folders` (requires `--github-oauth`):
   of the served root, and check a content-hash version under a lock so
   concurrent saves return `409 Conflict` instead of overwriting each other.
 
+## Private folders and notes
+
+A note or a folder can be kept for signed-in readers only, with two markers:
+
+- A note is private when its YAML front matter has `private: true` (also
+  `yes`, `on` or `1`, quoted or not) at the top level of the block.
+- A folder is private when it holds a hidden `.aniflow-private` file, and so is
+  everything under it, subfolders and pictures included. The served root
+  counts too: a `.aniflow-private` at the top makes the whole site sign-in
+  only.
+
+```sh
+# a folder only signed-in readers may open
+touch /path/to/notes/salaries/.aniflow-private
+```
+
+```markdown
+---
+private: true
+---
+# Board notes
+```
+
+Anyone signed in may read a private note, whatever their account: with
+`--github-org`, that means the active members of the organisation, since
+nobody else can sign in. Anonymous visitors see nothing of it: private
+folders and notes are left out of the file browser, `/api/notes` and
+`/api/search`, and a direct URL answers a 401 page inviting them to sign in
+with GitHub (the raw Markdown, pictures and downloads answer 404, so nothing
+leaks). After signing in they land back on the page they asked for.
+
+The **Make private** / **Make public** buttons — on a folder row, in a note's
+More menu, or in the editor's toolbar — need `--user-folders` and write only
+where that member may already write: their own folder, a shared one, or
+anything for the admin. They set the marker file or the `private: true` front
+matter, nothing else.
+
+Without `--github-oauth` nobody can sign in, so private folders and notes stay
+unreadable: aniflow says so on stderr at startup. Run a read-only site with
+`--no-comments` and no private markers, or add `--github-oauth` (and
+`--user-folders` if the toggles should be in the web UI).
+
 ## API tokens and revoking
 
 Signed-in members can create 90-day personal API tokens (up to 10 live per

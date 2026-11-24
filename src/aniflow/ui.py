@@ -7,6 +7,7 @@ SIGNOUT_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" st
 TRASH_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M2.5 4.2h11M6 4.2V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.2M4 4.2l.7 8.6a1.2 1.2 0 0 0 1.2 1.2h4.2a1.2 1.2 0 0 0 1.2-1.2l.7-8.6"/></svg>'
 FOLDER_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h3.6c.6 0 1.2.2 1.6.7L12 6h6.5A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5Z"/></svg>'
 NOTE_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M7 2.5h7.2c.5 0 1 .2 1.4.6l3.3 3.3c.4.4.6.9.6 1.4v11.7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-15a2 2 0 0 1 2-2ZM8.5 11h7v1.5h-7Zm0 3.5h7V16h-7Zm0-7h3.5V9H8.5Z"/><path fill="currentColor" opacity=".45" d="M14.5 2.6v3.4a1.5 1.5 0 0 0 1.5 1.5h3.4Z"/></svg>'
+LOCK_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M4.4 7V5.2a3.6 3.6 0 0 1 7.2 0V7M3.5 7h9a.9.9 0 0 1 .9.9v5.2a.9.9 0 0 1-.9.9h-9a.9.9 0 0 1-.9-.9V7.9a.9.9 0 0 1 .9-.9Z"/><circle cx="8" cy="10.2" r=".9" fill="currentColor"/></svg>'
 SEARCH_ICON = '<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12.6 12.6l4.4 4.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>'
 
 
@@ -95,6 +96,14 @@ DIRECTORY_CSS = """
   .aniflow-browser .empty-symbol svg { width:28px; height:28px; }
   .aniflow-browser .browser-empty h2 { margin:0 0 8px; font-size:20px; font-weight:600; }
   .aniflow-browser .browser-empty p { max-width:32em; margin:0 0 20px; font-size:14px; line-height:1.6; color:var(--fgColor-muted); }
+  .aniflow-browser .folders-list li { position:relative; }
+  .aniflow-browser .private-mark { display:inline-flex; align-items:center; margin-left:6px; vertical-align:-2px; color:var(--fgColor-muted); }
+  .aniflow-browser .private-mark svg { width:14px; height:14px; }
+  .aniflow-browser .private-toggle { position:absolute; top:8px; right:8px; display:grid; place-items:center; width:30px; height:30px; padding:0; border:1px solid var(--borderColor-default); border-radius:8px; background:var(--bgColor-default); color:var(--fgColor-muted); cursor:pointer; }
+  .aniflow-browser .private-toggle:hover { border-color:var(--fgColor-muted); color:var(--fgColor-default); }
+  .aniflow-browser .private-toggle[aria-pressed="true"] { border-color:color-mix(in srgb, var(--fgColor-attention) 45%, var(--borderColor-default)); color:var(--fgColor-attention); }
+  .aniflow-browser .private-toggle svg { width:15px; height:15px; }
+  .aniflow-browser .private-toggle:focus-visible { outline:2px solid var(--document-color); outline-offset:2px; }
   .aniflow-browser .browser-empty :is(a, button) { padding:10px 16px; border:1px solid var(--borderColor-default); border-radius:8px; background:var(--bgColor-default); color:var(--document-color); font:600 14px/1.4 system-ui,sans-serif; text-decoration:none; cursor:pointer; }
   .aniflow-browser :is(.directory-group, .directory-list li, .browser-empty)[hidden] { display:none; }
   .aniflow-browser :is(a, select, button):focus-visible { outline:2px solid var(--document-color); outline-offset:3px; border-radius:6px; }
@@ -432,6 +441,26 @@ UI_JS = """
   }
   const copy = document.querySelector('[data-review="copy"]');
   if (copy) copy.textContent = 'Copy feedback';
+  // Make private / Make public: the server answers {private} and the page reloads.
+  for (const button of document.querySelectorAll('button[data-private-url]')) {
+    button.addEventListener('click', async () => {
+      const wanted = button.dataset.private !== 'true';
+      button.disabled = true;
+      try {
+        const response = await fetch(button.dataset.privateUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ private: wanted }),
+        });
+        const answer = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(answer.error || response.statusText);
+        location.reload();
+      } catch (error) {
+        button.disabled = false;
+        alert('Could not change privacy: ' + (error.message || error));
+      }
+    });
+  }
   // The help page, with the base prefix the server may be mounted under.
   if (!location.pathname.endsWith('/help')) return;
   document.body.classList.add('aniflow-help');
@@ -528,6 +557,9 @@ EDITOR_CSS = """
   .bar nav button.editor-save { padding:5px 14px; border-radius:999px; background:var(--fgColor-accent); color:var(--bgColor-default); }
   .bar nav button.editor-save:disabled { opacity:.6; }
   .bar nav button.editor-delete { color:var(--fgColor-danger); }
+  .bar nav button.editor-private { color:var(--fgColor-muted); }
+  .bar nav button.editor-private[aria-pressed="true"] { border:1px solid color-mix(in srgb, var(--fgColor-attention) 45%, var(--borderColor-default)); border-radius:999px; color:var(--fgColor-attention); }
+  .bar nav button.editor-private:disabled { opacity:.55; cursor:not-allowed; }
   @media (max-width:900px) {
     body.aniflow-editing .page.reader { grid-template-columns:minmax(0, 1fr); row-gap:24px; }
     .editor { position:static; }
@@ -650,6 +682,63 @@ EDITOR_JS = """
     event.preventDefault();
     uploadImage(file);
   });
+  // The Private button only edits the front matter in the textarea; a save writes it.
+  const privateButton = document.getElementById('editor-private');
+  if (privateButton && !privateButton.disabled) {
+    const frontMatter = () => {
+      const lines = area.value.split('\\n');
+      if (!/^---[ \\t]*$/.test(lines[0] || '')) return null;
+      for (let i = 1; i < Math.min(lines.length, 201); i++) {
+        if (/^(---|\\.\\.\\.)[ \\t]*$/.test(lines[i])) return { lines, end: i };
+      }
+      return null;
+    };
+    const linePattern = /^private[ \\t]*:/i;
+    const isPrivate = () => {
+      const block = frontMatter();
+      if (!block) return false;
+      for (let i = 1; i < block.end; i++) {
+        const found = /^private[ \\t]*:[ \\t]*(.*)$/i.exec(block.lines[i]);
+        if (found) return /^(true|yes|on|1)$/i.test(found[1].split('#')[0].trim().replace(/^["']|["']$/g, ''));
+      }
+      return false;
+    };
+    const paint = () => {
+      const on = isPrivate();
+      privateButton.setAttribute('aria-pressed', String(on));
+      privateButton.title = on ? 'Make this note public' : 'Make this note private';
+    };
+    const setPrivate = (wanted) => {
+      const block = frontMatter();
+      if (wanted) {
+        if (!block) area.value = '---\\nprivate: true\\n---\\n' + area.value;
+        else {
+          let index = -1;
+          for (let i = 1; i < block.end; i++) if (linePattern.test(block.lines[i])) index = i;
+          if (index === -1) block.lines.splice(1, 0, 'private: true');
+          else block.lines[index] = 'private: true';
+          area.value = block.lines.join('\\n');
+        }
+      } else {
+        if (!block) return;
+        let index = -1;
+        for (let i = 1; i < block.end; i++) if (linePattern.test(block.lines[i])) index = i;
+        if (index === -1) return;
+        block.lines.splice(index, 1);
+        const closing = block.end - 1;
+        const body = block.lines.slice(1, closing);
+        if (!body.some((line) => line.trim() && !line.trim().startsWith('#'))) {
+          block.lines.splice(closing, 1);
+          block.lines.splice(0, 1);
+        }
+        area.value = block.lines.join('\\n');
+      }
+      area.dispatchEvent(new Event('input'));
+      paint();
+    };
+    privateButton.addEventListener('click', () => setPrivate(privateButton.getAttribute('aria-pressed') !== 'true'));
+    paint();
+  }
   document.getElementById('editor-delete')?.addEventListener('click', async () => {
     if (!confirm('Delete ' + data.name + '? This cannot be undone.')) return;
     try {
@@ -783,4 +872,121 @@ TOKENS_JS = """
     }
   });
 })();
+"""
+
+# The sign-in gate a private note or folder answers anonymous readers with: the colours
+# of its own illustration, so it follows the page theme like everything else.
+GATE_CSS = """
+  .aniflow-gate { --gate-stone:#3d4658; --gate-fire:#ff8a3d; --gate-ember:#ffc861;
+    --gate-glow:#ff5a1f; --gate-ring:#8ad4ff;
+    min-height:100vh; margin:0; background:var(--bgColor-default); color:var(--fgColor-default); }
+  html[data-mode="light"] .aniflow-gate { --gate-stone:#8d8579; --gate-fire:#d4611b;
+    --gate-ember:#b1760f; --gate-glow:#ff7a24; --gate-ring:#2563c9; }
+  .aniflow-gate .gate { display:flex; flex-direction:column; align-items:center; width:min(100%, 560px);
+    margin:0 auto; padding:clamp(28px, 6vw, 52px) 24px 56px; text-align:center; }
+  .aniflow-gate .aniflow-brand { width:min(100%, 220px); margin:0 auto 4px; }
+  .aniflow-gate .gate-art { display:block; width:min(100%, 480px); height:auto; margin:10px auto 8px; }
+  .aniflow-gate .gate-opening { fill:color-mix(in srgb, var(--gate-stone) 25%, var(--bgColor-default)); }
+  .aniflow-gate h1 { margin:0 0 12px; font-size:clamp(30px, 8vw, 54px); font-weight:800; line-height:1.05; letter-spacing:-.04em; }
+  .aniflow-gate .gate-note { max-width:32em; margin:0 auto 26px; color:var(--fgColor-muted); font-size:clamp(14px, 2.6vw, 16px); line-height:1.65; }
+  .aniflow-gate .gate-actions { display:flex; flex-direction:column; align-items:center; gap:14px; }
+  .aniflow-gate .gate-signin { display:inline-flex; align-items:center; gap:9px; padding:11px 22px; border-radius:999px; background:var(--fgColor-accent); color:var(--bgColor-default); font-size:15px; font-weight:600; text-decoration:none; }
+  .aniflow-gate .gate-signin:hover { filter:brightness(1.07); }
+  .aniflow-gate .gate-signin svg { width:18px; height:18px; fill:currentColor; flex-shrink:0; }
+  .aniflow-gate .gate-back { color:var(--fgColor-muted); font-size:14px; text-decoration:none; }
+  .aniflow-gate .gate-back:hover { color:var(--fgColor-default); text-decoration:underline; }
+  .aniflow-gate :is(.gate-signin, .gate-back):focus-visible { outline:2px solid var(--fgColor-accent); outline-offset:3px; }
+  .aniflow-gate .gate-fire { transform-box:fill-box; transform-origin:center bottom; animation:gate-flicker 3.6s ease-in-out infinite; }
+  .aniflow-gate .gate-flame { transform-box:fill-box; transform-origin:center bottom; animation:gate-sway 2.9s ease-in-out infinite; }
+  .aniflow-gate .gate-flame:nth-of-type(2n) { animation-delay:-1.1s; }
+  .aniflow-gate .gate-flame:nth-of-type(3n) { animation-delay:-1.9s; }
+  .aniflow-gate .gate-ring { animation:gate-pulse 5s ease-in-out infinite; }
+  .aniflow-gate .gate-ember { opacity:0; animation:gate-rise 6s linear infinite; }
+  .aniflow-gate .gate-ember.e2 { animation-delay:-1.2s; }
+  .aniflow-gate .gate-ember.e3 { animation-delay:-2.4s; }
+  .aniflow-gate .gate-ember.e4 { animation-delay:-3.6s; }
+  .aniflow-gate .gate-ember.e5 { animation-delay:-4.8s; }
+  @keyframes gate-flicker { 0%, 100% { opacity:.86; transform:scaleY(1); } 30% { opacity:1; transform:scaleY(1.07); } 62% { opacity:.8; transform:scaleY(.95); } 82% { opacity:.95; transform:scaleY(1.03); } }
+  @keyframes gate-sway { 0%, 100% { transform:rotate(-1.6deg); } 50% { transform:rotate(1.6deg); } }
+  @keyframes gate-pulse { 0%, 100% { opacity:.82; } 50% { opacity:1; } }
+  @keyframes gate-rise { 0% { opacity:0; transform:translateY(10px); } 22% { opacity:.9; } 100% { opacity:0; transform:translateY(-54px); } }
+  @media (prefers-reduced-motion:reduce) {
+    .aniflow-gate :is(.gate-fire, .gate-flame, .gate-ring, .gate-ember) { animation:none; }
+    .aniflow-gate .gate-ember { opacity:.55; transform:none; }
+  }
+  @media (max-width:420px) {
+    .aniflow-gate .gate { padding:24px 16px 40px; }
+    .aniflow-gate .gate-back { font-size:13px; }
+  }
+"""
+
+# An original drawing for the gate: a stone doorway with steps, fire on the threshold, a
+# glowing ring and a chained padlock. No picture, no lettering, only the palette above.
+GATE_ART = """
+<svg class="gate-art" viewBox="0 0 480 320" width="480" height="320" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="gate-halo" cx="50%" cy="88%" r="60%">
+      <stop offset="0" stop-color="var(--gate-glow)" stop-opacity=".6"/>
+      <stop offset="1" stop-color="var(--gate-glow)" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="gate-wall" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="var(--gate-stone)" stop-opacity=".95"/>
+      <stop offset="1" stop-color="var(--gate-stone)" stop-opacity=".5"/>
+    </linearGradient>
+    <linearGradient id="gate-flame" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="var(--gate-ember)"/>
+      <stop offset=".55" stop-color="var(--gate-fire)"/>
+      <stop offset="1" stop-color="var(--gate-glow)"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="240" cy="286" rx="200" ry="32" fill="url(#gate-halo)"/>
+  <g fill="url(#gate-wall)">
+    <path d="M120 264h240l14 14H106Z" fill-opacity=".8"/>
+    <path d="M106 278h268l16 16H90Z" fill-opacity=".6"/>
+    <path d="M90 294h300l14 14H76Z" fill-opacity=".4"/>
+  </g>
+  <path d="M128 278V140a112 112 0 0 1 224 0v138Z" fill="url(#gate-wall)"/>
+  <path class="gate-opening" d="M154 278V140a86 86 0 0 1 172 0v138Z"/>
+  <path d="M154 278V140a86 86 0 0 1 172 0v138Z" fill="none" stroke="var(--gate-stone)" stroke-opacity=".8" stroke-width="3"/>
+  <g stroke="var(--gate-stone)" stroke-opacity=".45" stroke-width="2" stroke-linecap="round" fill="none">
+    <path d="M240 28v26"/>
+    <path d="M202 35 211 59"/>
+    <path d="M278 35 269 59"/>
+    <path d="M148 76 170 91"/>
+    <path d="M332 76 310 91"/>
+    <path d="M128 140h26M326 140h26"/>
+    <path d="M128 210h26M326 210h26"/>
+    <path d="M128 246h26M326 246h26"/>
+  </g>
+  <g class="gate-fire" fill="url(#gate-flame)">
+    <path class="gate-flame" d="M176 278c-3-14 3-23 2-34 9 9 16 20 16 34Z"/>
+    <path class="gate-flame" d="M200 278c-4-22 5-34 4-52 15 13 24 31 24 52Z"/>
+    <path class="gate-flame" d="M236 278c-5-28 7-44 5-66 19 17 30 40 30 66Z"/>
+    <path class="gate-flame" d="M280 278c-4-20 5-32 4-48 14 12 22 29 22 48Z"/>
+    <path class="gate-flame" d="M306 278c-3-12 3-19 2-28 9 8 14 17 14 28Z"/>
+  </g>
+  <g class="gate-embers" fill="var(--gate-ember)">
+    <circle class="gate-ember e1" cx="212" cy="196" r="3"/>
+    <circle class="gate-ember e2" cx="262" cy="178" r="2.4"/>
+    <circle class="gate-ember e3" cx="238" cy="150" r="2.8"/>
+    <circle class="gate-ember e4" cx="292" cy="188" r="2.2"/>
+    <circle class="gate-ember e5" cx="186" cy="170" r="2.6"/>
+  </g>
+  <ellipse class="gate-ring" cx="240" cy="176" rx="78" ry="88" fill="none" stroke="var(--gate-ring)" stroke-opacity=".28" stroke-width="10"/>
+  <ellipse class="gate-ring" cx="240" cy="176" rx="78" ry="88" fill="none" stroke="var(--gate-ring)" stroke-opacity=".9" stroke-width="3"/>
+  <g fill="none" stroke="var(--gate-stone)" stroke-opacity=".9" stroke-width="3">
+    <ellipse cx="240" cy="92" rx="5" ry="8"/>
+    <ellipse cx="240" cy="106" rx="8" ry="5"/>
+    <ellipse cx="240" cy="120" rx="5" ry="8"/>
+    <ellipse cx="240" cy="134" rx="8" ry="5"/>
+    <ellipse cx="240" cy="148" rx="5" ry="8"/>
+    <ellipse cx="240" cy="162" rx="8" ry="5"/>
+    <ellipse cx="240" cy="176" rx="5" ry="8"/>
+  </g>
+  <path d="M222 206v-16a18 18 0 0 1 36 0v16" fill="none" stroke="var(--gate-stone)" stroke-width="7" stroke-linecap="round"/>
+  <rect x="206" y="202" width="68" height="60" rx="11" fill="var(--gate-stone)"/>
+  <rect x="206" y="202" width="68" height="60" rx="11" fill="none" stroke="var(--fgColor-default)" stroke-opacity=".25" stroke-width="2"/>
+  <circle cx="240" cy="226" r="6.5" fill="var(--gate-ember)"/>
+  <path d="M240 230v13" stroke="var(--gate-ember)" stroke-width="4" stroke-linecap="round"/>
+</svg>
 """

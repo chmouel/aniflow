@@ -114,6 +114,14 @@ the wheel, so `uvx --from git+...` works without Node.
   one (`Authorization: Bearer`, the owner's rights, `If-Match`); `/api/search`
   searches filenames and Markdown text. `aniflow --revoke-tokens LOGIN|ID` is
   the operator's way out.
+  A note whose front matter says `private: true`, or anything under a folder
+  holding the hidden `.aniflow-private` file, is for signed-in readers only:
+  `is_private()`/`visible()` keep it out of `directory_page()`, `/api/notes`,
+  `/api/search` and the comment routes, `gate_page()` answers a direct URL
+  with the 401 "You shall not pass" page (`GATE_ART` and `GATE_CSS` in
+  `ui.py` draw it),
+  and POST `/notes/private/<path>` sets the marker or the front matter for a
+  member who may write there.
   With `--allow-host` and comments on, `main()` refuses to start without
   `--github-oauth`, so a missing client id cannot open the comments to all.
 - `src/aniflow/web.py`: `Handler`, a `BaseHTTPRequestHandler` with the
@@ -373,6 +381,16 @@ Keep these when changing code.
   sealed with `ANIFLOW_SIGNIN_SECRET`, so a forged or edited cookie signs
   nobody in. Comment storage sits outside the served
   folder.
+- Private means signed-in. `is_private()` reads a hidden `.aniflow-private`
+  on any folder above the path (the served root included) and a note's
+  top-level `private:` front matter, and fails closed on an unreadable note.
+  `visible()` decides with `Handler.who()` (session cookie or bearer token):
+  listings, search, `/api/notes` and the comment routes drop what is
+  invisible, a direct page URL answers `gate_page()` with a 401 that names
+  neither the note nor its path, and `?raw`, pictures, downloads and
+  non-HTML requests stay 404. The only write is POST
+  `/notes/private/<path>`, behind `--user-folders`, `may_write()` and
+  `NOTES_LOCK`, and the marker is a hidden name, so nothing serves it.
 - `/vendor/`, `/static/` and `/icons/` serve fixed names only, never a path
   joined from the request.
 

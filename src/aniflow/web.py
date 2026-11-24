@@ -254,8 +254,13 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_json(view)
 
-    def send_html(self, body: bytes, headers: dict[str, str] | None = None) -> None:
-        self.send_response(200)
+    def send_html(
+        self,
+        body: bytes,
+        headers: dict[str, str] | None = None,
+        status: int = 200,
+    ) -> None:
+        self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         for name, value in (headers or {}).items():

@@ -17,6 +17,7 @@ import threading
 import time
 import webbrowser
 import zlib
+from collections.abc import Callable
 from datetime import UTC, datetime
 from http.cookies import CookieError, SimpleCookie
 from http.server import ThreadingHTTPServer
@@ -32,8 +33,11 @@ from aniflow.ui import (
     EDITOR_JS,
     FOLDER_ICON,
     FOLDER_MENU_ICON,
+    GATE_ART,
+    GATE_CSS,
     GITHUB_MARK,
     KEY_ICON,
+    LOCK_ICON,
     NEW_NOTE_JS,
     NOTE_ICON,
     SEARCH_ICON,
@@ -162,6 +166,17 @@ def breadcrumbs(root: Path, path: Path, base: str = "") -> list[tuple[str, str]]
 # Writing from the web, with --user-folders: each signed-in member owns <root>/<login>/,
 # and a folder holding this hidden file (and everything under it) is open to all of them.
 SHARED_MARK = ".aniflow-shared"
+# A folder holding this hidden file, and everything under it, is only for signed-in
+# readers. A note says the same in its front matter with `private: true`.
+PRIVATE_MARK = ".aniflow-private"
+# A note at most this much is read to find its front matter; a block still open at that
+# point makes the note private.
+FRONT_MATTER_MAX = 8192
+FRONT_OPEN = re.compile(r"\ufeff?---[ \t\r]*\Z")
+FRONT_CLOSE = re.compile(r"(---|\.\.\.)[ \t\r]*\Z")
+PRIVATE_LINE = re.compile(r"private[ \t]*:.*\Z", re.IGNORECASE)
+PRIVATE_VALUE = re.compile(r"private[ \t]*:[ \t]*(.*)\Z", re.IGNORECASE)
+PRIVATE_TRUTHY = {"true", "yes", "on", "1"}
 NOTE_MAX_BYTES = 1024**2
 IMAGE_MAX_BYTES = 10 * 1024**2
 IMAGE_TYPES = {
@@ -231,6 +246,129 @@ def may_write(root: Path, path: Path, session: dict | None) -> bool:
         if (folder / SHARED_MARK).is_file():
             return True
         folder = folder.parent
+    return False
+
+
+def front_private(text: str) -> bool:
+    """Whether the front matter says private: any top-level `private:` set to true, yes,
+    on or 1 (quoted or not). An indented key belongs to another block and does not
+    count. A block opened but not closed in text is read to its end, so a cut-off or
+    overlong one errs on the private side."""
+    lines = text.splitlines()
+    if not lines or not FRONT_OPEN.match(lines[0]):
+        return False
+    for line in lines[1:]:
+        if FRONT_CLOSE.match(line):
+            break
+        found = PRIVATE_VALUE.match(line)
+        if found:
+            value = found[1].split("#", 1)[0].strip().strip("\"'").strip().lower()
+            if value in PRIVATE_TRUTHY:
+                return True
+    return False
+
+
+def set_front_private(text: str, wanted: bool) -> str:
+    """text with its front matter saying private, or no longer saying it: the line is
+    added, replaced or dropped, and an emptied block goes with it."""
+    lines = text.split("\n")
+    closing = None
+    if lines and FRONT_OPEN.match(lines[0]):
+        for index in range(1, len(lines)):
+            if FRONT_CLOSE.match(lines[index]):
+                closing = index
+                break
+    if wanted:
+        if closing is None:
+            bom = "\ufeff" if text.startswith("\ufeff") else ""
+            return bom + "---\nprivate: true\n---\n" + text.removeprefix(bom)
+        for index in range(1, closing):
+            if PRIVATE_LINE.match(lines[index]):
+                lines[index] = "private: true"
+                break
+        else:
+            lines.insert(1, "private: true")
+        return "\n".join(lines)
+    if closing is None:
+        return text
+    kept = [line for line in lines[1:closing] if not PRIVATE_LINE.match(line)]
+    if len(kept) == closing - 1:
+        return text
+    if any(line.strip() and not line.lstrip().startswith("#") for line in kept):
+        lines[1:closing] = kept
+    else:
+        bom = "\ufeff" if lines[0].startswith("\ufeff") else ""
+        lines[0 : closing + 1] = []
+        if bom and lines:
+            lines[0] = bom + lines[0]
+    return "\n".join(lines)
+
+
+def note_private(path: Path) -> bool:
+    """Whether a note's own front matter marks it private. Unreadable counts as private."""
+    try:
+        with path.open("rb") as handle:
+            raw = handle.read(FRONT_MATTER_MAX + 1)
+            text = raw[:FRONT_MATTER_MAX].decode("utf-8", errors="replace")
+    except OSError:
+        return True
+    if len(raw) > FRONT_MATTER_MAX:
+        lines = text.splitlines()
+        if (
+            lines
+            and FRONT_OPEN.match(lines[0])
+            and not any(FRONT_CLOSE.match(line) for line in lines[1:])
+        ):
+            return True
+    return front_private(text)
+
+
+def is_private(root: Path, path: Path) -> bool:
+    """Whether path is behind a private folder marker, or is a note whose front matter
+    says private. Anything outside the served folder counts as private."""
+    try:
+        path.relative_to(root)
+        resolved = path.resolve()
+        resolved.relative_to(root)
+    except (ValueError, OSError, RuntimeError):
+        return True
+    if resolved != path and is_private(root, resolved):
+        return True
+    folder = path if path.is_dir() else path.parent
+    while True:
+        if (folder / PRIVATE_MARK).is_file():
+            return True
+        if folder == root:
+            break
+        folder = folder.parent
+    if path.is_file() and web.is_markdown(path.name):
+        return note_private(path)
+    return False
+
+
+def visible(root: Path, path: Path, who: dict | None) -> bool:
+    """Whether this reader may see path: a signed-in one sees everything."""
+    return who is not None or not is_private(root, path)
+
+
+def has_private_marker(root: Path, limit: int = 2000) -> bool:
+    """Whether root or a folder below it holds PRIVATE_MARK, stopping at the first hit.
+    Hidden folders and symlinks are skipped and at most limit folders are looked at."""
+    queue, seen = [root], 0
+    while queue and seen < limit:
+        folder = queue.pop(0)
+        seen += 1
+        if (folder / PRIVATE_MARK).is_file():
+            return True
+        try:
+            children = sorted(folder.iterdir(), key=lambda child: child.name)
+        except OSError:
+            continue
+        for child in children:
+            if child.name.startswith(".") or child.is_symlink():
+                continue
+            if child.is_dir():
+                queue.append(child)
     return False
 
 
@@ -519,6 +657,60 @@ def search_ui(base: str) -> tuple[str, str]:
     return button, dialog
 
 
+def gate_page(
+    base: str,
+    brand_name: str,
+    logo: str,
+    icon: str,
+    what: str,
+    signin: str,
+    next_path: str,
+) -> tuple[bytes, str]:
+    """The page an anonymous reader of a private folder or note gets: the way in is to
+    sign in. It never shows the name or the path of what it hides."""
+    nonce = secrets.token_urlsafe(16)
+    if signin:
+        prose = f"This {what} is private. Sign in with GitHub to read it."
+        action = (
+            f'<a class="gate-signin" href="{html.escape(signin)}?next='
+            f'{quote(next_path, safe="")}">{GITHUB_MARK}<span>Sign in with GitHub</span></a>'
+        )
+    else:
+        prose = (
+            f"This {what} is private, and this server has no GitHub sign-in configured."
+        )
+        action = ""
+    body = f"""<!doctype html>
+<html lang="en" data-theme-default="dark"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark"><title>{html.escape(brand_name)} · private</title>
+<link rel="icon" href="{html.escape(favicon(brand_name, icon or logo))}">{theme_script(nonce)}
+<link rel="stylesheet" href="{base}/static/page.css">
+<style>{THEME_READER_CSS}{BRAND_CSS}{GATE_CSS}</style>
+</head><body class="aniflow-local aniflow-gate"><main class="gate">
+{masthead(base, brand_name, logo)}
+{GATE_ART}
+<h1>You shall not pass</h1>
+<p class="gate-note">{prose}</p>
+<div class="gate-actions">{action}<a class="gate-back" href="{base}{FILES}">Back to files</a></div>
+</main></body></html>"""
+    return body.encode("utf-8"), nonce
+
+
+def private_toggle(root: Path, folder: Path, base: str) -> str:
+    """The button that hides a folder from anonymous readers, or opens it again."""
+    private = (folder / PRIVATE_MARK).is_file()
+    action = "Make public" if private else "Make private"
+    state = "true" if private else "false"
+    url = f"{base}/notes/private/{quote(folder.relative_to(root).as_posix())}/"
+    return (
+        f'<button type="button" class="private-toggle"'
+        f' data-private-url="{html.escape(url)}" data-private="{state}"'
+        f' aria-pressed="{state}" title="{action}">'
+        f'{LOCK_ICON}<span class="sr-only">{action}</span></button>'
+    )
+
+
 def directory_page(
     root: Path,
     path: Path,
@@ -528,12 +720,18 @@ def directory_page(
     icon: str = "",
     account: str = "",
     new_note: bool = False,
+    session: dict | None = None,
+    writable: Callable[[Path], bool] | None = None,
 ) -> tuple[bytes, str]:
+    """A folder listing: children the reader may not see are left out, a signed-in one sees
+    a lock on the private ones, and writable folders get a toggle for it."""
     entries = []
     for child in path.iterdir():
         try:
             folder = child.is_dir()
             if not folder and not web.is_markdown(child.name):
+                continue
+            if not visible(root, child, session):
                 continue
             if local_path(root, child.relative_to(root).as_posix()) is not None:
                 entries.append((child, folder, child.stat()))
@@ -543,20 +741,31 @@ def directory_page(
     folder_rows, document_rows = [], []
     for child, folder, stat in entries:
         name = html.escape(child.name)
+        private = is_private(root, child)
+        lock = (
+            f'<span class="private-mark" title="Private" aria-label="Private">{LOCK_ICON}</span>'
+            if private
+            else ""
+        )
         link = (
             f'<a href="{html.escape(file_url(root, child, base))}" data-name="{name}">'
         )
         attributes = f'data-modified="{stat.st_mtime}"'
         if folder:
+            toggle = (
+                private_toggle(root, child, base)
+                if writable and writable(child)
+                else ""
+            )
             folder_rows.append(
                 f'<li {attributes}>{link}<span class="folder-symbol" aria-hidden="true">{FOLDER_ICON}</span>'
-                f'<span class="file-label">{name}</span><span class="entry-arrow">{NEXT_ICON}</span></a></li>'
+                f'<span class="file-label">{name}{lock}</span><span class="entry-arrow">{NEXT_ICON}</span></a>{toggle}</li>'
             )
         else:
             modified = datetime.fromtimestamp(stat.st_mtime, UTC)
             document_rows.append(
                 f'<li {attributes}>{link}<span class="document-symbol" aria-hidden="true">{NOTE_ICON}</span>'
-                f'<span class="file-label">{html.escape(child.stem)}<span class="file-extension">{html.escape(child.suffix)}</span></span>'
+                f'<span class="file-label">{html.escape(child.stem)}<span class="file-extension">{html.escape(child.suffix)}</span>{lock}</span>'
                 f'<time datetime="{modified.isoformat()}" class="file-modified">{modified.strftime("%d %b %Y")}</time>'
                 f'<span class="file-size">{human_size(stat.st_size)}</span>'
                 f'<span class="entry-arrow">{NEXT_ICON}</span></a></li>'
@@ -661,6 +870,7 @@ def reader_page(
     account: str = "",
     edit: str = "",
     delete: dict[str, str] | None = None,
+    private: dict[str, str] | None = None,
 ) -> tuple[bytes, str]:
     """A markdown file in the reader, with links kept under root_url. edit is the editor's
     URL, for a note the reader may change."""
@@ -689,6 +899,16 @@ def reader_page(
             f' data-folder="{html.escape(delete["folder"])}"'
             f' data-name="{html.escape(delete["name"])}">'
             f"{TRASH_ICON}Delete</button>"
+        )
+    if private:
+        on = private.get("private") == "true"
+        action = "Make public" if on else "Make private"
+        state = "true" if on else "false"
+        menu_links += (
+            '<hr class="menu-sep">'
+            f'<button type="button" data-private-url="{html.escape(private["url"])}"'
+            f' data-private="{state}" aria-pressed="{state}" title="{action}">'
+            f"{LOCK_ICON}{action}</button>"
         )
     edit_link = (
         f'<a class="reader-edit" href="{html.escape(edit)}">Edit</a>' if edit else ""
@@ -768,7 +988,15 @@ def editor_page(
         "upload": f"{base}/notes/upload/{folder_rel}",
         "folder": folder,
         "example": DIAGRAM_EXAMPLE,
+        "private": front_private(text),
     }
+    folder_private = is_private(root, note.parent)
+    private_title = (
+        "This folder is private: every note in it needs a sign-in"
+        if folder_private
+        else "Make this note private"
+    )
+    private_pressed = "true" if front_private(text) else "false"
     controls = (
         '<span class="editor-status" id="editor-status" role="status"></span>'
         '<button type="button" id="editor-image" title="Upload an image (or paste/drop)">'
@@ -776,6 +1004,9 @@ def editor_page(
         '<input type="file" id="editor-image-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>'
         '<button type="button" id="editor-diagram" title="Insert an animated diagram">'
         "Insert diagram</button>"
+        f'<button type="button" class="editor-private" id="editor-private"'
+        f' aria-pressed="{private_pressed}" title="{html.escape(private_title)}"'
+        f"{' disabled' if folder_private else ''}>Private</button>"
         + (
             '<button type="button" class="editor-delete" id="editor-delete">Delete</button>'
             if exists
@@ -867,6 +1098,24 @@ class Server(ThreadingHTTPServer):
 
 class Handler(web.Handler):
     server: Server
+    # Set for a response carrying a private folder or note, which no cache may keep.
+    private_view = False
+
+    def parse_request(self) -> bool:
+        self.private_view = False
+        return super().parse_request()
+
+    def end_headers(self) -> None:
+        # Pages differ by who signed in, so a shared cache must never hand one reader's
+        # copy to another.
+        self.send_header("Vary", "Cookie, Authorization")
+        if self.private_view:
+            self.send_header("Cache-Control", "private, no-store")
+        elif self.headers and (
+            self.headers.get("Cookie") or self.headers.get("Authorization")
+        ):
+            self.send_header("Cache-Control", "private")
+        super().end_headers()
 
     def allowed_hosts(self) -> frozenset[str]:
         """Host names a proxy may forward: --allow-host, for a public deployment."""
@@ -880,6 +1129,8 @@ class Handler(web.Handler):
         elif key.startswith("file/"):
             path = local_path(self.server.root, unquote(key.removeprefix("file/")))
             if path is None or not path.is_file() or not web.is_markdown(path.name):
+                return None
+            if not visible(self.server.root, path, self.who()):
                 return None
             identity = "file/" + path.resolve().relative_to(self.server.root).as_posix()
         else:
@@ -914,6 +1165,16 @@ class Handler(web.Handler):
         held = signin.session(self.cookie(oauth.SESSION_COOKIE)) if signin else None
         return self.with_admin(held)
 
+    def who(self) -> dict | None:
+        """The signed-in reader behind this request, by cookie or by API token."""
+        return self.session() or self.bearer()
+
+    def wants_html(self) -> bool:
+        """Whether the client is a browser asking for a page, rather than a download or a
+        picture that must learn nothing about a private path."""
+        accept = (self.headers.get("Accept") or "").lower()
+        return not accept or "text/html" in accept or "*/*" in accept
+
     def with_admin(self, who: dict | None) -> dict | None:
         """who, with admin decided now from --comments-admin rather than whatever was
         true when the cookie or the token was made."""
@@ -939,6 +1200,17 @@ class Handler(web.Handler):
             self.server.root, path.relative_to(self.server.root).as_posix()
         )
         return note is not None and may_write(self.server.root, note, self.session())
+
+    def writable_folder(self, path: Path) -> bool:
+        """Whether whoever is asking may hide or open the folder at path from the web."""
+        if not self.server.user_folders or self.server.signin is None:
+            return False
+        folder = upload_folder(
+            self.server.root, path.relative_to(self.server.root).as_posix()
+        )
+        return folder is not None and may_write(
+            self.server.root, folder / "probe.md", self.session()
+        )
 
     def edit_note(self, key: str) -> None:
         """GET /files/<path>?edit: the editor, for a note the reader may write."""
@@ -1008,6 +1280,9 @@ class Handler(web.Handler):
             key = key.strip("/")
             path = root if not key else local_path(root, key)
             if path is None:
+                self.send_json({"error": "not found"}, status=404)
+                return
+            if not visible(root, path, self.who()):
                 self.send_json({"error": "not found"}, status=404)
                 return
             if path.is_dir():
@@ -1123,6 +1398,7 @@ class Handler(web.Handler):
     def api_list(self, folder: Path) -> None:
         """JSON listing of subfolders and Markdown notes inside folder."""
         root = self.server.root
+        who = self.who()
         folders, notes = [], []
         for child in folder.iterdir():
             if child.name.startswith("."):
@@ -1131,6 +1407,8 @@ class Handler(web.Handler):
                 child.resolve().relative_to(root)
                 stat = child.stat()
             except (OSError, ValueError):
+                continue
+            if not visible(root, child, who):
                 continue
             rel = child.relative_to(root).as_posix()
             if child.is_dir():
@@ -1165,8 +1443,9 @@ class Handler(web.Handler):
             return
         folder_key = ((params.get("folder") or [""])[-1]).strip("/")
         root = self.server.root
+        who = self.who()
         start = root if not folder_key else local_path(root, folder_key)
-        if start is None or not start.is_dir():
+        if start is None or not start.is_dir() or not visible(root, start, who):
             self.send_json({"error": "folder not found"}, status=404)
             return
         low = needle.casefold()
@@ -1184,6 +1463,8 @@ class Handler(web.Handler):
                 try:
                     child.resolve().relative_to(root)
                 except (OSError, ValueError):
+                    continue
+                if not visible(root, child, who):
                     continue
                 if child.is_dir():
                     queue.append(child)
@@ -1575,6 +1856,83 @@ refuse the change when someone edited the note in between.
             }
         )
 
+    def change_private(self, key: str) -> None:
+        """POST /notes/private/<path> {private}: hide a folder or a note from anonymous
+        readers, or open it again. A folder gets the marker file, a note its front matter."""
+        if not self.server.user_folders or self.server.signin is None:
+            self.send_json({"error": "not found"}, status=404)
+            return
+        session = self.session()
+        if session is None:
+            self.send_json(
+                {
+                    "error": "sign in with GitHub to change this",
+                    "signin": self.server.url("/auth/github/start"),
+                },
+                status=401,
+            )
+            return
+        body = self.read_body(4096)
+        try:
+            data = json.loads(body or b"null")
+        except ValueError:
+            data = None
+        if not isinstance(data, dict) or not isinstance(data.get("private"), bool):
+            self.send_json({"error": "send JSON with a 'private' boolean"}, status=400)
+            return
+        wanted = data["private"]
+        root = self.server.root
+        key = unquote(key).strip("/")
+        folder = upload_folder(root, key)
+        if folder is not None and folder.is_dir():
+            if not may_write(root, folder / "probe.md", session):
+                self.send_json({"error": "this folder is not yours"}, status=403)
+                return
+            try:
+                with NOTES_LOCK:
+                    mark = folder / PRIVATE_MARK
+                    if wanted:
+                        mark.touch()
+                    else:
+                        mark.unlink(missing_ok=True)
+            except OSError as error:
+                self.send_json(
+                    {"error": f"could not change: {error.strerror}"}, status=500
+                )
+                return
+            self.send_json({"private": is_private(root, folder)})
+            return
+        note = note_path(root, key)
+        if note is None or not note.is_file():
+            self.send_json(
+                {"error": "not a note or folder this server writes"}, status=404
+            )
+            return
+        if not may_write(root, note, session):
+            self.send_json({"error": "this folder is not yours"}, status=403)
+            return
+        try:
+            with NOTES_LOCK:
+                text = set_front_private(note.read_text("utf-8"), wanted)
+                version = (
+                    write_note(note, text)
+                    if len(text.encode("utf-8")) <= NOTE_MAX_BYTES
+                    else ""
+                )
+        except (OSError, UnicodeDecodeError) as error:
+            self.send_json({"error": f"could not write: {error}"}, status=500)
+            return
+        if not version:
+            self.send_json({"error": "notes are limited to 1 MB"}, status=413)
+            return
+        self.send_json(
+            {
+                "private": is_private(root, note),
+                "version": version,
+                "url": file_url(root, note, self.server.base),
+            }
+        )
+
     def account(self) -> str:
         """The bar's GitHub button for this request, when the server offers sign-in."""
         if self.server.signin is None:
@@ -1765,6 +2123,30 @@ refuse the change when someone edited the note in between.
                 return
             local = local_path(root, key)
             if local is not None:
+                if not visible(root, local, self.who()):
+                    if (
+                        local.is_dir() or (web.is_markdown(local.name) and not raw)
+                    ) and self.wants_html():
+                        what = "folder" if local.is_dir() else "note"
+                        body, nonce = gate_page(
+                            base,
+                            self.server.brand_name,
+                            self.server.logo,
+                            self.server.icon,
+                            what,
+                            base + "/auth/github/start"
+                            if self.server.signin is not None
+                            else "",
+                            parsed.path,
+                        )
+                        self.send_html(
+                            body,
+                            {**page.reader_headers(nonce), "Cache-Control": "no-store"},
+                            status=401,
+                        )
+                    else:
+                        self.send_error(404)
+                    return
                 try:
                     if local.is_dir():
                         if not path.endswith("/"):
@@ -1779,6 +2161,8 @@ refuse the change when someone edited the note in between.
                             self.server.icon,
                             self.account(),
                             new_note=local != root and self.writable(local / "new.md"),
+                            session=self.who(),
+                            writable=self.writable_folder,
                         )
                     elif web.is_markdown(local.name) and not raw:
                         can_write = self.writable(local)
@@ -1813,6 +2197,12 @@ refuse the change when someone edited the note in between.
                             }
                             if can_write
                             else None,
+                            private={
+                                "url": f"{base}/notes/private/{relative}",
+                                "private": "true" if note_private(local) else "false",
+                            }
+                            if can_write
+                            else None,
                         )
                     else:
                         self.send_local_file(local, raw=raw)
@@ -1839,6 +2229,9 @@ refuse the change when someone edited the note in between.
             return
         if path.startswith(("/notes/save/", "/notes/delete/")):
             self.change_note(path)
+            return
+        if path.startswith("/notes/private/"):
+            self.change_private(path.removeprefix("/notes/private/"))
             return
         if path in ("/tokens/create", "/tokens/revoke"):
             self.change_tokens(path.removeprefix("/tokens/"))
@@ -2191,6 +2584,13 @@ def main() -> None:
     except (OSError, OverflowError) as error:
         parser.error(str(error))
     host = f"[{args.host}]" if ":" in args.host else args.host
+    if signin is None and has_private_marker(httpd.root):
+        print(
+            "aniflow: this folder holds private notes or folders, but no GitHub "
+            "sign-in is configured: readers will only ever see the gate page. "
+            "Add --github-oauth to let them in.",
+            file=sys.stderr,
+        )
     print(
         f"aniflow: serving {httpd.root} at http://{host}:{httpd.server_address[1]}{base}/",
         flush=True,
