@@ -18,14 +18,14 @@ or [try the editor](https://chmouel.github.io/aniflow/try/) in your browser.
 Browse the Markdown in the current directory and its subfolders:
 
 ```sh
-uvx --from git+https://github.com/chmouel/aniflow aniflow
+uvx --from git+https://github.com/chmouel/aniflow aniflow serve
 ```
 
 Open the URL it prints; it picks an available local port. To serve another
 directory or choose the port:
 
 ```sh
-aniflow ./docs --port 8080
+aniflow serve ./docs --port 8080
 ```
 
 To keep it installed, run `uv tool install git+https://github.com/chmouel/aniflow`.
@@ -36,7 +36,7 @@ Create a starter deck and open its folder:
 
 ```sh
 aniflow --init talk.md              # --style keynote, conference or minimal
-aniflow .
+aniflow serve .
 ```
 
 Edit `talk.md`, open it in aniflow and press Present. Each `##` heading starts

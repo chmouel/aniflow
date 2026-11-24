@@ -2245,18 +2245,25 @@ refuse the change when someone edited the note in between.
 
 
 def main() -> None:
-    if len(sys.argv) > 1 and sys.argv[1] in client.COMMANDS:
-        raise SystemExit(client.main(sys.argv[1:]))
+    argv = sys.argv[1:]
+    if argv and argv[0] in client.COMMANDS:
+        raise SystemExit(client.main(argv))
+    serving = bool(argv) and argv[0] == "serve"
+    if serving:
+        argv = argv[1:]
     parser = argparse.ArgumentParser(
+        prog="aniflow serve" if serving else "aniflow",
         description="Present Markdown, play diagrams and browse local documents.",
-        epilog="remote client & skills: aniflow {login,whoami,ls,search,push,pull,rm,private,comments,skill} -h",
+        epilog="serve a folder: aniflow serve [DIRECTORY] -h\n"
+        "remote client & skills: aniflow {login,whoami,ls,search,push,pull,rm,private,comments,skill} -h",
     )
     parser.add_argument(
         "directory",
+        metavar="DIRECTORY",
         nargs="?",
         type=Path,
         default=Path.cwd(),
-        help="directory to serve (default: current directory)",
+        help="with serve, the directory to serve (default: current directory)",
     )
     parser.add_argument(
         "--host", default="127.0.0.1", help="address to bind (default: 127.0.0.1)"
@@ -2403,7 +2410,7 @@ def main() -> None:
         "picture that does not load and slide that does not fit as FILE:LINE, and "
         "exit 1 when there is any",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.style and not args.init:
         parser.error("--style goes with --init")
     if args.init:
@@ -2433,7 +2440,8 @@ def main() -> None:
         except OSError as error:
             parser.error(f"cannot create {args.init}: {error}")
         print(
-            f"Created {args.init}. Run aniflow {Path(args.init).parent} to present it."
+            f"Created {args.init}. Run aniflow serve {Path(args.init).parent} to "
+            "present it."
         )
         return
     if args.check:
@@ -2503,6 +2511,12 @@ def main() -> None:
         parser.error("--out goes with --export or --slides")
     if args.diagram is not None:
         parser.error("--diagram goes with --export")
+    if not serving:
+        parser.error(
+            "nothing to do: run `aniflow serve [DIRECTORY]` to serve a folder, or "
+            "give an action (--spec, --check, --share, --init, --export, --slides, "
+            "--revoke-tokens); see aniflow -h"
+        )
     if not args.directory.is_dir():
         parser.error(f"not a directory: {args.directory}")
     try:

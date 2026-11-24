@@ -750,7 +750,9 @@ def test_editor_and_its_links(github, local_docs, aniflow_servers):
 
 def test_user_folders_need_github(tmp_path, monkeypatch, capsys):
     monkeypatch.delenv("ANIFLOW_GITHUB_CLIENT_ID", raising=False)
-    monkeypatch.setattr("sys.argv", ["aniflow", str(tmp_path), "--user-folders"])
+    monkeypatch.setattr(
+        "sys.argv", ["aniflow", "serve", str(tmp_path), "--user-folders"]
+    )
     with pytest.raises(SystemExit, match="2"):
         cli.main()
     assert "--github-oauth" in capsys.readouterr().err
@@ -1345,7 +1347,7 @@ def test_help_obeys_request_checks(aniflow_server):
 
 def test_main_uses_available_port(local_docs, monkeypatch, capsys):
     monkeypatch.chdir(local_docs)
-    monkeypatch.setattr("sys.argv", ["aniflow"])
+    monkeypatch.setattr("sys.argv", ["aniflow", "serve"])
 
     def stop(httpd):
         assert httpd.root == local_docs
@@ -1360,10 +1362,26 @@ def test_main_uses_available_port(local_docs, monkeypatch, capsys):
 
 
 def test_main_rejects_missing_directory(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr("sys.argv", ["aniflow", str(tmp_path / "missing")])
+    monkeypatch.setattr("sys.argv", ["aniflow", "serve", str(tmp_path / "missing")])
     with pytest.raises(SystemExit, match="2"):
         cli.main()
     assert "not a directory" in capsys.readouterr().err
+
+
+def test_main_serves_only_with_serve(tmp_path, monkeypatch, capsys):
+    def unexpected_server(*args, **kwargs):
+        pytest.fail("a folder alone must not start a server")
+
+    monkeypatch.setattr(cli, "Server", unexpected_server)
+    for argv in (
+        ["aniflow", str(tmp_path)],
+        ["aniflow"],
+        ["aniflow", "--port", "8080"],
+    ):
+        monkeypatch.setattr("sys.argv", argv)
+        with pytest.raises(SystemExit, match="2"):
+            cli.main()
+        assert "aniflow serve" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
@@ -1378,7 +1396,8 @@ def test_public_comments_need_github(tmp_path, monkeypatch, capsys, extra):
     monkeypatch.delenv("ANIFLOW_GITHUB_SECRET", raising=False)
     monkeypatch.delenv("ANIFLOW_SIGNIN_SECRET", raising=False)
     monkeypatch.setattr(
-        "sys.argv", ["aniflow", str(tmp_path), "--allow-host", "share.example", *extra]
+        "sys.argv",
+        ["aniflow", "serve", str(tmp_path), "--allow-host", "share.example", *extra],
     )
     with pytest.raises(SystemExit, match="2"):
         cli.main()

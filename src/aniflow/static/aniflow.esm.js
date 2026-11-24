@@ -3346,6 +3346,10 @@ function initReview() {
       }
       host.article.append(gutter);
       place();
+    }, shown = function(element3) {
+      if (element3.checkVisibility) return element3.checkVisibility();
+      const closed = element3.closest("details:not([open])");
+      return !closed || Boolean(element3.closest("summary")?.parentElement === closed);
     }, roomForMargin = function() {
       const right = host.article.getBoundingClientRect().right;
       return right + MARGIN_WIDTH + 40 <= document.documentElement.clientWidth;
@@ -3359,8 +3363,8 @@ function initReview() {
       for (const mark of marks) {
         if (mark.code) continue;
         const box = mark.element.getBoundingClientRect();
-        mark.button.hidden = !box.height;
-        if (!box.height) continue;
+        mark.button.hidden = !box.height || !shown(mark.element);
+        if (mark.button.hidden) continue;
         const row = mark.element.tagName === "TR";
         const style = getComputedStyle(row ? mark.element.cells[0] || mark.element : mark.element);
         const line = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.5;
@@ -3762,7 +3766,8 @@ function initReview() {
     }, topOf = function(line) {
       const mark = spot(line);
       if (!mark) return 0;
-      const box = (mark.code ? mark.button : mark.element).getBoundingClientRect();
+      const target = mark.code ? mark.button : mark.element;
+      const box = (shown(target) ? target : target.closest("details:not([open])") || target).getBoundingClientRect();
       return box.top - host.article.getBoundingClientRect().top;
     }, arrange = function() {
       if (!side) return;

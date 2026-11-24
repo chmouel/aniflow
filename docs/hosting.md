@@ -82,7 +82,7 @@ file takes effect on the next refresh with no restart.
 If you only want a read-only site with no login:
 
 ```sh
-aniflow /notes --host 0.0.0.0 --port 8080 \
+aniflow serve /notes --host 0.0.0.0 --port 8080 \
   --base /pub --allow-host notes.example.com \
   --brand "Team Notes" --no-comments
 ```
@@ -249,7 +249,7 @@ ENV PATH=/aniflow/bin:$PATH
 USER 1000:1000
 EXPOSE 8080
 ENTRYPOINT ["aniflow"]
-CMD ["/notes", "--host", "0.0.0.0", "--port", "8080", \
+CMD ["serve", "/notes", "--host", "0.0.0.0", "--port", "8080", \
      "--base", "/pub", "--allow-host", "notes.example.com", \
      "--brand", "Team Notes", "--user-folders"]
 ```

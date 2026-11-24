@@ -70,7 +70,10 @@ the wheel, so `uvx --from git+...` works without Node.
   front matter, the GIF encoder).
 - `src/aniflow/cli.py`: the `aniflow` command (`main`), its `Server` and
   `Handler`, the directory page and the reader page with aniflow's own
-  chrome. `aniflow --spec` prints `spec.md` and exits.
+  chrome. `main()` strips a leading `serve` verb before argparse, and every
+  server option needs it: `aniflow serve [DIR] --port 8080`, the only way to
+  start the server. The one-shot actions take no verb. `aniflow --spec`
+  prints `spec.md` and exits.
   `aniflow --share FILE` (`-` for stdin) prints a `TRY_URL#src=` link,
   raw deflate plus unpadded base64url as `docs/site/try/try.js` decodes
   it, warns on stderr about pictures the site cannot load
@@ -208,6 +211,8 @@ the wheel, so `uvx --from git+...` works without Node.
 
 ## The aniflow command
 
+`aniflow serve [DIR] [options]` starts the server; a folder alone is refused,
+so `--host`, `--base` and the rest only appear after `serve`.
 `/` redirects to `/files/`. `/files/<path>` lists a folder (folders and
 Markdown only), renders a Markdown file, or serves any other file through
 `send_local_file()` (`?raw` gives Markdown and text as `text/plain`).
@@ -422,7 +427,7 @@ export test runs only with `ANIFLOW_EXPORT_E2E=1` and Chrome installed.
 `.pre-commit-config.yaml` runs the same at the pre-push stage
 (`uvx pre-commit install --hook-type pre-push`).
 
-For UI changes, run `uv run aniflow docs --port 8792` and load pages in
+For UI changes, run `uv run aniflow serve docs --port 8792` and load pages in
 headless Chrome:
 
 ```sh

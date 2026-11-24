@@ -99,7 +99,7 @@ section to copy its example. More in the header has the source for this whole gu
 Run this in the directory that holds your Markdown:
 
 ```sh
-uvx --from git+https://github.com/chmouel/aniflow aniflow
+uvx --from git+https://github.com/chmouel/aniflow aniflow serve
 ```
 
 Open the URL in the terminal. aniflow picks an available port on localhost.
@@ -109,11 +109,16 @@ back through its parent folders.
 To serve a specific directory on a fixed port:
 
 ```sh
-aniflow ./docs --port 8080
+aniflow serve ./docs --port 8080
 ```
 
 After you edit a file, refresh the browser to read the saved version.
 aniflow does not change the files it serves.
+
+`serve` is the verb that starts the server, and the only one: `aniflow` on its
+own does nothing, so a mistyped folder is a clear error rather than a server
+on the wrong one. One-shot actions such as `--spec`, `--check` or `--export`
+take no verb.
 
 ## Step 2: Write a page
 
@@ -948,11 +953,11 @@ every setting and layout.
 
 | Command | Use |
 | --- | --- |
-| `aniflow` | Browse the current directory on an available localhost port |
-| `aniflow ./docs` | Browse another directory |
-| `aniflow --port 8080` | Pick a fixed port |
-| `aniflow --host 0.0.0.0 --port 8080` | Listen on your network interfaces |
-| `aniflow --help` | Print the command's options |
+| `aniflow serve` | Browse the current directory on an available localhost port |
+| `aniflow serve ./docs` | Browse another directory |
+| `aniflow serve --port 8080` | Pick a fixed port |
+| `aniflow serve --host 0.0.0.0 --port 8080` | Listen on your network interfaces |
+| `aniflow serve --help` | Print the command's options |
 
 Serving a folder makes its visible files available to anyone who can reach
 that server. Leave the host at its localhost default for personal reading.

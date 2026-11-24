@@ -63,7 +63,7 @@
     <div class="features">
       <article>
         <h3>Opens the folder you are in</h3>
-        <p>Run <code>aniflow</code> in a directory of notes or docs and open the address it prints. Links and pictures between your files work as they do on GitHub. It only reads: nothing in the folder is ever written.</p>
+        <p>Run <code>aniflow serve</code> in a directory of notes or docs and open the address it prints. Links and pictures between your files work as they do on GitHub. It only reads: nothing in the folder is ever written.</p>
       </article>
       <article>
         <h3>Plays flowcharts and sequence diagrams</h3>
@@ -191,13 +191,13 @@ flowchart LR
     </div>
     <div>
       <pre class="cmd"><span class="c"># try it in the current folder</span>
-uvx --from git+https://github.com/chmouel/aniflow aniflow
+uvx --from git+https://github.com/chmouel/aniflow aniflow serve
 
 <span class="c"># or install the command</span>
 uv tool install git+https://github.com/chmouel/aniflow
 
 <span class="c"># serve another folder on a fixed port</span>
-aniflow ./docs --port 8080</pre>
+aniflow serve ./docs --port 8080</pre>
       <figure class="browser small">
         <span class="bar">127.0.0.1:8811/files/</span>
         <img loading="lazy" src="img/files.png" width="1600" height="1000" alt="The aniflow folder listing in the Rosé Pine Dawn theme, with docs and notes folders and two documents.">
