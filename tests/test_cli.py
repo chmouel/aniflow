@@ -2,8 +2,10 @@ import base64
 import http.client
 import io
 import json
+import os
 import re
 import shutil
+import signal
 import sqlite3
 import subprocess
 import sys
@@ -1417,6 +1419,24 @@ def test_main_uses_available_port(local_docs, monkeypatch, capsys):
     cli.main()
     output = capsys.readouterr().out
     assert re.search(r"http://127\.0\.0\.1:[1-9]\d*", output)
+
+
+def test_serve_stops_on_sigterm(tmp_path, monkeypatch):
+    """`podman stop` sends SIGTERM to the container's PID 1, which the kernel drops
+    unless the process handles it, so an unhandled one means waiting to be killed."""
+    (tmp_path / "note.md").write_text("# hi\n")
+    earlier = signal.signal(signal.SIGTERM, signal.SIG_DFL)
+    monkeypatch.setattr("sys.argv", ["aniflow", "serve", str(tmp_path)])
+
+    def serve(httpd):
+        os.kill(os.getpid(), signal.SIGTERM)
+        pytest.fail("SIGTERM should have stopped the server")
+
+    monkeypatch.setattr(cli.Server, "serve_forever", serve)
+    try:
+        cli.main()
+    finally:
+        signal.signal(signal.SIGTERM, earlier)
 
 
 def test_main_rejects_missing_directory(tmp_path, monkeypatch, capsys):

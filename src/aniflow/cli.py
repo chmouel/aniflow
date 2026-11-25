@@ -9,6 +9,7 @@ import os
 import re
 import secrets
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -2633,6 +2634,17 @@ def main() -> None:
         f"aniflow: serving {httpd.root} at http://{host}:{httpd.server_address[1]}{base}/",
         flush=True,
     )
+
+    def stop(signum: int, frame: object) -> None:
+        """Stop on SIGTERM too: a container's PID 1 is sent SIGTERM by `podman stop` and
+        the kernel drops it unless the process handles it, so it would wait to be killed."""
+        raise KeyboardInterrupt
+
+    try:
+        signal.signal(signal.SIGTERM, stop)
+    except ValueError:
+        # Not the main thread, as when a test drives main() itself.
+        pass
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
