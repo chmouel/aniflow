@@ -122,7 +122,9 @@ def test_client_end_to_end(live_server, tmp_path, capsys, monkeypatch):
     )
     out = json.loads(capsys.readouterr().out)
     assert (
-        out["url"] == base_url and out["login"] == "alice" and out["folder"] == "alice"
+        out["url"] == base_url
+        and out["login"] == "alice"
+        and out["folder"] == "users/alice"
     )
     assert "pac" in out["shared"]
     mode = stat.S_IMODE(client.config_path().stat().st_mode)
@@ -142,7 +144,7 @@ def test_client_end_to_end(live_server, tmp_path, capsys, monkeypatch):
     assert client.main(["ls", "/", "--json"]) == 0
     listing = json.loads(capsys.readouterr().out)
     names = {f["name"]: f["shared"] for f in listing["folders"]}
-    assert names == {"alice": False, "pac": True}
+    assert names == {"pac": True}  # the users folder is never listed
 
     # push, pull, if-match, search, comments, rm
     local = tmp_path / "plan.md"

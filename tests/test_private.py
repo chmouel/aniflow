@@ -74,8 +74,8 @@ def test_private_folder_and_alias(local_docs, aniflow_servers):
 
 
 def test_private_toggles(local_docs, aniflow_servers):
-    folder = local_docs / "alice"
-    folder.mkdir()
+    folder = local_docs / "users" / "alice"
+    folder.mkdir(parents=True)
     note = folder / "note.md"
     note.write_text("# Note\n")
     request = aniflow_servers(
@@ -86,15 +86,16 @@ def test_private_toggles(local_docs, aniflow_servers):
         "Cookie": f"{oauth.SESSION_COOKIE}={cookie}",
         "Content-Type": "application/json",
     }
-    url = "/notes/private/alice/note.md"
+    url = "/notes/private/users/alice/note.md"
     assert request(url, "POST", body='{"private":true}')[0] == 401
     for wanted in (True, False):
         assert request(url, "POST", headers, json.dumps({"private": wanted}))[0] == 200
         assert cli.note_private(note) == wanted
-        assert request("/files/alice/note.md")[0] == (401 if wanted else 200)
+        assert request("/files/users/alice/note.md")[0] == (401 if wanted else 200)
     assert note.read_text() == "# Note\n"
     assert (
-        request("/notes/private/alice/", "POST", headers, '{"private":true}')[0] == 200
+        request("/notes/private/users/alice/", "POST", headers, '{"private":true}')[0]
+        == 200
     )
     assert (folder / cli.PRIVATE_MARK).is_file()
     assert request("/notes/private/", "POST", headers, '{"private":true}')[0] == 404
@@ -173,7 +174,7 @@ def test_private_pages_are_not_cached(local_docs, aniflow_servers):
 
 
 def test_private_is_shown_when_signed_in(local_docs, aniflow_servers):
-    vault = local_docs / "alice" / "vault"
+    vault = local_docs / "users" / "alice" / "vault"
     (vault / "sub").mkdir(parents=True)
     (vault / cli.PRIVATE_MARK).touch()
     (vault / "plan.md").write_text("# Plan\n")
@@ -182,15 +183,15 @@ def test_private_is_shown_when_signed_in(local_docs, aniflow_servers):
     )
     cookie = oauth.seal({"id": 1, "login": "alice", "exp": 9999999999}, "key")
     signed = {"Cookie": f"{oauth.SESSION_COOKIE}={cookie}"}
-    body = request("/files/alice/vault/", headers=signed)[2]
+    body = request("/files/users/alice/vault/", headers=signed)[2]
     assert b'class="folder-privacy"' in body and b"Make public" in body
     assert b'class="folder-private"' in body
-    body = request("/files/alice/vault/sub/", headers=signed)[2]
+    body = request("/files/users/alice/vault/sub/", headers=signed)[2]
     assert b"from a parent folder" in body
     assert b'class="folder-privacy"' not in body
     assert (
         b'class="private-badge"'
-        in request("/files/alice/vault/plan.md", headers=signed)[2]
+        in request("/files/users/alice/vault/plan.md", headers=signed)[2]
     )
-    body = request("/files/alice/", headers=signed)[2]
+    body = request("/files/users/alice/", headers=signed)[2]
     assert b'class="folder-privacy"' in body and b"Make private" in body

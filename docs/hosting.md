@@ -120,9 +120,13 @@ replying in threads, editing notes, and creating API tokens require a session.
 
 Add `--user-folders` (requires `--github-oauth`):
 
-- On first sign-in, each member gets `<root>/<login>/` with a `welcome.md`
-  starter note.
-- Everyone can read every folder.
+- On first sign-in, each member gets `users/<login>/` in the served root with
+  a `welcome.md` starter note. The `users/` folder itself is never listed and
+  answers 404 if you browse to it, so the root listing stays a place for
+  documents and team folders; a member reaches their own folder through the
+  account menu, or by its direct `/files/users/<login>/` URL.
+- Everyone can read every folder, so a member's notes under `users/<login>/`
+  stay readable unless the folder holds a `.aniflow-private` file.
 - Members can create, edit (split-pane live Markdown preview, Ctrl+S, Insert
   diagram), and delete `.md`/`.markdown` files inside their own folder.
 - To make a team folder writable by all signed-in members, drop a hidden

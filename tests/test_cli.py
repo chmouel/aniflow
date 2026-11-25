@@ -640,7 +640,7 @@ def save(request, cookie, key, text, version=""):
 def test_first_sign_in_makes_a_folder(github, local_docs, aniflow_servers):
     request = folders_server(local_docs, aniflow_servers)
     sign_in(request, "alice")
-    welcome = local_docs / "alice" / "welcome.md"
+    welcome = local_docs / "users" / "alice" / "welcome.md"
     assert "# Welcome, alice" in welcome.read_text()
     welcome.write_text("mine now")
     sign_in(request, "alice")
@@ -650,19 +650,19 @@ def test_first_sign_in_makes_a_folder(github, local_docs, aniflow_servers):
 def test_members_write_their_own_folder(github, local_docs, aniflow_servers):
     request = folders_server(local_docs, aniflow_servers)
     alice, bob = sign_in(request, "alice"), sign_in(request, "bob")
-    status, answer = save(request, alice, "alice/plan.md", "# Plan\n")
-    assert status == 200 and answer["url"] == "/files/alice/plan.md"
-    assert (local_docs / "alice" / "plan.md").read_text() == "# Plan\n"
+    status, answer = save(request, alice, "users/alice/plan.md", "# Plan\n")
+    assert status == 200 and answer["url"] == "/files/users/alice/plan.md"
+    assert (local_docs / "users" / "alice" / "plan.md").read_text() == "# Plan\n"
     version = answer["version"]
     # A save from a stale editor is refused rather than overwriting.
-    assert save(request, alice, "alice/plan.md", "lost", "old")[0] == 409
-    status, answer = save(request, alice, "alice/plan.md", "# Plan v2\n", version)
+    assert save(request, alice, "users/alice/plan.md", "lost", "old")[0] == 409
+    status, answer = save(request, alice, "users/alice/plan.md", "# Plan v2\n", version)
     assert status == 200
     # bob reads it but cannot change it, and nobody writes without signing in.
-    assert request("/files/alice/plan.md")[0] == 200
-    assert save(request, bob, "alice/plan.md", "x", answer["version"])[0] == 403
+    assert request("/files/users/alice/plan.md")[0] == 200
+    assert save(request, bob, "users/alice/plan.md", "x", answer["version"])[0] == 403
     status, _, _ = request(
-        "/notes/save/alice/plan.md",
+        "/notes/save/users/alice/plan.md",
         method="POST",
         headers={"Content-Type": "application/json"},
         body='{"text": "x"}',
@@ -670,14 +670,46 @@ def test_members_write_their_own_folder(github, local_docs, aniflow_servers):
     assert status == 401
     # The admin may change anyone's notes.
     boss = sign_in(request, "boss")
-    assert save(request, boss, "alice/plan.md", "fixed", answer["version"])[0] == 200
+    assert (
+        save(request, boss, "users/alice/plan.md", "fixed", answer["version"])[0] == 200
+    )
     status, _, _ = request(
-        "/notes/delete/alice/plan.md",
+        "/notes/delete/users/alice/plan.md",
         method="POST",
         headers={"Cookie": alice, "Content-Type": "application/json"},
         body=json.dumps({"version": oauth.hashlib.sha256(b"fixed").hexdigest()}),
     )
-    assert status == 200 and not (local_docs / "alice" / "plan.md").exists()
+    assert status == 200 and not (local_docs / "users" / "alice" / "plan.md").exists()
+
+
+def test_the_users_folder_is_never_listed(github, local_docs, aniflow_servers):
+    request = folders_server(local_docs, aniflow_servers)
+    alice = sign_in(request, "alice")
+    (local_docs / "plan.md").write_text("# Plan\n")
+    for headers in ({}, {"Cookie": alice}):
+        _, _, body = request("/files/", headers=headers)
+        assert b">users<" not in body
+    # Nor browsed, nor reached through the API: the list of logins stays private.
+    assert request("/files/users/", headers={"Cookie": alice})[0] == 404
+    assert request("/files/users/")[0] == 404
+    token = make_token(request, alice, "laptop")[1]["token"]
+    assert api(request, "GET", "users", token)[0] == 404
+    assert api(request, "GET", "users", headers={"Cookie": alice})[0] == 404
+    assert request("/api/search?q=welcome", headers={"Cookie": alice})[0] == 200
+    assert (
+        b"users/alice"
+        not in request("/api/search?q=welcome", headers={"Cookie": alice})[2]
+    )
+    # The member's own folder is still reachable by its direct URL, and shown as such.
+    status, _, body = request("/files/users/alice/", headers={"Cookie": alice})
+    assert status == 200 and b"welcome.md" in body
+    assert b'class="folder-up"' not in body
+    _, _, body = request("/files/users/alice/welcome.md", headers={"Cookie": alice})
+    assert b">users<" not in body
+    assert (
+        b'"path": "users/alice/welcome.md"'
+        in api(request, "GET", "users/alice", token)[2]
+    )
 
 
 def test_a_marked_folder_is_open_to_every_member(github, local_docs, aniflow_servers):
@@ -697,10 +729,10 @@ def test_a_marked_folder_is_open_to_every_member(github, local_docs, aniflow_ser
     "key",
     [
         "top.md",
-        "alice/.hidden.md",
+        "users/alice/.hidden.md",
         "alice/../bob/x.md",
-        "alice/script.js",
-        "alice/notes.txt",
+        "users/alice/script.js",
+        "users/alice/notes.txt",
         "%2Fetc%2Fpasswd.md",
     ],
 )
@@ -719,32 +751,34 @@ def test_symlink_out_of_the_folder_is_refused(
     outside.mkdir()
     request = folders_server(local_docs, aniflow_servers)
     boss = sign_in(request, "boss")
-    (local_docs / "alice").mkdir(exist_ok=True)
-    (local_docs / "alice" / "out").symlink_to(outside)
-    assert save(request, boss, "alice/out/x.md", "x")[0] == 404
+    (local_docs / "users" / "alice").mkdir(exist_ok=True)
+    (local_docs / "users" / "alice" / "out").symlink_to(outside)
+    assert save(request, boss, "users/alice/out/x.md", "x")[0] == 404
     assert not (outside / "x.md").exists()
 
 
 def test_editor_and_its_links(github, local_docs, aniflow_servers):
     request = folders_server(local_docs, aniflow_servers)
-    status, headers, _ = request("/files/alice/new.md?edit")
+    status, headers, _ = request("/files/users/alice/new.md?edit")
     assert status == 302 and "/auth/github/start?next=" in headers["Location"]
     alice, bob = sign_in(request, "alice"), sign_in(request, "bob")
-    status, _, body = request("/files/alice/new.md?edit", headers={"Cookie": alice})
+    status, _, body = request(
+        "/files/users/alice/new.md?edit", headers={"Cookie": alice}
+    )
     assert status == 200 and b'id="editor-text"' in body and b"# new" in body
     assert b'id="editor-delete"' not in body
-    assert request("/files/alice/new.md?edit", headers={"Cookie": bob})[0] == 403
+    assert request("/files/users/alice/new.md?edit", headers={"Cookie": bob})[0] == 403
     # Edit and Delete on your notes, New note in your folder, My folder in the account menu.
-    _, _, body = request("/files/alice/welcome.md", headers={"Cookie": alice})
-    assert b'href="/files/alice/welcome.md?edit">Edit</a>' in body
-    assert b'data-delete-url="/notes/delete/alice/welcome.md"' in body
-    assert b'href="/files/alice/"' in body and b"My folder</a>" in body
-    _, _, body = request("/files/alice/welcome.md", headers={"Cookie": bob})
+    _, _, body = request("/files/users/alice/welcome.md", headers={"Cookie": alice})
+    assert b'href="/files/users/alice/welcome.md?edit">Edit</a>' in body
+    assert b'data-delete-url="/notes/delete/users/alice/welcome.md"' in body
+    assert b'href="/files/users/alice/"' in body and b"My folder</a>" in body
+    _, _, body = request("/files/users/alice/welcome.md", headers={"Cookie": bob})
     assert b">Edit</a>" not in body
     assert b"data-delete-url=" not in body
-    _, _, body = request("/files/alice/", headers={"Cookie": alice})
+    _, _, body = request("/files/users/alice/", headers={"Cookie": alice})
     assert b'id="new-note"' in body
-    _, _, body = request("/files/alice/", headers={"Cookie": bob})
+    _, _, body = request("/files/users/alice/", headers={"Cookie": bob})
     assert b'id="new-note"' not in body
 
 
@@ -789,24 +823,29 @@ def test_api_tokens_write_like_their_owner(github, local_docs, aniflow_servers):
         token.encode()
         not in (local_docs.parent / "cache/aniflow/tokens.db").read_bytes()
     )
-    status, headers, body = api(request, "PUT", "alice/plan.md", token, "# Plan\n")
-    assert status == 201 and json.loads(body)["url"] == "/files/alice/plan.md"
-    status, headers, body = api(request, "GET", "alice/plan.md")
+    status, headers, body = api(
+        request, "PUT", "users/alice/plan.md", token, "# Plan\n"
+    )
+    assert status == 201 and json.loads(body)["url"] == "/files/users/alice/plan.md"
+    status, headers, body = api(request, "GET", "users/alice/plan.md")
     assert status == 200 and body == b"# Plan\n"
     etag = headers["ETag"]
     assert (
-        api(request, "PUT", "alice/plan.md", token, "v2", {"If-Match": '"old"'})[0]
+        api(request, "PUT", "users/alice/plan.md", token, "v2", {"If-Match": '"old"'})[
+            0
+        ]
         == 412
     )
     assert (
-        api(request, "PUT", "alice/plan.md", token, "v2", {"If-Match": etag})[0] == 200
+        api(request, "PUT", "users/alice/plan.md", token, "v2", {"If-Match": etag})[0]
+        == 200
     )
-    assert api(request, "PUT", "alice/plan.md", None, "x")[0] == 401
-    assert api(request, "PUT", "alice/plan.md", "aniflow_bogus", "x")[0] == 401
-    assert api(request, "PUT", "bob/plan.md", token, "x")[0] == 403
-    assert api(request, "PUT", "alice/x.js", token, "x")[0] == 404
-    assert api(request, "DELETE", "alice/plan.md", token)[0] == 204
-    assert not (local_docs / "alice" / "plan.md").exists()
+    assert api(request, "PUT", "users/alice/plan.md", None, "x")[0] == 401
+    assert api(request, "PUT", "users/alice/plan.md", "aniflow_bogus", "x")[0] == 401
+    assert api(request, "PUT", "users/bob/plan.md", token, "x")[0] == 403
+    assert api(request, "PUT", "users/alice/x.js", token, "x")[0] == 404
+    assert api(request, "DELETE", "users/alice/plan.md", token)[0] == 204
+    assert not (local_docs / "users" / "alice" / "plan.md").exists()
     # The page lists it, and revoking it stops it at once.
     _, _, page_body = request("/tokens", headers={"Cookie": alice})
     assert b"laptop" in page_body and made["id"].encode() in page_body
@@ -817,7 +856,7 @@ def test_api_tokens_write_like_their_owner(github, local_docs, aniflow_servers):
         body=json.dumps({"id": made["id"]}),
     )
     assert status == 200
-    assert api(request, "PUT", "alice/plan.md", token, "x")[0] == 401
+    assert api(request, "PUT", "users/alice/plan.md", token, "x")[0] == 401
 
 
 def test_tokens_expire_are_capped_and_revocable_by_operator(
@@ -833,12 +872,12 @@ def test_tokens_expire_are_capped_and_revocable_by_operator(
         connection.execute(
             "UPDATE tokens SET expires = 0 WHERE id = ?", (made[0]["id"],)
         )
-    assert api(request, "PUT", "bob/x.md", made[0]["token"], "x")[0] == 401
-    assert api(request, "PUT", "bob/x.md", made[1]["token"], "x")[0] == 201
+    assert api(request, "PUT", "users/bob/x.md", made[0]["token"], "x")[0] == 401
+    assert api(request, "PUT", "users/bob/x.md", made[1]["token"], "x")[0] == 201
     monkeypatch.setattr("sys.argv", ["aniflow", "--revoke-tokens", "Bob"])
     cli.main()
     assert "revoked 10 tokens" in capsys.readouterr().out
-    assert api(request, "PUT", "bob/x.md", made[1]["token"], "y")[0] == 401
+    assert api(request, "PUT", "users/bob/x.md", made[1]["token"], "y")[0] == 401
 
 
 def test_admin_comes_from_the_server_not_the_token(github, local_docs, aniflow_servers):
@@ -846,15 +885,15 @@ def test_admin_comes_from_the_server_not_the_token(github, local_docs, aniflow_s
     sign_in(request, "alice")
     boss = sign_in(request, "boss")
     token = make_token(request, boss)[1]["token"]
-    assert api(request, "PUT", "alice/fix.md", token, "x")[0] == 201
+    assert api(request, "PUT", "users/alice/fix.md", token, "x")[0] == 201
     # The same database behind a server that no longer names boss as admin.
     demoted = aniflow_servers(
         local_docs,
         signin=oauth.SignIn("client-id", "s", "signing-key"),
         user_folders=True,
     )
-    assert api(demoted, "PUT", "alice/fix.md", token, "y")[0] == 403
-    assert api(demoted, "PUT", "boss/own.md", token, "y")[0] == 201
+    assert api(demoted, "PUT", "users/alice/fix.md", token, "y")[0] == 403
+    assert api(demoted, "PUT", "users/boss/own.md", token, "y")[0] == 201
 
 
 def test_concurrent_writes_at_one_version_do_not_both_land(
@@ -863,13 +902,15 @@ def test_concurrent_writes_at_one_version_do_not_both_land(
     request = folders_server(local_docs, aniflow_servers)
     alice = sign_in(request, "alice")
     token = make_token(request, alice)[1]["token"]
-    api(request, "PUT", "alice/race.md", token, "start")
-    etag = api(request, "GET", "alice/race.md")[1]["ETag"]
+    api(request, "PUT", "users/alice/race.md", token, "start")
+    etag = api(request, "GET", "users/alice/race.md")[1]["ETag"]
     results = []
 
     def put(text):
         results.append(
-            api(request, "PUT", "alice/race.md", token, text, {"If-Match": etag})[0]
+            api(request, "PUT", "users/alice/race.md", token, text, {"If-Match": etag})[
+                0
+            ]
         )
 
     threads = [threading.Thread(target=put, args=(f"writer {n}",)) for n in range(6)]
@@ -880,7 +921,10 @@ def test_concurrent_writes_at_one_version_do_not_both_land(
     assert sorted(results) == [200, 412, 412, 412, 412, 412]
     # The editor's save at that same version is refused too.
     version = etag.strip('"')
-    assert save(request, alice, "alice/race.md", "from the editor", version)[0] == 409
+    assert (
+        save(request, alice, "users/alice/race.md", "from the editor", version)[0]
+        == 409
+    )
 
 
 def test_mkdir_and_rename_note_rules(github, local_docs, aniflow_servers):
@@ -888,64 +932,68 @@ def test_mkdir_and_rename_note_rules(github, local_docs, aniflow_servers):
     alice, bob = sign_in(request, "alice"), sign_in(request, "bob")
     # Create subfolder inside alice/, refused at top level or inside bob/
     status, _, body = request(
-        "/notes/mkdir/alice/specs", method="POST", headers={"Cookie": alice}
+        "/notes/mkdir/users/alice/specs", method="POST", headers={"Cookie": alice}
     )
-    assert status == 201 and json.loads(body)["url"] == "/files/alice/specs/"
-    assert (local_docs / "alice" / "specs").is_dir()
+    assert status == 201 and json.loads(body)["url"] == "/files/users/alice/specs/"
+    assert (local_docs / "users" / "alice" / "specs").is_dir()
     assert (
         request("/notes/mkdir/top", method="POST", headers={"Cookie": alice})[0] == 404
     )
     assert (
-        request("/notes/mkdir/bob/sub", method="POST", headers={"Cookie": alice})[0]
+        request("/notes/mkdir/users/bob/sub", method="POST", headers={"Cookie": alice})[
+            0
+        ]
         == 403
     )
     assert (
-        request("/notes/mkdir/alice/.hid", method="POST", headers={"Cookie": alice})[0]
+        request(
+            "/notes/mkdir/users/alice/.hid", method="POST", headers={"Cookie": alice}
+        )[0]
         == 404
     )
 
     # Save a note, add a comment on it, then rename — comments follow the note.
-    status, made = save(request, alice, "alice/old.md", "# Hello\n")
+    status, made = save(request, alice, "users/alice/old.md", "# Hello\n")
     assert status == 200
     status, _, _ = request(
-        "/comments/add/file/alice/old.md",
+        "/comments/add/file/users/alice/old.md",
         method="POST",
         headers={"Cookie": alice, "Content-Type": "application/json"},
         body=json.dumps({"start": 1, "end": 1, "body": "Keep this comment"}),
     )
     assert status == 200
     status, _, body = request(
-        "/notes/rename/alice/old.md",
+        "/notes/rename/users/alice/old.md",
         method="POST",
         headers={"Cookie": alice, "Content-Type": "application/json"},
         body=json.dumps({"to": "renamed", "version": made["version"]}),
     )
-    assert status == 200 and json.loads(body)["url"] == "/files/alice/renamed.md"
-    assert not (local_docs / "alice" / "old.md").exists()
-    assert (local_docs / "alice" / "renamed.md").read_text() == "# Hello\n"
-    status, _, cbody = request("/comments/file/alice/renamed.md")
+    assert status == 200 and json.loads(body)["url"] == "/files/users/alice/renamed.md"
+    assert not (local_docs / "users" / "alice" / "old.md").exists()
+    assert (local_docs / "users" / "alice" / "renamed.md").read_text() == "# Hello\n"
+    status, _, cbody = request("/comments/file/users/alice/renamed.md")
     assert (
         status == 200
         and json.loads(cbody)["comments"][0]["body"] == "Keep this comment"
     )
     # Collision -> 409; stale version -> 409; bob -> 403; slashes -> 400
-    save(request, alice, "alice/other.md", "# Other\n")
+    save(request, alice, "users/alice/other.md", "# Other\n")
     status, _, _ = request(
-        "/notes/rename/alice/renamed.md",
+        "/notes/rename/users/alice/renamed.md",
         method="POST",
         headers={"Cookie": alice, "Content-Type": "application/json"},
         body=json.dumps({"to": "other.md", "version": made["version"]}),
     )
     assert status == 409
     status, _, _ = request(
-        "/notes/rename/alice/renamed.md",
+        "/notes/rename/users/alice/renamed.md",
         method="POST",
         headers={"Cookie": bob, "Content-Type": "application/json"},
         body=json.dumps({"to": "stolen.md", "version": made["version"]}),
     )
     assert status == 403
     status, _, _ = request(
-        "/notes/rename/alice/renamed.md",
+        "/notes/rename/users/alice/renamed.md",
         method="POST",
         headers={"Cookie": alice, "Content-Type": "application/json"},
         body=json.dumps({"to": "../bob/x.md", "version": made["version"]}),
@@ -976,13 +1024,13 @@ def test_uploaded_images_lose_metadata_and_shrink(
     request = folders_server(local_docs, aniflow_servers)
     alice = sign_in(request, "alice")
     status, _, body = request(
-        "/notes/upload/alice",
+        "/notes/upload/users/alice",
         method="POST",
         headers={"Cookie": alice, "Content-Type": "image/jpeg"},
         body=raw,
     )
     assert status == 201
-    stored = (local_docs / "alice" / json.loads(body)["path"]).read_bytes()
+    stored = (local_docs / "users" / "alice" / json.loads(body)["path"]).read_bytes()
     assert b"secret-camera-note" not in stored
     width = subprocess.run(
         [*cli.magick_command(), "identify", "-format", "%w", "-"]
@@ -995,7 +1043,7 @@ def test_uploaded_images_lose_metadata_and_shrink(
     assert int(width) == cli.IMAGE_MAX_SIDE
     # A file that only pretends to be a JPEG is refused, not stored.
     status, _, _ = request(
-        "/notes/upload/alice",
+        "/notes/upload/users/alice",
         method="POST",
         headers={"Cookie": alice, "Content-Type": "image/jpeg"},
         body=b"\xff\xd8\xff" + b"not really a jpeg" * 10,
@@ -1032,7 +1080,7 @@ def test_large_images_are_brought_under_two_megabytes(
     request = folders_server(local_docs, aniflow_servers)
     alice = sign_in(request, "alice")
     status, _, body = request(
-        "/notes/upload/alice",
+        "/notes/upload/users/alice",
         method="POST",
         headers={"Cookie": alice, "Content-Type": "image/png"},
         body=raw,
@@ -1040,7 +1088,7 @@ def test_large_images_are_brought_under_two_megabytes(
     assert status == 201
     made = json.loads(body)
     assert made["path"].endswith(".webp") and made["markdown"].endswith(".webp)")
-    stored = (local_docs / "alice" / made["path"]).read_bytes()
+    stored = (local_docs / "users" / "alice" / made["path"]).read_bytes()
     assert len(stored) <= cli.IMAGE_STORED_MAX
     assert stored[:4] == b"RIFF" and stored[8:12] == b"WEBP"
     status, headers, _ = request(made["url"])
@@ -1124,7 +1172,7 @@ def test_without_imagemagick_large_images_are_refused(
     alice = sign_in(request, "alice")
     big = b"\x89PNG\r\n\x1a\n" + b"\x00" * (cli.IMAGE_STORED_MAX + 1)
     status, _, body = request(
-        "/notes/upload/alice",
+        "/notes/upload/users/alice",
         method="POST",
         headers={"Cookie": alice, "Content-Type": "image/png"},
         body=big,
@@ -1132,7 +1180,7 @@ def test_without_imagemagick_large_images_are_refused(
     assert status == 413 and "2 MB" in json.loads(body)["error"]
     gif = b"GIF89a" + b"\x00" * (cli.IMAGE_STORED_MAX + 1)
     status, _, _ = request(
-        "/notes/upload/alice",
+        "/notes/upload/users/alice",
         method="POST",
         headers={"Cookie": alice, "Content-Type": "image/gif"},
         body=gif,
@@ -1150,7 +1198,7 @@ def test_image_upload_validates_auth_magic_and_symlinks(
     )
     # Unauthenticated -> 401
     status, _, _ = request(
-        "/notes/upload/alice",
+        "/notes/upload/users/alice",
         method="POST",
         headers={"Content-Type": "image/png"},
         body=png,
@@ -1158,7 +1206,7 @@ def test_image_upload_validates_auth_magic_and_symlinks(
     assert status == 401
     # Wrong user's folder -> 403
     status, _, _ = request(
-        "/notes/upload/alice",
+        "/notes/upload/users/alice",
         method="POST",
         headers={"Cookie": bob, "Content-Type": "image/png"},
         body=png,
@@ -1166,7 +1214,7 @@ def test_image_upload_validates_auth_magic_and_symlinks(
     assert status == 403
     # Spoofed magic bytes or SVG -> 415
     status, _, _ = request(
-        "/notes/upload/alice",
+        "/notes/upload/users/alice",
         method="POST",
         headers={"Cookie": alice, "Content-Type": "image/png"},
         body=b"<svg/>",
@@ -1174,7 +1222,7 @@ def test_image_upload_validates_auth_magic_and_symlinks(
     assert status == 415
     # Valid PNG -> 201 and stored under alice/images/
     status, _, body = request(
-        "/notes/upload/alice",
+        "/notes/upload/users/alice",
         method="POST",
         headers={"Cookie": alice, "Content-Type": "image/png"},
         body=png,
@@ -1183,11 +1231,15 @@ def test_image_upload_validates_auth_magic_and_symlinks(
     made = json.loads(body)
     assert made["path"].startswith("images/") and made["path"].endswith(".png")
     assert made["markdown"] == f"![]({made['path']})"
-    assert (local_docs / "alice" / made["path"]).read_bytes().startswith(b"\x89PNG")
+    assert (
+        (local_docs / "users" / "alice" / made["path"])
+        .read_bytes()
+        .startswith(b"\x89PNG")
+    )
     # Symlinked images/ directory -> 404
-    (local_docs / "bob" / "images").symlink_to(local_docs / "alice")
+    (local_docs / "users" / "bob" / "images").symlink_to(local_docs / "users" / "alice")
     status, _, _ = request(
-        "/notes/upload/bob",
+        "/notes/upload/users/bob",
         method="POST",
         headers={"Cookie": bob, "Content-Type": "image/png"},
         body=png,
@@ -1200,14 +1252,20 @@ def test_a_link_inside_a_folder_cannot_reach_another(
 ):
     request = folders_server(local_docs, aniflow_servers)
     alice, _ = sign_in(request, "alice"), sign_in(request, "bob")
-    (local_docs / "alice" / "into-bob").symlink_to(local_docs / "bob")
-    (local_docs / "alice" / ".hidden").mkdir()
-    (local_docs / "alice" / "into-hidden").symlink_to(local_docs / "alice" / ".hidden")
-    assert save(request, alice, "alice/into-bob/welcome.md", "pwned")[0] == 404
-    assert save(request, alice, "alice/into-hidden/x.md", "x")[0] == 404
+    (local_docs / "users" / "alice" / "into-bob").symlink_to(
+        local_docs / "users" / "bob"
+    )
+    (local_docs / "users" / "alice" / ".hidden").mkdir()
+    (local_docs / "users" / "alice" / "into-hidden").symlink_to(
+        local_docs / "users" / "alice" / ".hidden"
+    )
+    assert save(request, alice, "users/alice/into-bob/welcome.md", "pwned")[0] == 404
+    assert save(request, alice, "users/alice/into-hidden/x.md", "x")[0] == 404
     token = make_token(request, alice)[1]["token"]
-    assert api(request, "PUT", "alice/into-bob/welcome.md", token, "pwned")[0] == 404
-    assert "pwned" not in (local_docs / "bob" / "welcome.md").read_text()
+    assert (
+        api(request, "PUT", "users/alice/into-bob/welcome.md", token, "pwned")[0] == 404
+    )
+    assert "pwned" not in (local_docs / "users" / "bob" / "welcome.md").read_text()
 
 
 def test_sign_out_clears_the_cookie(github, local_docs, aniflow_servers):

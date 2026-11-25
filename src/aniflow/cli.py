@@ -161,18 +161,27 @@ def file_url(root: Path, path: Path, base: str = "") -> str:
     return base + FILES + quote(relative) + ("/" if path.is_dir() else "")
 
 
-def breadcrumbs(root: Path, path: Path, base: str = "") -> list[tuple[str, str]]:
+def breadcrumbs(
+    root: Path,
+    path: Path,
+    base: str = "",
+    hidden: Callable[[Path], bool] | None = None,
+) -> list[tuple[str, str]]:
     return [
         (
             root.name if parent == Path(".") else parent.name,
             file_url(root, root / parent, base),
         )
         for parent in reversed(path.relative_to(root).parents)
+        if not (hidden and hidden(root / parent))
     ]
 
 
-# Writing from the web, with --user-folders: each signed-in member owns <root>/<login>/,
-# and a folder holding this hidden file (and everything under it) is open to all of them.
+# Writing from the web, with --user-folders: each signed-in member owns
+# <root>/users/<login>/, and a folder holding this hidden file (and everything under it)
+# is open to all of them. The users folder itself is never listed nor browsed, so the
+# served root stays a place for documents and shared folders, not for a list of logins.
+USERS_FOLDER = "users"
 SHARED_MARK = ".aniflow-shared"
 NOTE_MAX_BYTES = 1024**2
 IMAGE_MAX_BYTES = 10 * 1024**2
@@ -236,7 +245,12 @@ def may_write(root: Path, path: Path, session: dict | None) -> bool:
     if session.get("admin"):
         return True
     relative = path.relative_to(root)
-    if relative.parts[0].lower() == str(session.get("login", "")).lower():
+    parts = relative.parts
+    if (
+        len(parts) > 1
+        and parts[0] == USERS_FOLDER
+        and parts[1].lower() == str(session.get("login", "")).lower()
+    ):
         return True
     folder = path.parent
     while folder != root:
@@ -521,16 +535,31 @@ def write_note(path: Path, text: str) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def users_folder(root: Path) -> Path:
+    """The folder holding every member's own folder."""
+    return root / USERS_FOLDER
+
+
 def user_folder(root: Path, login: str) -> Path | None:
-    """The member's own folder, made on first sign-in with a welcome note in it."""
+    """The member's own folder under users/, made on first sign-in with a welcome note
+    in it. None when the login is not a name we would write, or a symlink leads out."""
     if not LOGIN.fullmatch(login):
         return None
-    folder = root / login.lower()
-    if not folder.exists():
-        folder.mkdir()
-        write_note(
-            folder / "welcome.md", WELCOME.read_text("utf-8").replace("{login}", login)
-        )
+    group = users_folder(root)
+    folder = group / login.lower()
+    try:
+        if group.is_symlink():
+            return None
+        group.mkdir(exist_ok=True)
+        group.resolve().relative_to(root)
+        if not folder.exists():
+            folder.mkdir()
+            write_note(
+                folder / "welcome.md",
+                WELCOME.read_text("utf-8").replace("{login}", login),
+            )
+    except (OSError, ValueError):
+        return None
     return folder if folder.is_dir() and not folder.is_symlink() else None
 
 
@@ -564,7 +593,7 @@ def account_menu(
         f'<div class="account-who"><img src="{avatar}" alt="">'
         f"<span>Signed in as <b>{login}</b></span></div>"
         + (
-            f'<a href="{base}{FILES}{quote(session.get("login", "").lower())}/">'
+            f'<a href="{base}{FILES}{USERS_FOLDER}/{quote(session.get("login", "").lower())}/">'
             f"{FOLDER_MENU_ICON}My folder</a>"
             f'<a href="{base}/tokens">{KEY_ICON}API tokens</a>'
             if folders
@@ -671,14 +700,18 @@ def directory_page(
     new_note: bool = False,
     session: dict | None = None,
     writable: Callable[[Path], bool] | None = None,
+    hidden: Callable[[Path], bool] | None = None,
 ) -> tuple[bytes, str]:
     """A folder listing: children the reader may not see are left out, a signed-in one sees
-    a lock on the private ones, and writable folders get a toggle for it."""
+    a lock on the private ones, and writable folders get a toggle for it. A child hidden
+    by the server, such as the folder holding every member's, is never listed."""
     entries = []
     for child in path.iterdir():
         try:
             folder = child.is_dir()
             if not folder and not web.is_markdown(child.name):
+                continue
+            if hidden and hidden(child):
                 continue
             if not visible(root, child, session):
                 continue
@@ -735,7 +768,7 @@ def directory_page(
         )
         if rows
     )
-    ancestors = breadcrumbs(root, path, base)
+    ancestors = breadcrumbs(root, path, base, hidden)
     trail = "".join(
         f'<li><a href="{html.escape(url)}">{html.escape("Files" if url == base + FILES else label)}</a></li>'
         for label, url in ancestors
@@ -744,7 +777,7 @@ def directory_page(
     trail += f'<li aria-current="page">{title if ancestors else "Files"}</li>'
     parent = (
         f'<a class="folder-up" href="{html.escape(file_url(root, path.parent, base))}">{NEXT_ICON}Up one folder</a>'
-        if path != root
+        if path != root and not (hidden and hidden(path.parent))
         else ""
     )
     nonce = secrets.token_urlsafe(16)
@@ -1177,6 +1210,11 @@ class Handler(web.Handler):
             self.server.root, folder / "probe.md", self.session()
         )
 
+    def hidden_folder(self, path: Path) -> bool:
+        """The folder holding every member's own folder is never listed nor browsed, so
+        nobody learns who has an account. A member reaches their own by its direct URL."""
+        return self.server.user_folders and path == users_folder(self.server.root)
+
     def edit_note(self, key: str) -> None:
         """GET /files/<path>?edit: the editor, for a note the reader may write."""
         if not self.server.user_folders or self.server.signin is None:
@@ -1247,7 +1285,7 @@ class Handler(web.Handler):
             if path is None:
                 self.send_json({"error": "not found"}, status=404)
                 return
-            if not visible(root, path, self.who()):
+            if self.hidden_folder(path) or not visible(root, path, self.who()):
                 self.send_json({"error": "not found"}, status=404)
                 return
             if path.is_dir():
@@ -1361,7 +1399,7 @@ class Handler(web.Handler):
                 "id": who["id"],
                 "login": who["login"],
                 "admin": bool(who.get("admin")),
-                "folder": who["login"].lower(),
+                "folder": f"{USERS_FOLDER}/{who['login'].lower()}",
                 "shared": shared,
             }
         )
@@ -1372,7 +1410,7 @@ class Handler(web.Handler):
         who = self.who()
         folders, notes = [], []
         for child in folder.iterdir():
-            if child.name.startswith("."):
+            if child.name.startswith(".") or self.hidden_folder(child):
                 continue
             try:
                 child.resolve().relative_to(root)
@@ -1418,7 +1456,12 @@ class Handler(web.Handler):
         root = self.server.root
         who = self.who()
         start = root if not folder_key else local_path(root, folder_key)
-        if start is None or not start.is_dir() or not visible(root, start, who):
+        if (
+            start is None
+            or not start.is_dir()
+            or self.hidden_folder(start)
+            or not visible(root, start, who)
+        ):
             self.send_json({"error": "folder not found"}, status=404)
             return
         low = needle.casefold()
@@ -1432,6 +1475,8 @@ class Handler(web.Handler):
                 continue
             for child in children:
                 if child.name.startswith(".") or child.is_symlink():
+                    continue
+                if self.hidden_folder(child):
                     continue
                 try:
                     child.resolve().relative_to(root)
@@ -1535,7 +1580,7 @@ class Handler(web.Handler):
         origin, _ = oauth.origin_of(
             self.headers.get("Host") or "", self.headers.get("X-Forwarded-Proto", "")
         )
-        api = f"{origin}{base}/api/notes/{who['login'].lower()}"
+        api = f"{origin}{base}/api/notes/{USERS_FOLDER}/{who['login'].lower()}"
         guide = f"""# API tokens
 
 A token lets a script write notes as you, with exactly your rights on the web:
@@ -2096,6 +2141,9 @@ refuse the change when someone edited the note in between.
                 return
             local = local_path(root, key)
             if local is not None:
+                if self.hidden_folder(local):
+                    self.send_error(404)
+                    return
                 self.private_view = is_private(root, local)
                 if self.private_view and self.who() is None:
                     if (
@@ -2137,6 +2185,7 @@ refuse the change when someone edited the note in between.
                             new_note=local != root and self.writable(local / "new.md"),
                             session=self.who(),
                             writable=self.writable_folder,
+                            hidden=self.hidden_folder,
                         )
                     elif web.is_markdown(local.name) and not raw:
                         can_write = self.writable(local)
@@ -2151,7 +2200,7 @@ refuse the change when someone edited the note in between.
                                 ("Raw", file_url(root, local, base) + "?raw=1"),
                             ],
                             self.server.comments_url("file/" + relative),
-                            breadcrumbs(root, local, base),
+                            breadcrumbs(root, local, base, self.hidden_folder),
                             base=base,
                             session=self.session(),
                             signin=self.server.signin is not None,
@@ -2337,8 +2386,8 @@ def main() -> None:
         "--user-folders",
         action="store_true",
         help="with --github-oauth, give each signed-in member a folder of their own "
-        "to write Markdown in from the web; a folder holding a .aniflow-shared file "
-        "is writable by all of them",
+        "under users/ to write Markdown in from the web; that folder is never listed "
+        "and a folder holding a .aniflow-shared file is writable by all of them",
     )
     parser.add_argument(
         "--revoke-tokens",

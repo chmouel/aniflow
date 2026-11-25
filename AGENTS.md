@@ -108,8 +108,11 @@ the wheel, so `uvx --from git+...` works without Node.
   403 page and no session. With sign-in on, `account_menu()` puts a GitHub
   button at the right end of every page's bar: "Sign in" (back to the same
   page), or the avatar and login with the profile and "Sign out".
-  `--user-folders` gives each member `<root>/<login>/`, made on first
-  sign-in with `templates/welcome.md`; `editor_page()` shows the Markdown in
+  `--user-folders` gives each member `<root>/users/<login>/`, made on first
+  sign-in with `templates/welcome.md`; that `users/` folder is never listed
+  and answers 404 when browsed (`Handler.hidden_folder()`), in the page, the
+  `/api/notes` listing and `/api/search`, so the root listing never shows who
+  has an account. `editor_page()` shows the Markdown in
   a textarea beside the reader, which `EDITOR_JS` updates through
   `window.aniflowReader` (set by `BOOT_JS`). `/tokens` lists, makes and
   revokes your API tokens; `/api/me` reports the token's owner and shared
@@ -378,7 +381,7 @@ Keep these when changing code.
 - `--user-folders` is the only way the web writes source files. `note_path()`
   takes `.md`/`.markdown` only, inside a folder (never at the top), with no
   hidden part and no symlink leading out; `may_write()` allows the member's
-  own `<root>/<login>/`, any folder under one holding a `.aniflow-shared`
+  own `<root>/users/<login>/`, any folder under one holding a `.aniflow-shared`
   file, or everything for the admin. A save carries the version it was
   opened at and is refused (409, or 412 for the API) when the file changed
   since; the check and the write happen under `NOTES_LOCK`. A symlink
