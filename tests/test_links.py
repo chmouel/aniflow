@@ -58,6 +58,11 @@ def test_resolve_wiki_order():
     assert links.resolve_wiki("flow.png", "a/n.md", readable) == "a/images/flow.png"
     assert links.resolve_wiki("../x/Topic", "a/n.md", readable) is None
     assert links.resolve_wiki("Missing", "a/n.md", readable) is None
+    readable["c/Long.markdown"] = Path("c/Long.markdown")
+    assert links.resolve_wiki("Long", "a/n.md", readable) == "c/Long.markdown"
+    readable["Near.md"] = Path("Near.md")
+    readable["a/Near.markdown"] = Path("a/Near.markdown")
+    assert links.resolve_wiki("Near", "a/n.md", readable) == "a/Near.markdown"
 
 
 def test_note_index_reads_again_when_a_note_changes(tmp_path):
@@ -82,6 +87,7 @@ def test_note_options_respect_privacy(tmp_path, aniflow_servers):
         "# Topic\n\n[[Secret]] [[Plan]] [[Nope]]\n"
     )
     (root / "guide" / "Open.md").write_text("# Open\n\n[back](Topic.md)\n")
+    (root / "guide" / "Broken.md").write_text("# Broken\n\n[x](< //[>)\n")
     (root / "Secret.md").write_text("---\nprivate: true\n---\n# Secret\n\n[[Topic]]\n")
     alice = root / "users" / "alice"
     alice.mkdir(parents=True)

@@ -3278,8 +3278,10 @@ function githubFlavour(markdown2) {
     const named = /(?:^|\s)title=(?:"([^"]*)"|'([^']*)'|(\S+))/.exec(token.info);
     const title = named ? (named[1] ?? named[2] ?? named[3]).trim() : "";
     const titled = title ? ' data-title="' + markdown2.utils.escapeHtml(title) + '"' : "";
-    const steps2 = (marked && codeSteps(marked[1]) ? ' data-steps="' + markdown2.utils.escapeHtml(marked[1].replace(/\s+/g, "")) + '"' : "") + titled;
-    if (!language) return '<pre class="notranslate"' + where + titled + "><code>" + markdown2.utils.escapeHtml(text) + "</code></pre>\n";
+    const stepped = marked && codeSteps(marked[1]) ? ' data-steps="' + markdown2.utils.escapeHtml(marked[1].replace(/\s+/g, "")) + '"' : "";
+    const steps2 = stepped + titled;
+    if (!language && !stepped) return '<pre class="notranslate"' + where + titled + "><code>" + markdown2.utils.escapeHtml(text) + "</code></pre>\n";
+    if (!language) return '<div class="highlight"' + where + steps2 + '><pre class="notranslate">' + markdown2.utils.escapeHtml(text) + "</pre></div>\n";
     const body = language !== "mermaid" && window.hljs && hljs.getLanguage(language) ? hljs.highlight(text, { language, ignoreIllegals: true }).value : markdown2.utils.escapeHtml(text);
     return '<div class="highlight highlight-source-' + language + '"' + where + steps2 + '><pre class="notranslate">' + body + "</pre></div>\n";
   };
@@ -3385,10 +3387,16 @@ function renderLocal() {
   }
 }
 function directoryUrl(value, root, base = "") {
+  value = (value || "").trim();
   if (!value || value.includes("\\") || /^(?:[a-z][a-z0-9+.-]*:|#|\/\/)/i.test(value)) return null;
   if (value.startsWith("/icons/")) return base + value;
   const rooted = value.startsWith("/") && !value.startsWith(root) ? root + value.slice(1) : value;
-  const url = new URL(rooted, location.href);
+  let url;
+  try {
+    url = new URL(rooted, location.href);
+  } catch {
+    return null;
+  }
   return url.origin === location.origin && url.pathname.startsWith(root) ? url.href : null;
 }
 

@@ -34,9 +34,15 @@ export function renderLocal() {
 // A link or picture relative to the served directory, kept only when it stays under root.
 // base is the path the page is served under, which a built-in icon needs too.
 export function directoryUrl(value, root, base = '') {
+  value = (value || '').trim();
   if (!value || value.includes('\\') || /^(?:[a-z][a-z0-9+.-]*:|#|\/\/)/i.test(value)) return null;
   if (value.startsWith('/icons/')) return base + value;
   const rooted = value.startsWith('/') && !value.startsWith(root) ? root + value.slice(1) : value;
-  const url = new URL(rooted, location.href);
+  let url;
+  try {
+    url = new URL(rooted, location.href);
+  } catch {
+    return null;
+  }
   return url.origin === location.origin && url.pathname.startsWith(root) ? url.href : null;
 }

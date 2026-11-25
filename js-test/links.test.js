@@ -47,7 +47,8 @@ test('fence info gives code a title and marked lines', () => {
   assert.match(titled, /data-title="main.go"/);
   assert.match(titled, /highlight-source-go/);
   assert.match(render("```title='a <b>.txt'\nx\n```\n"), /<pre class="notranslate"[^>]* data-title="a &lt;b&gt;.txt"><code>/);
-  assert.match(render('```{1}\nx\n```\n'), /<pre class="notranslate"[^>]*><code>x/);
+  assert.match(render('```\nx\n```\n'), /<pre class="notranslate"[^>]*><code>x/);
+  assert.match(render('```title=a.txt {2}\nx\ny\n```\n'), /<div class="highlight"[^>]* data-steps="2" data-title="a.txt"><pre class="notranslate">x\ny<\/pre><\/div>/);
 });
 
 test('a lone titled picture becomes a figure', () => {

@@ -16,5 +16,7 @@
   {"note": "a/n.md", "href": "#top", "expect": null},
   {"note": "a/n.md", "href": "picture.png", "expect": null},
   {"note": "a/n.md", "href": "/icons/agent.svg", "expect": null},
-  {"note": "a/n.md", "href": "a\\b.md", "expect": null}
+  {"note": "a/n.md", "href": "a\\b.md", "expect": null},
+  {"note": "a/n.md", "href": " //[", "expect": null},
+  {"note": "a/n.md", "href": " Topic.md", "expect": "a/Topic.md"}
 ]

@@ -661,8 +661,8 @@
   .reader .code-block-tools { display:inline-flex; align-items:center; gap:2px; }
   .reader .code-block-head .code-title { color:var(--fgColor-default); font-weight:600; }
   .reader .code-block-head .code-wrap[aria-pressed="true"] { color:var(--fgColor-accent); }
-  .reader .markdown-body .code-block.wrapped pre { white-space:pre-wrap; overflow-wrap:anywhere; }
-  body.reviewing .reader .markdown-body .code-block.wrapped pre { white-space:pre; overflow-wrap:normal; }
+  .reader .markdown-body .code-block.wrapped pre, .reader .markdown-body .code-block.wrapped pre > code { white-space:pre-wrap; overflow-wrap:anywhere; }
+  body.reviewing .reader .markdown-body .code-block.wrapped pre, body.reviewing .reader .markdown-body .code-block.wrapped pre > code { white-space:pre; overflow-wrap:normal; }
   .reader .markdown-body .code-block pre.code-marked { background-repeat:no-repeat; }
   .reader .markdown-body pre :is(.hljs-addition, .hljs-deletion) { display:inline-block; width:100%; }
   .reader .markdown-body pre .hljs-addition { background:color-mix(in srgb, var(--fgColor-success) 14%, transparent); }
@@ -671,7 +671,7 @@
   @media print {
     body > .bar, .aniflow-brand, .reader .aniflow-credit, .reader .toc, .reader .notice, .review-dock, .review-gutter, .code-gutter, .review-thread, .review-composer, .slide-dock, .diagram-tools, .reader .code-block-tools, .bar.progress::after { display:none !important; }
     .page.reader, .reader .markdown-body { width:auto; max-width:none; margin:0; }
-    .reader .markdown-body .code-block pre:not(.code-marked) { white-space:pre-wrap; overflow-wrap:anywhere; }
+    .reader .markdown-body .code-block pre:not(.code-marked), .reader .markdown-body .code-block pre:not(.code-marked) > code { white-space:pre-wrap; overflow-wrap:anywhere; }
     .reader .markdown-body a.external::after { content:" (" attr(href) ")"; display:inline; width:auto; height:auto; background:none; -webkit-mask:none; mask:none; color:var(--fgColor-muted); font-size:.85em; opacity:1; }
     .reader .markdown-body :is(.code-block, table, figure, .mermaid-diagram, blockquote, .markdown-alert) { break-inside:avoid; }
     .reader .markdown-body :is(h1, h2, h3, h4) { break-after:avoid; }

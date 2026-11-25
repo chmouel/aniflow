@@ -139,8 +139,11 @@ export function githubFlavour(markdown) {
     const named = /(?:^|\s)title=(?:"([^"]*)"|'([^']*)'|(\S+))/.exec(token.info);
     const title = named ? (named[1] ?? named[2] ?? named[3]).trim() : '';
     const titled = title ? ' data-title="' + markdown.utils.escapeHtml(title) + '"' : '';
-    const steps = (marked && codeSteps(marked[1]) ? ' data-steps="' + markdown.utils.escapeHtml(marked[1].replace(/\s+/g, '')) + '"' : '') + titled;
-    if (!language) return '<pre class="notranslate"' + where + titled + '><code>' + markdown.utils.escapeHtml(text) + '</code></pre>\n';
+    const stepped = marked && codeSteps(marked[1]) ? ' data-steps="' + markdown.utils.escapeHtml(marked[1].replace(/\s+/g, '')) + '"' : '';
+    const steps = stepped + titled;
+    if (!language && !stepped) return '<pre class="notranslate"' + where + titled + '><code>' + markdown.utils.escapeHtml(text) + '</code></pre>\n';
+    // Lines to mark need the wrapper the slides and the reader paint them on.
+    if (!language) return '<div class="highlight"' + where + steps + '><pre class="notranslate">' + markdown.utils.escapeHtml(text) + '</pre></div>\n';
     const body = language !== 'mermaid' && window.hljs && hljs.getLanguage(language)
       ? hljs.highlight(text, { language: language, ignoreIllegals: true }).value
       : markdown.utils.escapeHtml(text);

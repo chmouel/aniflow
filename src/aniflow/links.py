@@ -107,40 +107,52 @@ def href_note(href: str, note_rel: str, base: str) -> str | None:
     """The note an ordinary link in note_rel opens, as a path under the served folder,
     following what the reader's directoryUrl() and the browser do with it."""
     root_url = base + FILES
+    href = href.strip()
     if not href or "\\" in href or SCHEME.match(href) or href.startswith("/icons/"):
         return None
     if href.startswith("/") and not href.startswith(root_url):
         href = root_url + href[1:]
-    path = urlsplit(urljoin("http://aniflow" + note_url(base, note_rel), href)).path
-    if not path.startswith(root_url):
+    try:
+        url = urlsplit(urljoin("http://aniflow" + note_url(base, note_rel), href))
+    except ValueError:
         return None
+    if url.netloc != "aniflow" or not url.path.startswith(root_url):
+        return None
+    path = url.path
     rel = unquote(path[len(root_url) :])
     return rel if rel.lower().endswith(NOTE_SUFFIXES) else None
 
 
-def wiki_name(target: str) -> str:
-    """The file name a target stands for: a note name gets .md."""
-    return target if Path(target).suffix.lower() in FILE_SUFFIXES else target + ".md"
+def wiki_names(target: str) -> list[str]:
+    """The file names a target stands for: a note name gets .md, then .markdown."""
+    if Path(target).suffix.lower() in FILE_SUFFIXES:
+        return [target]
+    return [target + suffix for suffix in NOTE_SUFFIXES]
 
 
 def resolve_wiki(target: str, note_rel: str, readable: dict[str, Path]) -> str | None:
     """The path under the served folder that [[target]] in note_rel opens, among the
     readable files: beside the note, then from the top, then by name anywhere (the
     note's own folder first, then the shortest path, then alphabetical)."""
-    name = wiki_name(target.strip().lstrip("/"))
+    names = wiki_names(target.strip().lstrip("/"))
     folder = posixpath.dirname(note_rel)
-    tries = [posixpath.join(folder, name), name]
-    if Path(name).suffix.lower() in PICTURE_SUFFIXES:
-        tries.insert(1, posixpath.join(folder, "images", name))
-    for each in tries:
-        rel = posixpath.normpath(each)
-        if not rel.startswith("..") and rel in readable:
-            return rel
-    wanted = name.casefold()
+    places = [folder]
+    if Path(names[0]).suffix.lower() in PICTURE_SUFFIXES:
+        places.append(posixpath.join(folder, "images"))
+    places.append("")
+    for place in places:
+        for name in names:
+            rel = posixpath.normpath(posixpath.join(place, name))
+            if not rel.startswith("..") and rel in readable:
+                return rel
+    wanted = [name.casefold() for name in names]
     found = [
         rel
         for rel in readable
-        if rel.casefold() == wanted or rel.casefold().endswith("/" + wanted)
+        if any(
+            rel.casefold() == each or rel.casefold().endswith("/" + each)
+            for each in wanted
+        )
     ]
     if not found:
         return None
@@ -198,7 +210,10 @@ class NoteIndex:
             title, links = entry
             for kind, target in links:
                 if kind == "wiki":
-                    if posixpath.basename(wiki_name(target)).casefold() != name:
+                    if all(
+                        posixpath.basename(each).casefold() != name
+                        for each in wiki_names(target)
+                    ):
                         continue
                     hit = resolve_wiki(target, rel, readable)
                 else:
