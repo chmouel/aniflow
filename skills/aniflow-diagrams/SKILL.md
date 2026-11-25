@@ -29,6 +29,9 @@ uvx --from git+https://github.com/chmouel/aniflow aniflow --spec   # aniflow not
 ```
 
 Do not rely on memory for the syntax; the reference is the source of truth.
+For the Markdown around the diagrams (wikilinks, code titles and highlighted
+lines, captions, definition lists), `aniflow --markdown` prints that reference
+the same way.
 
 ## Workflow
 

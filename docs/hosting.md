@@ -203,6 +203,10 @@ signing in they land back on the page they asked for. The gate page never
 shows the name or content, but it does tell a visitor that something exists
 at the URL they typed, since a missing one answers 404.
 
+Wikilinks and the "Linked from" list under a note follow the same rules: they
+only name notes the reader may open, so a private note, or one in someone
+else's personal folder, never shows up as a link target or a backlink.
+
 Private pages go out with `Cache-Control: private, no-store`, and every page
 with `Vary: Cookie, Authorization`, so a caching proxy in front never hands a
 signed-in copy to someone else.

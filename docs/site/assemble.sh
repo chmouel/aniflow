@@ -8,6 +8,7 @@ rm -rf lib
 mkdir -p lib/vendor
 cp "$src"/static/aniflow.min.js "$src"/static/aniflow.css lib/
 for file in markdown-it.min.js markdown-it-footnote.min.js markdown-it-emoji.min.js \
+  markdown-it-mark.min.js markdown-it-sub.min.js markdown-it-sup.min.js markdown-it-deflist.min.js \
   purify.min.js mermaid.min.js github-markdown.css; do
   cp "$src/vendor/$file" lib/vendor/
 done

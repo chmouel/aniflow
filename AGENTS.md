@@ -30,8 +30,13 @@ the wheel, so `uvx --from git+...` works without Node.
   a finished diagram file to the page behind the reader's `save` option.
 - `js/reader/`: `render.js` (the markdown-it pipeline and
   `directoryUrl()`), `frontmatter.js`, `github.js` (task lists, alerts,
-  callouts, `sanitize()` through DOMPurify), `code.js` (copy buttons),
-  `show.js` (TOC rail, progress line), `review.js` (line review and
+  callouts, figures, fence `title=`/`{lines}`, `sanitize()` through
+  DOMPurify), `code.js` (copy and wrap buttons, marked lines),
+  `wikilink.js` (`[[target#heading|label]]` and `![[picture|300]]`, hrefs
+  from `host.wikilinks`; an unknown target is a `span.wikilink-missing`),
+  `slug.js` (heading ids, shared with wikilinks), `show.js` (TOC rail,
+  progress line, external links, reading time, backlinks, picture zoom),
+  `review.js` (line review and
   comments), `deck.js` (slide directives, deck front matter, code steps,
   layout picking and the allow lists).
 - `js/diagram/`: the walkthrough engine, see below.
@@ -73,7 +78,7 @@ the wheel, so `uvx --from git+...` works without Node.
   chrome. `main()` strips a leading `serve` verb before argparse, and every
   server option needs it: `aniflow serve [DIR] --port 8080`, the only way to
   start the server. The one-shot actions take no verb. `aniflow --spec`
-  prints `spec.md` and exits.
+  prints `spec.md` and exits, `aniflow --markdown` prints `markdown.md`.
   `aniflow --share FILE` (`-` for stdin) prints a `TRY_URL#src=` link,
   raw deflate plus unpadded base64url as `docs/site/try/try.js` decodes
   it, warns on stderr about pictures the site cannot load
@@ -164,6 +169,16 @@ the wheel, so `uvx --from git+...` works without Node.
   `aniflow/skills/`.
 - `src/aniflow/privacy.py`: `PRIVATE_MARK`, `front_private()` and
   `set_front_private()`, the private rule both the server and the client read.
+- `src/aniflow/links.py`: wikilinks and backlinks. `wiki_targets()` and
+  `md_targets()` read links outside code, `resolve_wiki()` finds a target
+  Obsidian style (beside the note, `images/` for pictures, from the top, then
+  by name: same folder, fewest slashes, alphabetical), `href_note()` is the
+  Python port of `directoryUrl()` (both checked against
+  `js-test/fixtures/note-links.json`), and `NoteIndex` caches each note's
+  title and links by mtime and size. Visibility is never cached:
+  `Handler.readable(who)` walks what this reader may open (the `api_search`
+  rules, plus their own `users/<login>/`), and `Handler.note_links()` gives
+  the `wikilinks`, `backlinks` and `modified` reader options from it.
 - `src/aniflow/tokens.py`: personal API tokens in SQLite
   (`$XDG_CACHE_HOME/aniflow/tokens.db`): `aniflow_` + 256 random bits, kept
   only as a sha256, 90 days, 10 live per member, `create()` serialized by
@@ -184,12 +199,15 @@ the wheel, so `uvx --from git+...` works without Node.
   under a document, `favicon()` for the tab
   icon, and the file browser.
 - `src/aniflow/help.md`: the `/help` demo and walkthrough.
+- `src/aniflow/markdown.md`: the `/help/markdown` reference, one section per
+  Markdown feature with its source and result. Update it with every reader
+  syntax change.
 - `src/aniflow/spec.md`: the walkthrough syntax reference for agents.
   Update it with every change to the `%%` syntax, picture rules or built-in
   icons; a test checks that its icon table matches `ICON_NAMES`.
-- `src/aniflow/vendor/`: markdown-it with its footnote and emoji plugins,
-  DOMPurify, highlight.js, github-markdown.css and mermaid, each with its
-  licence. Only the names in `web.VENDOR_TYPES` are served.
+- `src/aniflow/vendor/`: markdown-it with its footnote, emoji, mark, sub,
+  sup and deflist plugins, DOMPurify, highlight.js, github-markdown.css and
+  mermaid, each with its licence. Only the names in `web.VENDOR_TYPES` are served.
 - `src/aniflow/icons/`: diagram icons at `/icons/<name>.svg`, 48×48 tiles
   built from Lucide (ISC, `LICENSE.lucide`) by `contrib/icons/make_icons.py`.
   Regenerate rather than edit: `npm pack lucide-static`, unpack, then
@@ -222,7 +240,8 @@ so `--host`, `--base` and the rest only appear after `serve`.
 `/` redirects to `/files/`. `/files/<path>` lists a folder (folders and
 Markdown only), renders a Markdown file, or serves any other file through
 `send_local_file()` (`?raw` gives Markdown and text as `text/plain`).
-`/help` renders `help.md`. `/comments/{help|file/<path>}` reads comments
+`/help` renders `help.md`, `/help/markdown` renders `markdown.md` (the
+Markdown reference). `/comments/{help|file/<path>}` reads comments
 (`?lines=A-B`, `?format=prompt`), and POST `/comments/{add,edit,delete}/...`
 changes them. Comments live in
 `$XDG_CACHE_HOME/aniflow/comments/<root hash>/<document hash>.json`, so
@@ -420,8 +439,9 @@ Keep these when changing code.
 - Python 3.12+, stdlib only, no runtime dependencies.
 - Node is only for building and testing; the library has no runtime
   dependencies of its own, and esbuild is the only dev dependency. The page
-  provides markdown-it (with footnote and emoji), DOMPurify,
-  github-markdown.css and optionally highlight.js; mermaid loads on demand.
+  provides markdown-it (with footnote, emoji, mark, sub, sup and deflist),
+  DOMPurify, github-markdown.css and optionally highlight.js; mermaid loads
+  on demand.
 - Colours come from CSS variables, never literals.
 - Storage keys, events and markdown-it rules use the `aniflow-` /
   `aniflow_` prefix.

@@ -81,13 +81,28 @@ export function githubFlavour(markdown) {
     const tokens = state.tokens;
     for (let index = 0; index < tokens.length; index++) {
       const token = tokens[index];
-      if (!token.map || !/^(paragraph_open|heading_open|tr_open|hr)$/.test(token.type)) continue;
+      if (!token.map || !/^(paragraph_open|heading_open|tr_open|hr|dt_open)$/.test(token.type)) continue;
       const target = token.hidden ? tokens[index - 1] : token;
-      if (!target || (token.hidden && target.type !== 'list_item_open')) continue;
+      if (!target || (token.hidden && !/^(list_item_open|dd_open)$/.test(target.type))) continue;
       target.attrSet('data-line', String(token.map[0] + 1));
       target.attrSet('data-line-end', String(Math.max(token.map[1], token.map[0] + 1)));
     }
   });
+  // A paragraph holding one titled picture becomes a figure, the title its caption.
+  markdown.core.ruler.push('aniflow_figure', (state) => {
+    const tokens = state.tokens;
+    for (let index = 0; index + 2 < tokens.length; index++) {
+      const [open, inline, close] = [tokens[index], tokens[index + 1], tokens[index + 2]];
+      if (open.type !== 'paragraph_open' || open.hidden || inline.type !== 'inline' || close.type !== 'paragraph_close') continue;
+      const children = (inline.children || []).filter((child) => !(child.type === 'text' && !child.content.trim()));
+      if (children.length !== 1 || children[0].type !== 'image' || !children[0].attrGet('title')) continue;
+      open.tag = close.tag = 'figure';
+      const caption = new state.Token('aniflow_figcaption', '', 0);
+      caption.content = children[0].attrGet('title');
+      inline.children.push(caption);
+    }
+  });
+  markdown.renderer.rules.aniflow_figcaption = (tokens, index) => '<figcaption>' + markdown.utils.escapeHtml(tokens[index].content) + '</figcaption>';
   const lines = (token, first) => token.map
     ? ' data-line="' + (token.map[0] + 1) + '" data-line-end="' + token.map[1] + '" data-code="' + first + '"'
     : '';
@@ -115,12 +130,17 @@ export function githubFlavour(markdown) {
   rules.fence = (tokens, index) => {
     const token = tokens[index];
     const text = token.content.replace(/\n$/, '');
-    const language = (token.info.trim().split(/\s+/)[0] || '').toLowerCase().replace(/[^a-z0-9_+#.-]/g, '');
+    const first = token.info.trim().split(/\s+/)[0] || '';
+    const language = /^(?:title=|\{)/.test(first) ? '' : first.toLowerCase().replace(/[^a-z0-9_+#.-]/g, '');
     const where = lines(token, token.map ? token.map[0] + 2 : 0);
-    // ```js {1-3|5} highlights those lines one step at a time while presenting.
-    const marked = /\{([^{}]*)\}\s*$/.exec(token.info);
-    const steps = marked && codeSteps(marked[1]) ? ' data-steps="' + markdown.utils.escapeHtml(marked[1].replace(/\s+/g, '')) + '"' : '';
-    if (!language) return '<pre class="notranslate"' + where + '><code>' + markdown.utils.escapeHtml(text) + '</code></pre>\n';
+    // ```js {1-3|5} highlights those lines one step at a time while presenting; a single step
+    // ({1,4-6}) also marks them while reading.
+    const marked = /\{([^{}"']*)\}/.exec(token.info);
+    const named = /(?:^|\s)title=(?:"([^"]*)"|'([^']*)'|(\S+))/.exec(token.info);
+    const title = named ? (named[1] ?? named[2] ?? named[3]).trim() : '';
+    const titled = title ? ' data-title="' + markdown.utils.escapeHtml(title) + '"' : '';
+    const steps = (marked && codeSteps(marked[1]) ? ' data-steps="' + markdown.utils.escapeHtml(marked[1].replace(/\s+/g, '')) + '"' : '') + titled;
+    if (!language) return '<pre class="notranslate"' + where + titled + '><code>' + markdown.utils.escapeHtml(text) + '</code></pre>\n';
     const body = language !== 'mermaid' && window.hljs && hljs.getLanguage(language)
       ? hljs.highlight(text, { language: language, ignoreIllegals: true }).value
       : markdown.utils.escapeHtml(text);

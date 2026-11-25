@@ -255,6 +255,437 @@ function showIcon(element3, name) {
   element3.replaceChildren(document.importNode(new DOMParser().parseFromString(svg, "image/svg+xml").documentElement, true));
 }
 
+// js/reader/frontmatter.js
+var FRONT_KEY = /^([A-Za-z0-9_][\w .\/-]*?)[ \t]*:(?:[ \t]+(.*?))?[ \t]*$/;
+var FRONT_DATE = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+var FRONT_LIMIT = 200;
+function readFrontMatter(text) {
+  const lines = text.split("\n", FRONT_LIMIT + 2);
+  if (!/^---[ \t]*$/.test(lines[0])) return null;
+  let close = 1;
+  while (close < lines.length && close <= FRONT_LIMIT && !/^(?:---|\.\.\.)[ \t]*$/.test(lines[close])) close++;
+  if (close >= lines.length || close > FRONT_LIMIT) return null;
+  const inner = lines.slice(1, close);
+  const first = inner.find((line) => line.trim() && !/^\s*#/.test(line));
+  if (!first || /^\s/.test(first) || !FRONT_KEY.test(first)) return null;
+  return { lines: close + 1, yaml: inner.join("\n"), entries: frontEntries(inner) };
+}
+function frontEntries(lines) {
+  const entries = [];
+  for (const line of lines) {
+    const key = /^\s/.test(line) ? null : FRONT_KEY.exec(line);
+    if (key) entries.push({ key: key[1], inline: key[2] || "", rest: [] });
+    else if (!line.trim() || /^\s*#/.test(line)) entries.length && entries[entries.length - 1].rest.push(line);
+    else if (entries.length) entries[entries.length - 1].rest.push(line);
+    else return null;
+  }
+  return entries.map(frontValue);
+}
+function frontUnquote(text) {
+  text = text.trim();
+  if (/^"(?:[^"\\]|\\.)*"$/.test(text)) return text.slice(1, -1).replace(/\\(.)/g, (all, c) => c === "n" ? "\n" : c === "t" ? "	" : c);
+  if (/^'(?:[^']|'')*'$/.test(text)) return text.slice(1, -1).replace(/''/g, "'");
+  return text.replace(/\s+#.*$/, "");
+}
+function frontSplit(text) {
+  const items = [];
+  let current2 = "", quote = "";
+  for (const c of text) {
+    if (quote) {
+      if (c === quote) quote = "";
+      current2 += c;
+    } else if (c === '"' || c === "'") {
+      quote = c;
+      current2 += c;
+    } else if (c === ",") {
+      items.push(current2);
+      current2 = "";
+    } else current2 += c;
+  }
+  if (current2.trim() || items.length) items.push(current2);
+  return items.map(frontUnquote).filter((item) => item !== "");
+}
+function frontValue({ key, inline, rest }) {
+  const trimmed = inline.trim();
+  const quoted = /^("(?:[^"\\]|\\.)*"|'(?:[^']|'')*')(?:\s+#.*)?$/.exec(trimmed);
+  const value = quoted ? quoted[1] : trimmed.replace(/(?:^|\s+)#.*$/, "");
+  const body = rest.filter((line) => line.trim() && !/^\s*#/.test(line));
+  const indent = body.length ? Math.min(...body.map((line) => /^\s*/.exec(line)[0].length)) : 0;
+  const block = rest.map((line) => line.slice(indent)).join("\n").replace(/\s+$/, "");
+  const raw = () => ({ key, kind: "raw", value: [value, block].filter(Boolean).join("\n") });
+  if (/^[|>][+-]?\d*$/.test(value)) {
+    return { key, kind: "text", value: value[0] === ">" ? block.replace(/([^\n])\n(?=[^\n])/g, "$1 ") : block };
+  }
+  if (!value.trim()) {
+    if (!body.length) return { key, kind: "empty" };
+    if (body.every((line) => /^\s*-(?:\s+|$)/.test(line))) {
+      return { key, kind: "list", value: body.map((line) => frontUnquote(line.replace(/^\s*-\s*/, ""))).filter((item) => item !== "") };
+    }
+    return raw();
+  }
+  if (/^\[.*\]$/.test(value.trim()) && !body.length) return { key, kind: "list", value: frontSplit(value.trim().slice(1, -1)) };
+  if (/^[{&*!]/.test(value.trim())) return raw();
+  if (body.length) {
+    if (/^["']/.test(value.trim())) return raw();
+    return { key, kind: "scalar", value: [value, ...body].map((line) => line.trim()).join(" ") };
+  }
+  return { key, kind: "scalar", value: frontUnquote(value) };
+}
+var frontEscape = (text) => String(text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+function frontDate(text) {
+  const match = FRONT_DATE.exec(text);
+  if (!match) return null;
+  const [, year, month, day, hour, minute, second, zone] = match;
+  const date = hour === void 0 ? new Date(Number(year), Number(month) - 1, Number(day)) : zone ? new Date(text.replace(" ", "T")) : new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second || 0));
+  if (Number.isNaN(date.getTime()) || date.getMonth() !== Number(month) - 1) return null;
+  const style = hour === void 0 ? { dateStyle: "medium" } : { dateStyle: "medium", timeStyle: "short" };
+  return '<time datetime="' + frontEscape(text.replace(" ", "T")) + '" title="' + frontEscape(text) + '">' + frontEscape(new Intl.DateTimeFormat(void 0, style).format(date)) + "</time>";
+}
+function frontScalar(text) {
+  if (text === "" || /^(?:null|~)$/i.test(text)) return '<span class="frontmatter-empty">empty</span>';
+  if (/^data:image\/(?:png|jpe?g|gif|webp|svg\+xml);base64,/i.test(text)) return "Embedded image";
+  if (/^(?:true|false)$/i.test(text)) return /^t/i.test(text) ? "Yes" : "No";
+  const date = frontDate(text);
+  if (date) return date;
+  if (/^https?:\/\/\S+$/i.test(text)) {
+    const label = text.replace(/^https?:\/\//i, "").replace(/\/$/, "");
+    return '<a href="' + frontEscape(text) + '" title="' + frontEscape(text) + '">' + frontEscape(label) + "</a>";
+  }
+  return frontEscape(text.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (all, target, alias) => alias || target));
+}
+function frontPanel(front, map) {
+  const where = map ? ' data-line="' + (map[0] + 1) + '" data-line-end="' + map[1] + '"' : "";
+  if (!front.entries || !front.entries.length) {
+    return '<div class="frontmatter frontmatter-raw"' + where + "><pre><code>" + frontEscape(front.yaml) + "</code></pre></div>\n";
+  }
+  let html = '<dl class="frontmatter"' + where + ">";
+  for (const entry of front.entries) {
+    const tags = /^tags?$/i.test(entry.key);
+    let items = entry.kind === "list" ? entry.value : null;
+    if (tags && entry.kind === "scalar") items = entry.value.split(/[\s,]+/).filter(Boolean);
+    let value;
+    if (items) {
+      value = items.length ? '<span class="frontmatter-list">' + items.map((item) => '<span class="frontmatter-pill' + (tags ? " frontmatter-tag" : "") + '">' + (tags ? frontEscape("#" + item.replace(/^#/, "")) : frontScalar(item)) + "</span>").join("") + "</span>" : '<span class="frontmatter-empty">empty</span>';
+    } else if (entry.kind === "text") value = '<span class="frontmatter-text">' + frontEscape(entry.value) + "</span>";
+    else if (entry.kind === "raw") value = '<code class="frontmatter-code">' + frontEscape(entry.value) + "</code>";
+    else if (entry.kind === "empty") value = '<span class="frontmatter-empty">empty</span>';
+    else value = frontScalar(entry.value);
+    html += "<dt>" + frontEscape(entry.key) + "</dt><dd>" + value + "</dd>";
+  }
+  return html + "</dl>\n";
+}
+function frontMatterPlugin(markdown2) {
+  markdown2.block.ruler.before("table", "aniflow_frontmatter", (state, startLine, endLine, silent) => {
+    if (startLine !== 0 || state.parentType !== "root" || state.sCount[0] !== 0) return false;
+    const front = readFrontMatter(state.src);
+    if (!front || front.lines > endLine) return false;
+    if (silent) return true;
+    const token = state.push("front_matter", "", 0);
+    token.block = true;
+    token.map = [0, front.lines];
+    token.meta = front;
+    state.line = front.lines;
+    return true;
+  });
+  markdown2.renderer.rules.front_matter = (tokens, index) => frontPanel(tokens[index].meta, tokens[index].map);
+}
+function updateFrontMatter(source, changes) {
+  const front = readFrontMatter(source);
+  if (/^---[ \t]*(?:\r?\n|$)/.test(source) && !front) throw new Error("Fix the front matter before changing settings.");
+  if (front && !front.entries) throw new Error("Fix the front matter before changing settings.");
+  if (front) {
+    for (const key of Object.keys(changes)) {
+      const entries = front.entries.filter((entry) => entry.key === key);
+      if (entries.length > 1 || entries.some((entry) => !["scalar", "empty"].includes(entry.kind))) throw new Error("Fix the " + key + " setting before changing it.");
+    }
+  }
+  const lines = source.split("\n");
+  if (!front) lines.unshift("---", "---");
+  let end = front ? front.lines - 1 : 1;
+  for (const [key, value] of Object.entries(changes)) {
+    const pattern = new RegExp("^" + key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "[ \\t]*:");
+    const at = lines.findIndex((line2, index) => index > 0 && index < end && pattern.test(line2));
+    if (at >= 0) {
+      for (let i = at + 1; i < end && !FRONT_KEY.test(lines[i]); i++) {
+        if (/^[ \t]+\S/.test(lines[i]) && !/^[ \t]*#/.test(lines[i])) throw new Error("Fix the " + key + " setting before changing it.");
+      }
+    }
+    if (!value) {
+      if (at >= 0) {
+        lines.splice(at, 1);
+        end--;
+      }
+      continue;
+    }
+    const quoted = JSON.stringify(value);
+    let suffix = "";
+    if (at >= 0) {
+      const line2 = lines[at];
+      let quote = "";
+      for (let i = line2.indexOf(":") + 1; i < line2.length; i++) {
+        const char = line2[i];
+        if (quote === '"' && char === "\\") {
+          i++;
+          continue;
+        }
+        if (quote === "'" && char === "'" && line2[i + 1] === "'") {
+          i++;
+          continue;
+        }
+        if (quote && char === quote) quote = "";
+        else if (!quote && (char === '"' || char === "'")) quote = char;
+        else if (!quote && char === "#" && /\s/.test(line2[i - 1])) {
+          suffix = " " + line2.slice(i);
+          break;
+        }
+      }
+    }
+    const line = key + ": " + quoted + suffix;
+    if (at >= 0) lines[at] = line;
+    else {
+      lines.splice(end, 0, line);
+      end++;
+    }
+  }
+  return lines.join("\n");
+}
+
+// js/reader/deck.js
+var LAYOUTS = ["title", "cover", "section", "center", "columns", "split", "quote", "stat", "full", "grid"];
+var BACKGROUNDS = ["accent", "muted", "inverse", "gradient", "none"];
+var TRANSITIONS = ["slide", "fade", "zoom", "morph", "none"];
+var ACCENTS = ["blue", "violet", "green", "amber", "red"];
+var FONTS = ["modern", "classic", "mono", "rounded"];
+var ASPECTS = ["16:9", "4:3"];
+var STYLES = ["keynote", "conference", "minimal"];
+var MOTIONS = ["subtle", "none"];
+var PRESETS = {
+  keynote: { theme: "dark", font: "modern", accent: "violet", motion: "subtle", numbers: false },
+  conference: { theme: "light", font: "modern", accent: "blue", motion: "subtle", numbers: true },
+  minimal: { theme: "light", font: "classic", accent: "blue", motion: "none", numbers: false }
+};
+var SLIDE_FLAGS = ["reveal", "dim", "flip"];
+var WORDS_MAX = 90;
+var DIRECTIVE = /^<!--[ \t]*(slide|column|reveal|notes)(?=[\s:]|-->)([\s\S]*?)-->\s*$/;
+var PICTURE = /^(?:\.{0,2}\/|[\w-][\w./-]*\.(?:png|jpe?g|gif|webp|svg|avif)$|https:\/\/|data:image\/(?:png|jpe?g|gif|webp|svg\+xml);base64,)/i;
+function slideDirective(text) {
+  const match = DIRECTIVE.exec(String(text).trim());
+  if (!match) return null;
+  const kind = match[1];
+  let rest = match[2];
+  const problems = [];
+  if (kind === "notes") {
+    if (!/^\s*:|^[ \t]*\n/.test(rest)) return null;
+    return { kind, notes: rest.replace(/^\s*:/, "").replace(/^\s*\n|\s+$/g, "").replace(/^[ \t]+/, ""), problems };
+  }
+  rest = rest.replace(/^\s*:/, "").trim();
+  if (kind !== "slide") {
+    if (rest) problems.push(kind + " takes no options: " + rest);
+    return { kind, options: {}, problems };
+  }
+  const options = {};
+  for (const word of rest.match(/[\w-]+="[^"]*"|\S+/g) || []) {
+    const [key, ...parts] = word.split("=");
+    const value = parts.join("=").replace(/^"(.*)"$/, "$1");
+    if (!parts.length) {
+      if (SLIDE_FLAGS.includes(key)) options[key] = true;
+      else if (LAYOUTS.includes(key)) options.layout = key;
+      else problems.push("unknown slide option: " + key);
+    } else if (key === "layout") {
+      if (LAYOUTS.includes(value)) options.layout = value;
+      else problems.push("unknown layout: " + value + " (one of " + LAYOUTS.join(", ") + ")");
+    } else if (key === "bg") {
+      if (BACKGROUNDS.includes(value)) options.bg = value;
+      else if (PICTURE.test(value) && !/["'()\\\s]/.test(value)) options.image = value;
+      else problems.push("unknown background: " + value + " (one of " + BACKGROUNDS.join(", ") + " or a picture path)");
+    } else if (key === "transition") {
+      if (TRANSITIONS.includes(value)) options.transition = value;
+      else problems.push("unknown transition: " + value + " (one of " + TRANSITIONS.join(", ") + ")");
+    } else if (key === "story") {
+      if (/^[1-9]\d?$/.test(value)) options.story = Number(value);
+      else problems.push("story needs a story number: " + value);
+    } else problems.push("unknown slide option: " + key);
+  }
+  return { kind, options, problems };
+}
+var yes = (value) => /^(?:true|yes|on)$/i.test(String(value).trim());
+var no = (value) => /^(?:false|no|off)$/i.test(String(value).trim());
+function deckSettings(entries) {
+  const settings = { autoplay: true, numbers: false, aspect: "16:9" };
+  const problems = [];
+  const style = [...entries || []].reverse().find((entry) => entry.key === "style");
+  const preset = String(style?.value || "").trim().toLowerCase();
+  if (PRESETS[preset]) Object.assign(settings, PRESETS[preset]);
+  for (const entry of entries || []) {
+    const value = entry.kind === "scalar" || entry.kind === "text" ? String(entry.value).trim() : "";
+    const pick = (key, allowed) => {
+      if (allowed.includes(value.toLowerCase())) settings[key] = value.toLowerCase();
+      else problems.push(key + ": " + (value || entry.kind) + " is not one of " + allowed.join(", "));
+    };
+    switch (entry.key) {
+      case "style":
+        pick("style", STYLES);
+        break;
+      case "motion":
+        pick("motion", MOTIONS);
+        break;
+      case "accent":
+        if (/^#[0-9a-f]{6}$/i.test(value)) settings.accent = value;
+        else pick("accent", ACCENTS);
+        break;
+      case "font":
+        pick("font", FONTS);
+        break;
+      case "aspect":
+        pick("aspect", ASPECTS);
+        break;
+      case "transition":
+        pick("transition", TRANSITIONS);
+        break;
+      case "theme":
+        if (/^[\w-]{1,40}$/.test(value)) settings.theme = value;
+        break;
+      case "numbers":
+        settings.numbers = yes(value);
+        break;
+      case "autoplay":
+        settings.autoplay = !no(value);
+        break;
+      case "footer":
+        if (value) settings.footer = value.slice(0, 160);
+        break;
+      case "logo":
+      case "logo-dark":
+        if (PICTURE.test(value) && !/["'()\\\s]/.test(value)) settings[entry.key === "logo" ? "logo" : "logoDark"] = value;
+        else if (value) problems.push(entry.key + ": " + value.slice(0, 120) + " is not a picture path");
+        break;
+      case "title":
+      case "author":
+      case "date":
+        if (value) settings[entry.key] = value.slice(0, 200);
+        break;
+      default:
+    }
+  }
+  return { settings, problems };
+}
+function codeSteps(text) {
+  const steps2 = [];
+  for (const part of String(text).split("|")) {
+    const step = part.trim();
+    if (step === "all" || step === "*") {
+      steps2.push(null);
+      continue;
+    }
+    const ranges = [];
+    for (const piece of step.split(",")) {
+      const range = /^\s*(\d{1,5})(?:\s*-\s*(\d{1,5}))?\s*$/.exec(piece);
+      if (!range) return null;
+      const first = Number(range[1]), last = Number(range[2] || range[1]);
+      if (!first || last < first) return null;
+      ranges.push([first, last]);
+    }
+    steps2.push(ranges);
+  }
+  return steps2.length ? steps2 : null;
+}
+function pickLayout(summary) {
+  const { kinds = [], heading = null, first = false, words = 0, stat = false, cards = 0, cover = false } = summary;
+  const only = (...wanted) => kinds.length > 0 && kinds.every((kind) => wanted.includes(kind));
+  const count = (kind) => kinds.filter((each) => each === kind).length;
+  if (cover) return "cover";
+  if (kinds.includes("columns")) return "columns";
+  if (first && heading === "h1" && words < 60 && only("p")) return "cover";
+  if (first && heading === "h1" && !kinds.length) return "cover";
+  if (!kinds.length) return heading ? "section" : "title";
+  if (only("quote") && count("quote") === 1) return "quote";
+  if (only("picture") && count("picture") === 1) return "full";
+  if (count("diagram") === 1 && only("diagram", "p") && words < 240) return "full";
+  if (count("picture") === 1 && only("picture", "p", "list") && words <= 80) return "split";
+  if (stat && only("p", "list") && words <= 60) return "stat";
+  if (cards >= 2 && cards <= 6 && only("list") && count("list") === 1) return "grid";
+  return "title";
+}
+function wrapColumns(state, escape) {
+  const tokens = state.tokens;
+  const top = tokens.filter((token) => token.level === 0);
+  const level = top.some((token) => token.type === "heading_open" && token.tag === "h2") ? "h2" : top.filter((token) => token.type === "heading_open" && token.tag === "h1").length > 1 ? "h1" : "";
+  const boundary = (token) => token.level === 0 && (token.type === "heading_open" && token.tag === level || token.meta?.slideMark);
+  const out = [];
+  let region = [];
+  const flush = () => {
+    const marks = region.filter((token) => token.meta?.column);
+    if (!marks.length) {
+      out.push(...region);
+      region = [];
+      return;
+    }
+    let start = 0;
+    while (start < region.length && region[start].meta?.slideMark) start++;
+    if (region[start]?.type === "heading_open") {
+      while (start < region.length && region[start].type !== "heading_close") start++;
+      start++;
+    }
+    const open2 = new state.Token("html_block", "", 0);
+    open2.content = '<div class="slide-columns" data-columns="' + escape(String(marks.length + 1)) + '"><div class="slide-column">\n';
+    const close = new state.Token("html_block", "", 0);
+    close.content = "</div></div>\n";
+    let end = region.length;
+    while (end > start && region[end - 1].meta?.notes) end--;
+    for (const mark of region.slice(start, end)) if (mark.meta?.column) mark.content = '</div><div class="slide-column">' + mark.content;
+    out.push(...region.slice(0, start), open2, ...region.slice(start, end), close, ...region.slice(end));
+    region = [];
+  };
+  for (const token of tokens) {
+    if (boundary(token) && !(region.length && region.every((each) => each.meta?.slideMark))) flush();
+    region.push(token);
+  }
+  flush();
+  state.tokens = out;
+}
+function deckPlugin(markdown2) {
+  const escape = markdown2.utils.escapeHtml;
+  const lines = (token) => token.map ? ' data-line="' + (token.map[0] + 1) + '" data-line-end="' + token.map[1] + '"' : "";
+  markdown2.core.ruler.push("aniflow_slide", (state) => {
+    let marks = 0;
+    for (const token of state.tokens) {
+      if (token.type !== "html_block" || token.level !== 0) continue;
+      const directive = slideDirective(token.content);
+      if (!directive) continue;
+      const problem = directive.problems.length ? ' data-problem="' + escape(directive.problems.join("; ")) + '"' : "";
+      if (directive.kind === "notes") {
+        token.meta = { notes: true };
+        token.content = '<aside class="slide-notes"' + lines(token) + ">" + markdown2.render(directive.notes) + "</aside>\n";
+      } else if (directive.kind === "column") {
+        token.meta = { column: true };
+        token.content = '<div class="slide-column-mark"' + lines(token) + problem + "></div>\n";
+      } else if (directive.kind === "reveal") {
+        token.content = '<div class="slide-reveal-mark"' + lines(token) + problem + "></div>\n";
+      } else {
+        marks++;
+        token.meta = { slideMark: true };
+        const options = directive.options;
+        const attrs = ["layout", "bg", "image", "transition", "story"].filter((key) => options[key] !== void 0).map((key) => " data-" + key + '="' + escape(String(options[key])) + '"').join("") + SLIDE_FLAGS.filter((flag) => options[flag]).map((flag) => " data-" + flag).join("");
+        token.content = '<div class="slide-mark"' + lines(token) + attrs + problem + "></div>\n";
+      }
+    }
+    wrapColumns(state, escape);
+    const front = readFrontMatter(state.src);
+    const { settings } = deckSettings(front?.entries);
+    const top = state.tokens.filter((token) => token.level === 0);
+    const opening = top.find((token) => token.type !== "front_matter" && token.type !== "html_block");
+    const decked = marks || top.some((token) => token.type === "heading_open" && token.tag === "h2") || top.filter((token) => token.type === "heading_open" && token.tag === "h1").length > 1;
+    if (settings.title && decked && !(opening?.type === "heading_open" && opening.tag === "h1")) {
+      const cover = new state.Token("html_block", "", 0);
+      const byline = [settings.author, settings.date].filter(Boolean).map(escape).join(" \xB7 ");
+      cover.content = '<div class="slide-mark" data-layout="cover" data-auto></div><div class="slide-autocover"><p class="slide-cover-title">' + escape(settings.title) + "</p>" + (byline ? '<p class="slide-cover-byline">' + byline + "</p>" : "") + '</div><div class="slide-mark"></div>\n';
+      cover.meta = { slideMark: true };
+      const at = state.tokens[0]?.type === "front_matter" ? 1 : 0;
+      state.tokens.splice(at, 0, cover);
+    }
+  });
+}
+
 // js/reader/code.js
 var COPY_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"></path><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path></svg>';
 async function copyText(text) {
@@ -285,7 +716,12 @@ function frameCode() {
     const head = document.createElement("div");
     head.className = "code-block-head";
     const label = document.createElement("span");
-    label.textContent = kind ? kind[1] : "text";
+    const title = box.dataset.title || pre.dataset.title;
+    label.textContent = title || (kind ? kind[1] : "text");
+    if (title) {
+      label.className = "code-title";
+      if (kind) label.title = kind[1];
+    }
     const button = document.createElement("button");
     button.type = "button";
     button.setAttribute("aria-label", "Copy code");
@@ -301,13 +737,64 @@ function frameCode() {
         button.lastChild.textContent = "Copy";
       }, 1600);
     });
-    head.append(label, button);
+    const steps2 = box.dataset.steps ? codeSteps(box.dataset.steps) : null;
+    const tools = document.createElement("span");
+    tools.className = "code-block-tools";
+    if (!steps2) tools.append(wrapButton(figure));
+    tools.append(button);
+    head.append(label, tools);
     const body = document.createElement("div");
     body.className = "code-body";
     box.replaceWith(figure);
     body.append(box);
     figure.append(head, body);
+    figure.classList.toggle("wrapped", !steps2 && wrapping());
+    if (steps2 && steps2.length === 1 && steps2[0]) markLines(pre, steps2[0]);
   }
+}
+var WRAP_KEY = "aniflow-code-wrap";
+function wrapping() {
+  try {
+    return localStorage.getItem(WRAP_KEY) === "1";
+  } catch (error) {
+    return false;
+  }
+}
+var WRAP_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M1.75 3h12.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1 0-1.5Zm0 4h10a2.75 2.75 0 0 1 0 5.5H9.56l.72.72a.75.75 0 1 1-1.06 1.06l-2-2a.75.75 0 0 1 0-1.06l2-2a.75.75 0 0 1 1.06 1.06l-.72.72h2.19a1.25 1.25 0 0 0 0-2.5h-10a.75.75 0 0 1 0-1.5Zm0 4h3.5a.75.75 0 0 1 0 1.5h-3.5a.75.75 0 0 1 0-1.5Z"></path></svg>';
+function wrapButton(figure) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "code-wrap";
+  button.setAttribute("aria-label", "Wrap long lines");
+  button.title = "Wrap long lines";
+  button.innerHTML = WRAP_ICON;
+  button.addEventListener("click", () => {
+    const on = !figure.classList.contains("wrapped");
+    try {
+      localStorage.setItem(WRAP_KEY, on ? "1" : "0");
+    } catch (error) {
+    }
+    for (const each of host.article.querySelectorAll(".code-block:has(.code-wrap)")) {
+      each.classList.toggle("wrapped", on);
+      each.querySelector(".code-wrap").setAttribute("aria-pressed", String(on));
+    }
+  });
+  button.setAttribute("aria-pressed", String(wrapping()));
+  return button;
+}
+function markLines(pre, ranges) {
+  const style = getComputedStyle(pre);
+  const size = parseFloat(style.fontSize) || 13;
+  const line = style.lineHeight.endsWith("px") ? parseFloat(style.lineHeight) : (parseFloat(style.lineHeight) || 1.45) * size;
+  const top = parseFloat(style.paddingTop) || 0;
+  const tint = "var(--code-mark)", clear = "transparent";
+  const stops = [];
+  for (const [first, last] of ranges.slice().sort((a, b) => a[0] - b[0])) {
+    const from = top + (first - 1) * line, to = top + last * line;
+    stops.push(clear + " " + from + "px", tint + " " + from + "px", tint + " " + to + "px", clear + " " + to + "px");
+  }
+  pre.classList.add("code-marked");
+  pre.style.setProperty("background-image", "linear-gradient(to bottom, " + stops.join(", ") + ")");
 }
 
 // js/diagram/comments.js
@@ -1188,14 +1675,14 @@ function diagramVideoType(kind) {
   return types.find((type) => MediaRecorder.isTypeSupported(type)) || "";
 }
 function diagramExportName(title, extension) {
-  const slug = (text) => text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const slug2 = (text) => text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   let page = host.pageName?.() ?? location.pathname.split("/").pop() ?? "";
   try {
     page = decodeURIComponent(page);
   } catch (error) {
   }
   page = page.replace(/\.(md|markdown)$/i, "");
-  return ([slug(page), slug(title || "")].filter(Boolean).join("-").slice(0, 120) || "diagram") + "." + extension;
+  return ([slug2(page), slug2(title || "")].filter(Boolean).join("-").slice(0, 120) || "diagram") + "." + extension;
 }
 function saveBlob(blob, name) {
   const url = URL.createObjectURL(blob);
@@ -2645,437 +3132,6 @@ function diagrams(options = {}) {
   };
 }
 
-// js/reader/frontmatter.js
-var FRONT_KEY = /^([A-Za-z0-9_][\w .\/-]*?)[ \t]*:(?:[ \t]+(.*?))?[ \t]*$/;
-var FRONT_DATE = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/;
-var FRONT_LIMIT = 200;
-function readFrontMatter(text) {
-  const lines = text.split("\n", FRONT_LIMIT + 2);
-  if (!/^---[ \t]*$/.test(lines[0])) return null;
-  let close = 1;
-  while (close < lines.length && close <= FRONT_LIMIT && !/^(?:---|\.\.\.)[ \t]*$/.test(lines[close])) close++;
-  if (close >= lines.length || close > FRONT_LIMIT) return null;
-  const inner = lines.slice(1, close);
-  const first = inner.find((line) => line.trim() && !/^\s*#/.test(line));
-  if (!first || /^\s/.test(first) || !FRONT_KEY.test(first)) return null;
-  return { lines: close + 1, yaml: inner.join("\n"), entries: frontEntries(inner) };
-}
-function frontEntries(lines) {
-  const entries = [];
-  for (const line of lines) {
-    const key = /^\s/.test(line) ? null : FRONT_KEY.exec(line);
-    if (key) entries.push({ key: key[1], inline: key[2] || "", rest: [] });
-    else if (!line.trim() || /^\s*#/.test(line)) entries.length && entries[entries.length - 1].rest.push(line);
-    else if (entries.length) entries[entries.length - 1].rest.push(line);
-    else return null;
-  }
-  return entries.map(frontValue);
-}
-function frontUnquote(text) {
-  text = text.trim();
-  if (/^"(?:[^"\\]|\\.)*"$/.test(text)) return text.slice(1, -1).replace(/\\(.)/g, (all, c) => c === "n" ? "\n" : c === "t" ? "	" : c);
-  if (/^'(?:[^']|'')*'$/.test(text)) return text.slice(1, -1).replace(/''/g, "'");
-  return text.replace(/\s+#.*$/, "");
-}
-function frontSplit(text) {
-  const items = [];
-  let current2 = "", quote = "";
-  for (const c of text) {
-    if (quote) {
-      if (c === quote) quote = "";
-      current2 += c;
-    } else if (c === '"' || c === "'") {
-      quote = c;
-      current2 += c;
-    } else if (c === ",") {
-      items.push(current2);
-      current2 = "";
-    } else current2 += c;
-  }
-  if (current2.trim() || items.length) items.push(current2);
-  return items.map(frontUnquote).filter((item) => item !== "");
-}
-function frontValue({ key, inline, rest }) {
-  const trimmed = inline.trim();
-  const quoted = /^("(?:[^"\\]|\\.)*"|'(?:[^']|'')*')(?:\s+#.*)?$/.exec(trimmed);
-  const value = quoted ? quoted[1] : trimmed.replace(/(?:^|\s+)#.*$/, "");
-  const body = rest.filter((line) => line.trim() && !/^\s*#/.test(line));
-  const indent = body.length ? Math.min(...body.map((line) => /^\s*/.exec(line)[0].length)) : 0;
-  const block = rest.map((line) => line.slice(indent)).join("\n").replace(/\s+$/, "");
-  const raw = () => ({ key, kind: "raw", value: [value, block].filter(Boolean).join("\n") });
-  if (/^[|>][+-]?\d*$/.test(value)) {
-    return { key, kind: "text", value: value[0] === ">" ? block.replace(/([^\n])\n(?=[^\n])/g, "$1 ") : block };
-  }
-  if (!value.trim()) {
-    if (!body.length) return { key, kind: "empty" };
-    if (body.every((line) => /^\s*-(?:\s+|$)/.test(line))) {
-      return { key, kind: "list", value: body.map((line) => frontUnquote(line.replace(/^\s*-\s*/, ""))).filter((item) => item !== "") };
-    }
-    return raw();
-  }
-  if (/^\[.*\]$/.test(value.trim()) && !body.length) return { key, kind: "list", value: frontSplit(value.trim().slice(1, -1)) };
-  if (/^[{&*!]/.test(value.trim())) return raw();
-  if (body.length) {
-    if (/^["']/.test(value.trim())) return raw();
-    return { key, kind: "scalar", value: [value, ...body].map((line) => line.trim()).join(" ") };
-  }
-  return { key, kind: "scalar", value: frontUnquote(value) };
-}
-var frontEscape = (text) => String(text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-function frontDate(text) {
-  const match = FRONT_DATE.exec(text);
-  if (!match) return null;
-  const [, year, month, day, hour, minute, second, zone] = match;
-  const date = hour === void 0 ? new Date(Number(year), Number(month) - 1, Number(day)) : zone ? new Date(text.replace(" ", "T")) : new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second || 0));
-  if (Number.isNaN(date.getTime()) || date.getMonth() !== Number(month) - 1) return null;
-  const style = hour === void 0 ? { dateStyle: "medium" } : { dateStyle: "medium", timeStyle: "short" };
-  return '<time datetime="' + frontEscape(text.replace(" ", "T")) + '" title="' + frontEscape(text) + '">' + frontEscape(new Intl.DateTimeFormat(void 0, style).format(date)) + "</time>";
-}
-function frontScalar(text) {
-  if (text === "" || /^(?:null|~)$/i.test(text)) return '<span class="frontmatter-empty">empty</span>';
-  if (/^data:image\/(?:png|jpe?g|gif|webp|svg\+xml);base64,/i.test(text)) return "Embedded image";
-  if (/^(?:true|false)$/i.test(text)) return /^t/i.test(text) ? "Yes" : "No";
-  const date = frontDate(text);
-  if (date) return date;
-  if (/^https?:\/\/\S+$/i.test(text)) {
-    const label = text.replace(/^https?:\/\//i, "").replace(/\/$/, "");
-    return '<a href="' + frontEscape(text) + '" title="' + frontEscape(text) + '">' + frontEscape(label) + "</a>";
-  }
-  return frontEscape(text.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (all, target, alias) => alias || target));
-}
-function frontPanel(front, map) {
-  const where = map ? ' data-line="' + (map[0] + 1) + '" data-line-end="' + map[1] + '"' : "";
-  if (!front.entries || !front.entries.length) {
-    return '<div class="frontmatter frontmatter-raw"' + where + "><pre><code>" + frontEscape(front.yaml) + "</code></pre></div>\n";
-  }
-  let html = '<dl class="frontmatter"' + where + ">";
-  for (const entry of front.entries) {
-    const tags = /^tags?$/i.test(entry.key);
-    let items = entry.kind === "list" ? entry.value : null;
-    if (tags && entry.kind === "scalar") items = entry.value.split(/[\s,]+/).filter(Boolean);
-    let value;
-    if (items) {
-      value = items.length ? '<span class="frontmatter-list">' + items.map((item) => '<span class="frontmatter-pill' + (tags ? " frontmatter-tag" : "") + '">' + (tags ? frontEscape("#" + item.replace(/^#/, "")) : frontScalar(item)) + "</span>").join("") + "</span>" : '<span class="frontmatter-empty">empty</span>';
-    } else if (entry.kind === "text") value = '<span class="frontmatter-text">' + frontEscape(entry.value) + "</span>";
-    else if (entry.kind === "raw") value = '<code class="frontmatter-code">' + frontEscape(entry.value) + "</code>";
-    else if (entry.kind === "empty") value = '<span class="frontmatter-empty">empty</span>';
-    else value = frontScalar(entry.value);
-    html += "<dt>" + frontEscape(entry.key) + "</dt><dd>" + value + "</dd>";
-  }
-  return html + "</dl>\n";
-}
-function frontMatterPlugin(markdown2) {
-  markdown2.block.ruler.before("table", "aniflow_frontmatter", (state, startLine, endLine, silent) => {
-    if (startLine !== 0 || state.parentType !== "root" || state.sCount[0] !== 0) return false;
-    const front = readFrontMatter(state.src);
-    if (!front || front.lines > endLine) return false;
-    if (silent) return true;
-    const token = state.push("front_matter", "", 0);
-    token.block = true;
-    token.map = [0, front.lines];
-    token.meta = front;
-    state.line = front.lines;
-    return true;
-  });
-  markdown2.renderer.rules.front_matter = (tokens, index) => frontPanel(tokens[index].meta, tokens[index].map);
-}
-function updateFrontMatter(source, changes) {
-  const front = readFrontMatter(source);
-  if (/^---[ \t]*(?:\r?\n|$)/.test(source) && !front) throw new Error("Fix the front matter before changing settings.");
-  if (front && !front.entries) throw new Error("Fix the front matter before changing settings.");
-  if (front) {
-    for (const key of Object.keys(changes)) {
-      const entries = front.entries.filter((entry) => entry.key === key);
-      if (entries.length > 1 || entries.some((entry) => !["scalar", "empty"].includes(entry.kind))) throw new Error("Fix the " + key + " setting before changing it.");
-    }
-  }
-  const lines = source.split("\n");
-  if (!front) lines.unshift("---", "---");
-  let end = front ? front.lines - 1 : 1;
-  for (const [key, value] of Object.entries(changes)) {
-    const pattern = new RegExp("^" + key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "[ \\t]*:");
-    const at = lines.findIndex((line2, index) => index > 0 && index < end && pattern.test(line2));
-    if (at >= 0) {
-      for (let i = at + 1; i < end && !FRONT_KEY.test(lines[i]); i++) {
-        if (/^[ \t]+\S/.test(lines[i]) && !/^[ \t]*#/.test(lines[i])) throw new Error("Fix the " + key + " setting before changing it.");
-      }
-    }
-    if (!value) {
-      if (at >= 0) {
-        lines.splice(at, 1);
-        end--;
-      }
-      continue;
-    }
-    const quoted = JSON.stringify(value);
-    let suffix = "";
-    if (at >= 0) {
-      const line2 = lines[at];
-      let quote = "";
-      for (let i = line2.indexOf(":") + 1; i < line2.length; i++) {
-        const char = line2[i];
-        if (quote === '"' && char === "\\") {
-          i++;
-          continue;
-        }
-        if (quote === "'" && char === "'" && line2[i + 1] === "'") {
-          i++;
-          continue;
-        }
-        if (quote && char === quote) quote = "";
-        else if (!quote && (char === '"' || char === "'")) quote = char;
-        else if (!quote && char === "#" && /\s/.test(line2[i - 1])) {
-          suffix = " " + line2.slice(i);
-          break;
-        }
-      }
-    }
-    const line = key + ": " + quoted + suffix;
-    if (at >= 0) lines[at] = line;
-    else {
-      lines.splice(end, 0, line);
-      end++;
-    }
-  }
-  return lines.join("\n");
-}
-
-// js/reader/deck.js
-var LAYOUTS = ["title", "cover", "section", "center", "columns", "split", "quote", "stat", "full", "grid"];
-var BACKGROUNDS = ["accent", "muted", "inverse", "gradient", "none"];
-var TRANSITIONS = ["slide", "fade", "zoom", "morph", "none"];
-var ACCENTS = ["blue", "violet", "green", "amber", "red"];
-var FONTS = ["modern", "classic", "mono", "rounded"];
-var ASPECTS = ["16:9", "4:3"];
-var STYLES = ["keynote", "conference", "minimal"];
-var MOTIONS = ["subtle", "none"];
-var PRESETS = {
-  keynote: { theme: "dark", font: "modern", accent: "violet", motion: "subtle", numbers: false },
-  conference: { theme: "light", font: "modern", accent: "blue", motion: "subtle", numbers: true },
-  minimal: { theme: "light", font: "classic", accent: "blue", motion: "none", numbers: false }
-};
-var SLIDE_FLAGS = ["reveal", "dim", "flip"];
-var WORDS_MAX = 90;
-var DIRECTIVE = /^<!--[ \t]*(slide|column|reveal|notes)(?=[\s:]|-->)([\s\S]*?)-->\s*$/;
-var PICTURE = /^(?:\.{0,2}\/|[\w-][\w./-]*\.(?:png|jpe?g|gif|webp|svg|avif)$|https:\/\/|data:image\/(?:png|jpe?g|gif|webp|svg\+xml);base64,)/i;
-function slideDirective(text) {
-  const match = DIRECTIVE.exec(String(text).trim());
-  if (!match) return null;
-  const kind = match[1];
-  let rest = match[2];
-  const problems = [];
-  if (kind === "notes") {
-    if (!/^\s*:|^[ \t]*\n/.test(rest)) return null;
-    return { kind, notes: rest.replace(/^\s*:/, "").replace(/^\s*\n|\s+$/g, "").replace(/^[ \t]+/, ""), problems };
-  }
-  rest = rest.replace(/^\s*:/, "").trim();
-  if (kind !== "slide") {
-    if (rest) problems.push(kind + " takes no options: " + rest);
-    return { kind, options: {}, problems };
-  }
-  const options = {};
-  for (const word of rest.match(/[\w-]+="[^"]*"|\S+/g) || []) {
-    const [key, ...parts] = word.split("=");
-    const value = parts.join("=").replace(/^"(.*)"$/, "$1");
-    if (!parts.length) {
-      if (SLIDE_FLAGS.includes(key)) options[key] = true;
-      else if (LAYOUTS.includes(key)) options.layout = key;
-      else problems.push("unknown slide option: " + key);
-    } else if (key === "layout") {
-      if (LAYOUTS.includes(value)) options.layout = value;
-      else problems.push("unknown layout: " + value + " (one of " + LAYOUTS.join(", ") + ")");
-    } else if (key === "bg") {
-      if (BACKGROUNDS.includes(value)) options.bg = value;
-      else if (PICTURE.test(value) && !/["'()\\\s]/.test(value)) options.image = value;
-      else problems.push("unknown background: " + value + " (one of " + BACKGROUNDS.join(", ") + " or a picture path)");
-    } else if (key === "transition") {
-      if (TRANSITIONS.includes(value)) options.transition = value;
-      else problems.push("unknown transition: " + value + " (one of " + TRANSITIONS.join(", ") + ")");
-    } else if (key === "story") {
-      if (/^[1-9]\d?$/.test(value)) options.story = Number(value);
-      else problems.push("story needs a story number: " + value);
-    } else problems.push("unknown slide option: " + key);
-  }
-  return { kind, options, problems };
-}
-var yes = (value) => /^(?:true|yes|on)$/i.test(String(value).trim());
-var no = (value) => /^(?:false|no|off)$/i.test(String(value).trim());
-function deckSettings(entries) {
-  const settings = { autoplay: true, numbers: false, aspect: "16:9" };
-  const problems = [];
-  const style = [...entries || []].reverse().find((entry) => entry.key === "style");
-  const preset = String(style?.value || "").trim().toLowerCase();
-  if (PRESETS[preset]) Object.assign(settings, PRESETS[preset]);
-  for (const entry of entries || []) {
-    const value = entry.kind === "scalar" || entry.kind === "text" ? String(entry.value).trim() : "";
-    const pick = (key, allowed) => {
-      if (allowed.includes(value.toLowerCase())) settings[key] = value.toLowerCase();
-      else problems.push(key + ": " + (value || entry.kind) + " is not one of " + allowed.join(", "));
-    };
-    switch (entry.key) {
-      case "style":
-        pick("style", STYLES);
-        break;
-      case "motion":
-        pick("motion", MOTIONS);
-        break;
-      case "accent":
-        if (/^#[0-9a-f]{6}$/i.test(value)) settings.accent = value;
-        else pick("accent", ACCENTS);
-        break;
-      case "font":
-        pick("font", FONTS);
-        break;
-      case "aspect":
-        pick("aspect", ASPECTS);
-        break;
-      case "transition":
-        pick("transition", TRANSITIONS);
-        break;
-      case "theme":
-        if (/^[\w-]{1,40}$/.test(value)) settings.theme = value;
-        break;
-      case "numbers":
-        settings.numbers = yes(value);
-        break;
-      case "autoplay":
-        settings.autoplay = !no(value);
-        break;
-      case "footer":
-        if (value) settings.footer = value.slice(0, 160);
-        break;
-      case "logo":
-      case "logo-dark":
-        if (PICTURE.test(value) && !/["'()\\\s]/.test(value)) settings[entry.key === "logo" ? "logo" : "logoDark"] = value;
-        else if (value) problems.push(entry.key + ": " + value.slice(0, 120) + " is not a picture path");
-        break;
-      case "title":
-      case "author":
-      case "date":
-        if (value) settings[entry.key] = value.slice(0, 200);
-        break;
-      default:
-    }
-  }
-  return { settings, problems };
-}
-function codeSteps(text) {
-  const steps2 = [];
-  for (const part of String(text).split("|")) {
-    const step = part.trim();
-    if (step === "all" || step === "*") {
-      steps2.push(null);
-      continue;
-    }
-    const ranges = [];
-    for (const piece of step.split(",")) {
-      const range = /^\s*(\d{1,5})(?:\s*-\s*(\d{1,5}))?\s*$/.exec(piece);
-      if (!range) return null;
-      const first = Number(range[1]), last = Number(range[2] || range[1]);
-      if (!first || last < first) return null;
-      ranges.push([first, last]);
-    }
-    steps2.push(ranges);
-  }
-  return steps2.length ? steps2 : null;
-}
-function pickLayout(summary) {
-  const { kinds = [], heading = null, first = false, words = 0, stat = false, cards = 0, cover = false } = summary;
-  const only = (...wanted) => kinds.length > 0 && kinds.every((kind) => wanted.includes(kind));
-  const count = (kind) => kinds.filter((each) => each === kind).length;
-  if (cover) return "cover";
-  if (kinds.includes("columns")) return "columns";
-  if (first && heading === "h1" && words < 60 && only("p")) return "cover";
-  if (first && heading === "h1" && !kinds.length) return "cover";
-  if (!kinds.length) return heading ? "section" : "title";
-  if (only("quote") && count("quote") === 1) return "quote";
-  if (only("picture") && count("picture") === 1) return "full";
-  if (count("diagram") === 1 && only("diagram", "p") && words < 240) return "full";
-  if (count("picture") === 1 && only("picture", "p", "list") && words <= 80) return "split";
-  if (stat && only("p", "list") && words <= 60) return "stat";
-  if (cards >= 2 && cards <= 6 && only("list") && count("list") === 1) return "grid";
-  return "title";
-}
-function wrapColumns(state, escape) {
-  const tokens = state.tokens;
-  const top = tokens.filter((token) => token.level === 0);
-  const level = top.some((token) => token.type === "heading_open" && token.tag === "h2") ? "h2" : top.filter((token) => token.type === "heading_open" && token.tag === "h1").length > 1 ? "h1" : "";
-  const boundary = (token) => token.level === 0 && (token.type === "heading_open" && token.tag === level || token.meta?.slideMark);
-  const out = [];
-  let region = [];
-  const flush = () => {
-    const marks = region.filter((token) => token.meta?.column);
-    if (!marks.length) {
-      out.push(...region);
-      region = [];
-      return;
-    }
-    let start = 0;
-    while (start < region.length && region[start].meta?.slideMark) start++;
-    if (region[start]?.type === "heading_open") {
-      while (start < region.length && region[start].type !== "heading_close") start++;
-      start++;
-    }
-    const open2 = new state.Token("html_block", "", 0);
-    open2.content = '<div class="slide-columns" data-columns="' + escape(String(marks.length + 1)) + '"><div class="slide-column">\n';
-    const close = new state.Token("html_block", "", 0);
-    close.content = "</div></div>\n";
-    let end = region.length;
-    while (end > start && region[end - 1].meta?.notes) end--;
-    for (const mark of region.slice(start, end)) if (mark.meta?.column) mark.content = '</div><div class="slide-column">' + mark.content;
-    out.push(...region.slice(0, start), open2, ...region.slice(start, end), close, ...region.slice(end));
-    region = [];
-  };
-  for (const token of tokens) {
-    if (boundary(token) && !(region.length && region.every((each) => each.meta?.slideMark))) flush();
-    region.push(token);
-  }
-  flush();
-  state.tokens = out;
-}
-function deckPlugin(markdown2) {
-  const escape = markdown2.utils.escapeHtml;
-  const lines = (token) => token.map ? ' data-line="' + (token.map[0] + 1) + '" data-line-end="' + token.map[1] + '"' : "";
-  markdown2.core.ruler.push("aniflow_slide", (state) => {
-    let marks = 0;
-    for (const token of state.tokens) {
-      if (token.type !== "html_block" || token.level !== 0) continue;
-      const directive = slideDirective(token.content);
-      if (!directive) continue;
-      const problem = directive.problems.length ? ' data-problem="' + escape(directive.problems.join("; ")) + '"' : "";
-      if (directive.kind === "notes") {
-        token.meta = { notes: true };
-        token.content = '<aside class="slide-notes"' + lines(token) + ">" + markdown2.render(directive.notes) + "</aside>\n";
-      } else if (directive.kind === "column") {
-        token.meta = { column: true };
-        token.content = '<div class="slide-column-mark"' + lines(token) + problem + "></div>\n";
-      } else if (directive.kind === "reveal") {
-        token.content = '<div class="slide-reveal-mark"' + lines(token) + problem + "></div>\n";
-      } else {
-        marks++;
-        token.meta = { slideMark: true };
-        const options = directive.options;
-        const attrs = ["layout", "bg", "image", "transition", "story"].filter((key) => options[key] !== void 0).map((key) => " data-" + key + '="' + escape(String(options[key])) + '"').join("") + SLIDE_FLAGS.filter((flag) => options[flag]).map((flag) => " data-" + flag).join("");
-        token.content = '<div class="slide-mark"' + lines(token) + attrs + problem + "></div>\n";
-      }
-    }
-    wrapColumns(state, escape);
-    const front = readFrontMatter(state.src);
-    const { settings } = deckSettings(front?.entries);
-    const top = state.tokens.filter((token) => token.level === 0);
-    const opening = top.find((token) => token.type !== "front_matter" && token.type !== "html_block");
-    const decked = marks || top.some((token) => token.type === "heading_open" && token.tag === "h2") || top.filter((token) => token.type === "heading_open" && token.tag === "h1").length > 1;
-    if (settings.title && decked && !(opening?.type === "heading_open" && opening.tag === "h1")) {
-      const cover = new state.Token("html_block", "", 0);
-      const byline = [settings.author, settings.date].filter(Boolean).map(escape).join(" \xB7 ");
-      cover.content = '<div class="slide-mark" data-layout="cover" data-auto></div><div class="slide-autocover"><p class="slide-cover-title">' + escape(settings.title) + "</p>" + (byline ? '<p class="slide-cover-byline">' + byline + "</p>" : "") + '</div><div class="slide-mark"></div>\n';
-      cover.meta = { slideMark: true };
-      const at = state.tokens[0]?.type === "front_matter" ? 1 : 0;
-      state.tokens.splice(at, 0, cover);
-    }
-  });
-}
-
 // js/reader/github.js
 var CALLOUTS = {
   note: "note",
@@ -3170,13 +3226,27 @@ function githubFlavour(markdown2) {
     const tokens = state.tokens;
     for (let index = 0; index < tokens.length; index++) {
       const token = tokens[index];
-      if (!token.map || !/^(paragraph_open|heading_open|tr_open|hr)$/.test(token.type)) continue;
+      if (!token.map || !/^(paragraph_open|heading_open|tr_open|hr|dt_open)$/.test(token.type)) continue;
       const target = token.hidden ? tokens[index - 1] : token;
-      if (!target || token.hidden && target.type !== "list_item_open") continue;
+      if (!target || token.hidden && !/^(list_item_open|dd_open)$/.test(target.type)) continue;
       target.attrSet("data-line", String(token.map[0] + 1));
       target.attrSet("data-line-end", String(Math.max(token.map[1], token.map[0] + 1)));
     }
   });
+  markdown2.core.ruler.push("aniflow_figure", (state) => {
+    const tokens = state.tokens;
+    for (let index = 0; index + 2 < tokens.length; index++) {
+      const [open2, inline, close] = [tokens[index], tokens[index + 1], tokens[index + 2]];
+      if (open2.type !== "paragraph_open" || open2.hidden || inline.type !== "inline" || close.type !== "paragraph_close") continue;
+      const children = (inline.children || []).filter((child) => !(child.type === "text" && !child.content.trim()));
+      if (children.length !== 1 || children[0].type !== "image" || !children[0].attrGet("title")) continue;
+      open2.tag = close.tag = "figure";
+      const caption = new state.Token("aniflow_figcaption", "", 0);
+      caption.content = children[0].attrGet("title");
+      inline.children.push(caption);
+    }
+  });
+  markdown2.renderer.rules.aniflow_figcaption = (tokens, index) => "<figcaption>" + markdown2.utils.escapeHtml(tokens[index].content) + "</figcaption>";
   const lines = (token, first) => token.map ? ' data-line="' + (token.map[0] + 1) + '" data-line-end="' + token.map[1] + '" data-code="' + first + '"' : "";
   const rules = markdown2.renderer.rules;
   rules.code_block = (tokens, index) => {
@@ -3201,11 +3271,15 @@ function githubFlavour(markdown2) {
   rules.fence = (tokens, index) => {
     const token = tokens[index];
     const text = token.content.replace(/\n$/, "");
-    const language = (token.info.trim().split(/\s+/)[0] || "").toLowerCase().replace(/[^a-z0-9_+#.-]/g, "");
+    const first = token.info.trim().split(/\s+/)[0] || "";
+    const language = /^(?:title=|\{)/.test(first) ? "" : first.toLowerCase().replace(/[^a-z0-9_+#.-]/g, "");
     const where = lines(token, token.map ? token.map[0] + 2 : 0);
-    const marked = /\{([^{}]*)\}\s*$/.exec(token.info);
-    const steps2 = marked && codeSteps(marked[1]) ? ' data-steps="' + markdown2.utils.escapeHtml(marked[1].replace(/\s+/g, "")) + '"' : "";
-    if (!language) return '<pre class="notranslate"' + where + "><code>" + markdown2.utils.escapeHtml(text) + "</code></pre>\n";
+    const marked = /\{([^{}"']*)\}/.exec(token.info);
+    const named = /(?:^|\s)title=(?:"([^"]*)"|'([^']*)'|(\S+))/.exec(token.info);
+    const title = named ? (named[1] ?? named[2] ?? named[3]).trim() : "";
+    const titled = title ? ' data-title="' + markdown2.utils.escapeHtml(title) + '"' : "";
+    const steps2 = (marked && codeSteps(marked[1]) ? ' data-steps="' + markdown2.utils.escapeHtml(marked[1].replace(/\s+/g, "")) + '"' : "") + titled;
+    if (!language) return '<pre class="notranslate"' + where + titled + "><code>" + markdown2.utils.escapeHtml(text) + "</code></pre>\n";
     const body = language !== "mermaid" && window.hljs && hljs.getLanguage(language) ? hljs.highlight(text, { language, ignoreIllegals: true }).value : markdown2.utils.escapeHtml(text);
     return '<div class="highlight highlight-source-' + language + '"' + where + steps2 + '><pre class="notranslate">' + body + "</pre></div>\n";
   };
@@ -3225,16 +3299,77 @@ function sanitize(markup) {
   });
 }
 
+// js/reader/slug.js
+function slug(text) {
+  return String(text).trim().toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, "").replace(/\s/g, "-") || "section";
+}
+
+// js/reader/wikilink.js
+var PICTURE2 = /\.(?:png|jpe?g|gif|webp|svg|avif)$/i;
+var FILE = /\.(?:md|markdown|png|jpe?g|gif|webp|svg|avif|pdf)$/i;
+function parseWikilink(body) {
+  const text = body.replace(/\\\|/g, "|");
+  const bar = text.indexOf("|");
+  const link = (bar < 0 ? text : text.slice(0, bar)).trim();
+  const label = bar < 0 ? "" : text.slice(bar + 1).trim();
+  const hash = link.indexOf("#");
+  return {
+    target: (hash < 0 ? link : link.slice(0, hash)).trim(),
+    heading: hash < 0 ? "" : link.slice(hash + 1).trim(),
+    label
+  };
+}
+function wikilinkUrl(target) {
+  if (host.wikilinks) return Object.hasOwn(host.wikilinks, target) ? host.wikilinks[target] : null;
+  const path = FILE.test(target) ? target : target + ".md";
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+function wikilinkPlugin(markdown2) {
+  markdown2.inline.ruler.before("link", "aniflow_wikilink", (state, silent) => {
+    const start = state.pos;
+    const embed = state.src.charCodeAt(start) === 33;
+    const open2 = start + (embed ? 1 : 0);
+    if (state.src.charCodeAt(open2) !== 91 || state.src.charCodeAt(open2 + 1) !== 91) return false;
+    const close = state.src.indexOf("]]", open2 + 2);
+    if (close < 0) return false;
+    const body = state.src.slice(open2 + 2, close);
+    if (!body.trim() || /[\[\]\n]/.test(body)) return false;
+    if (!silent) {
+      const token = state.push("aniflow_wikilink", "", 0);
+      token.meta = { ...parseWikilink(body), embed };
+    }
+    state.pos = close + 2;
+    return true;
+  });
+  markdown2.renderer.rules.aniflow_wikilink = (tokens, index) => {
+    const { target, heading, label, embed } = tokens[index].meta;
+    const escape = markdown2.utils.escapeHtml;
+    const fragment = heading ? "#" + encodeURIComponent(slug(heading)) : "";
+    const url = target ? wikilinkUrl(target) : "";
+    if (embed && PICTURE2.test(target)) {
+      const width = /^(\d{1,4})(?:x(\d{1,4}))?$/.exec(label);
+      if (url === null) return '<span class="wikilink-missing" title="No picture by that name">' + escape(target) + "</span>";
+      const size = width ? ' width="' + width[1] + '"' + (width[2] ? ' height="' + width[2] + '"' : "") : "";
+      return '<img src="' + escape(url) + '" alt="' + escape(width ? target : label || target) + '"' + size + ">";
+    }
+    const text = label || (heading && target ? target + " \u203A " + heading : heading || target);
+    if (url === null) return '<span class="wikilink-missing" title="No note by that name">' + escape(text) + "</span>";
+    return '<a class="wikilink" href="' + escape(url + fragment) + '">' + escape(text) + "</a>";
+  };
+}
+
 // js/reader/render.js
 var markdown = null;
 function renderLocal() {
   try {
     if (!markdown) {
-      markdown = window.markdownit({ html: true, linkify: true, breaks: host.breaks });
+      markdown = window.markdownit({ html: true, linkify: true, typographer: true, breaks: host.breaks });
       markdown.linkify.set({ fuzzyLink: false });
       if (window.markdownitFootnote) markdown.use(window.markdownitFootnote);
       if (window.markdownitEmoji) markdown.use(window.markdownitEmoji);
+      for (const name of ["markdownitMark", "markdownitSub", "markdownitSup", "markdownitDeflist"]) if (window[name]) markdown.use(window[name]);
       frontMatterPlugin(markdown);
+      wikilinkPlugin(markdown);
       githubFlavour(markdown);
       deckPlugin(markdown);
       for (const plugin of host.plugins) plugin(markdown);
@@ -4042,19 +4177,19 @@ function show(content) {
   const entries = [];
   for (const heading of host.article.querySelectorAll(":is(h1, h2, h3, h4, h5, h6):not(.sr-only)")) {
     const text = heading.textContent.trim();
-    let slug = text.toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, "").replace(/\s/g, "-") || "section";
-    const used = seen.get(slug) || 0;
-    seen.set(slug, used + 1);
-    if (used) slug += "-" + used;
-    heading.id = slug;
+    let slug2 = slug(text);
+    const used = seen.get(slug2) || 0;
+    seen.set(slug2, used + 1);
+    if (used) slug2 += "-" + used;
+    heading.id = slug2;
     const anchor = document.createElement("a");
     anchor.className = "anchor";
-    anchor.href = "#" + slug;
+    anchor.href = "#" + slug2;
     anchor.textContent = "#";
     anchor.setAttribute("aria-label", "Link to " + text);
     heading.prepend(anchor);
     const level = Number(heading.tagName[1]);
-    if (level <= 3) entries.push({ slug, text, level });
+    if (level <= 3) entries.push({ slug: slug2, text, level });
   }
   if (host.toc) {
     const list = host.toc.querySelector("ol");
@@ -4074,13 +4209,87 @@ function show(content) {
     }
     host.toc.hidden = entries.length < 3;
   }
+  dressLinks();
+  for (const image of host.article.querySelectorAll("img")) {
+    if (!image.hasAttribute("loading")) image.loading = document.body.classList.contains("presenting") ? "eager" : "lazy";
+    image.decoding = "async";
+  }
+  for (const table of host.article.querySelectorAll("table")) table.classList.toggle("long-table", table.rows.length > 16);
+  noteMeta();
+  backlinks();
   frameCode();
   drawDiagrams();
   scheduleTrack();
 }
+function dressLinks() {
+  for (const link of host.article.querySelectorAll("a[href]")) {
+    let url;
+    try {
+      url = new URL(link.getAttribute("href"), location.href);
+    } catch (error) {
+      continue;
+    }
+    if (!/^https?:$/.test(url.protocol) || url.origin === location.origin) continue;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.classList.add("external");
+  }
+}
+function noteMeta() {
+  const words = (host.article.textContent.match(/[\p{L}\p{N}]+/gu) || []).length;
+  const parts = [];
+  if (words >= 200) parts.push(Math.ceil(words / 220) + " min read");
+  const when = host.modified ? new Date(host.modified) : null;
+  if (when && !Number.isNaN(when.getTime())) {
+    parts.push("Updated " + when.toLocaleDateString(void 0, { day: "numeric", month: "short", year: "numeric" }));
+  }
+  if (!parts.length) return;
+  const line = document.createElement("p");
+  line.className = "note-meta";
+  line.textContent = parts.join(" \xB7 ");
+  if (when) line.title = when.toLocaleString();
+  const title = [...host.article.children].find((element3) => element3.tagName === "H1");
+  if (title) title.after(line);
+  else host.article.prepend(line);
+}
+function backlinks() {
+  if (!host.backlinks?.length) return;
+  const section = document.createElement("section");
+  section.className = "backlinks";
+  const head = document.createElement("p");
+  head.className = "backlinks-title";
+  head.textContent = "Linked from";
+  const list = document.createElement("ul");
+  for (const item of host.backlinks) {
+    const link = document.createElement("a");
+    link.href = item.url;
+    link.textContent = item.title;
+    const entry = document.createElement("li");
+    entry.append(link);
+    list.append(entry);
+  }
+  section.append(head, list);
+  host.article.append(section);
+}
+function zoomPicture(event) {
+  const image = event.target.closest?.("img");
+  if (!image || !host.article.contains(image) || image.closest("a, .mermaid-diagram, .diagram-stage, .code-block")) return;
+  if (document.body.classList.contains("presenting") || document.body.classList.contains("reviewing")) return;
+  const dialog = document.createElement("dialog");
+  dialog.className = "image-zoom";
+  const big = document.createElement("img");
+  big.src = image.currentSrc || image.src;
+  big.alt = image.alt;
+  dialog.append(big);
+  dialog.addEventListener("click", () => dialog.close());
+  dialog.addEventListener("close", () => dialog.remove());
+  document.body.append(dialog);
+  dialog.showModal();
+}
 function initShow() {
   addEventListener("scroll", scheduleTrack, { passive: true });
   addEventListener("resize", scheduleTrack);
+  host.article.addEventListener("click", zoomPicture);
   if (host.toc) {
     const wide = matchMedia("(min-width:1240px)");
     const openRail = () => {
@@ -4330,6 +4539,7 @@ async function settled() {
 }
 async function showSlide(index) {
   document.body.classList.add("slide-export");
+  for (const image of host.article.querySelectorAll('img[loading="lazy"]')) image.loading = "eager";
   if (!present(index, 0, Infinity)) throw new Error("there is no slide " + (index + 1));
   const story = slideStory();
   if (story) {
@@ -4411,7 +4621,7 @@ var MARKERS = ".slide-mark, .slide-column-mark, .slide-reveal-mark, .slide-notes
 var SLIDE_CONTROLS = 'a[href], button, input, select, textarea, summary, label, video, audio, iframe, [contenteditable="true"], [contenteditable=""], .slide-dock, .diagram-tools, .diagram-pins, .diagram-notes, .play-warn';
 var reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 function slideGroups() {
-  const blocks = [...host.article.children].filter((element3) => !element3.matches(".frontmatter, .frontmatter-raw, .review-gutter"));
+  const blocks = [...host.article.children].filter((element3) => !element3.matches(".frontmatter, .frontmatter-raw, .review-gutter, .note-meta, .backlinks"));
   const marked = blocks.some((element3) => element3.matches(".slide-mark"));
   const level = blocks.some((element3) => element3.tagName === "H2") ? "H2" : blocks.filter((element3) => element3.tagName === "H1").length > 1 ? "H1" : "";
   if (!level && !marked) return [];
@@ -4741,6 +4951,7 @@ function startPresenting() {
   deck = deckSettings(readFrontMatter(host.source || "")?.entries).settings;
   document.body.classList.add("presenting");
   host.article.classList.add("slide-canvas");
+  for (const image of host.article.querySelectorAll('img[loading="lazy"]')) image.loading = "eager";
   if (!slideDock) buildDock();
   const body = document.body.dataset;
   for (const [key, value] of [["deckAccent", deck.accent], ["deckFont", deck.font], ["deckStyle", deck.style], ["deckMotion", deck.motion]]) {
@@ -5072,6 +5283,9 @@ function reader(options = {}) {
     preprocess: options.preprocess || ((text) => text),
     resolveImage: options.resolveImage || none2,
     resolveLink: options.resolveLink || none2,
+    wikilinks: options.wikilinks || null,
+    backlinks: Array.isArray(options.backlinks) ? options.backlinks : [],
+    modified: options.modified || "",
     mermaid: options.mermaid || "mermaid.min.js",
     commentsUrl: comments.url || "",
     commentMax: comments.max || 4e3,

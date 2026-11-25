@@ -26,7 +26,7 @@ const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 // The article's children cut into slides: at each H2 (or H1 when there are several), and at
 // each <!-- slide --> marker, which keeps the heading right after it on its own slide.
 export function slideGroups() {
-  const blocks = [...host.article.children].filter((element) => !element.matches('.frontmatter, .frontmatter-raw, .review-gutter'));
+  const blocks = [...host.article.children].filter((element) => !element.matches('.frontmatter, .frontmatter-raw, .review-gutter, .note-meta, .backlinks'));
   const marked = blocks.some((element) => element.matches('.slide-mark'));
   const level = blocks.some((element) => element.tagName === 'H2') ? 'H2'
     : blocks.filter((element) => element.tagName === 'H1').length > 1 ? 'H1' : '';
@@ -398,6 +398,7 @@ function startPresenting() {
   deck = deckSettings(readFrontMatter(host.source || '')?.entries).settings;
   document.body.classList.add('presenting');
   host.article.classList.add('slide-canvas');
+  for (const image of host.article.querySelectorAll('img[loading="lazy"]')) image.loading = 'eager';
   if (!slideDock) buildDock();
   const body = document.body.dataset;
   for (const [key, value] of [['deckAccent', deck.accent], ['deckFont', deck.font], ['deckStyle', deck.style], ['deckMotion', deck.motion]]) {

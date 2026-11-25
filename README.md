@@ -78,6 +78,13 @@ Demo & help opens a playable diagram first, followed by a walkthrough from
 your first Markdown file to pictures, several stories and exports. It ships
 with aniflow and works even when you serve an empty folder.
 
+The reader handles GitHub-flavoured Markdown plus `==marks==`, `^sup^`,
+`~sub~`, definition lists, Obsidian `[[wikilinks]]` and `![[picture.png]]`
+embeds, code titles and highlighted lines, captioned pictures that open
+full size, and a "Linked from" list of the notes pointing at the page.
+`/help/markdown` shows all of it with source and result side by side, and
+`aniflow --markdown` prints the same page.
+
 Use Comments on any page, including the demo, to comment on source lines or
 on a box or arrow in a diagram, reply in a thread, edit or delete feedback,
 and copy it with the quoted text for a coding agent. Comments show in a

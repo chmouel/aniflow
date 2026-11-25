@@ -4,7 +4,9 @@ This is the syntax for animated Mermaid diagrams, as played by `aniflow` and
 every reader built on it. Print it with `aniflow --spec`.
 Preview a document with `aniflow serve <dir>` and open the URL it prints. Other
 Mermaid renderers, GitHub included, ignore the `%%` lines and draw a plain
-diagram.
+diagram. The rest of the Markdown aniflow reads (wikilinks, code titles,
+definition lists and more) is printed by `aniflow --markdown`
+(`/help/markdown` on a server).
 
 ## Where the script goes
 

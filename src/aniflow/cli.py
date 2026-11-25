@@ -25,7 +25,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
-from aniflow import client, comments, export, oauth, page, tokens, web
+from aniflow import client, comments, export, links, oauth, page, tokens, web
 from aniflow.brand import BRAND_CSS, DEFAULT, credit, favicon, masthead
 from aniflow.privacy import (
     FRONT_CLOSE,
@@ -61,6 +61,7 @@ from aniflow.ui import (
 
 FILES = "/files/"
 HELP = Path(__file__).with_name("help.md")
+MARKDOWN_HELP = Path(__file__).with_name("markdown.md")
 SPEC = Path(__file__).with_name("spec.md")
 TRY_URL = "https://chmouel.github.io/aniflow/try/"
 SHARE_LONG = 8000
@@ -196,6 +197,8 @@ IMAGE_TYPES = {
 # Every write of a note, from the editor or the API, checks its version and writes under
 # this lock, so two saves opened at the same version cannot both land.
 NOTES_LOCK = threading.Lock()
+# The most files a page view walks to resolve wikilinks and find backlinks.
+NOTE_WALK_MAX = 5000
 WELCOME = Path(__file__).with_name("templates") / "welcome.md"
 # sha256 of welcome notes older releases wrote, title line as "# Welcome, {login}", so
 # an untouched one can be replaced with the current text on the member's next sign-in.
@@ -916,7 +919,7 @@ def directory_page(
 <link rel="stylesheet" href="{base}/static/page.css">
 <style>{THEME_READER_CSS}{BRAND_CSS}{UI_CSS}{DIRECTORY_CSS}</style>
 </head><body class="aniflow-local aniflow-browser"><header class="bar"><a href="{base}{FILES}">{html.escape(brand_name)}</a><span class="name">{title}</span>
-<nav>{search_btn}<a href="{base}/help">Demo &amp; help</a>{theme_select(nonce)}{account}</nav></header>
+<nav>{search_btn}<a href="{base}/help">Demo &amp; help</a><a href="{base}/help/markdown">Markdown</a>{theme_select(nonce)}{account}</nav></header>
 <main class="browser-shell"><div class="browser-masthead">{masthead(base, brand_name, logo)}
 {demo}</div>
 <nav class="browser-trail" aria-label="Folders"><ol>{trail}</ol></nav>
@@ -945,9 +948,11 @@ def reader_page(
     private: dict[str, str] | None = None,
     locked: bool = False,
     lock_title: str = "Only signed-in readers can see this",
+    note_links: dict | None = None,
 ) -> tuple[bytes, str]:
     """A markdown file in the reader, with links kept under root_url. edit is the editor's
-    URL, for a note the reader may change; locked marks a private one in the bar."""
+    URL, for a note the reader may change; locked marks a private one in the bar.
+    note_links are the wikilinks, backlinks and modified options for a served note."""
     nonce = secrets.token_urlsafe(16)
     help_link = (
         f'<a class="reader-help" href="{base}/help">Help</a>'
@@ -1027,6 +1032,7 @@ def reader_page(
             signin=base + "/auth/github/start" if signin else "",
             signout=base + "/auth/logout" if signin else "",
             me=session,
+            **(note_links or {}),
         ),
         base=base,
         actions=actions,
@@ -1052,9 +1058,11 @@ def editor_page(
     icon: str,
     account: str,
     personal: bool = False,
+    note_links: dict | None = None,
 ) -> tuple[bytes, str]:
     """The web editor for one note: its Markdown beside the page it renders to. personal
-    marks a note in the member's own folder, which only they can read anyway."""
+    marks a note in the member's own folder, which only they can read anyway. note_links
+    are the reader options the note's page gets, so its links work in the preview."""
     nonce = secrets.token_urlsafe(16)
     exists = note.is_file()
     text = note.read_text("utf-8", errors="replace") if exists else f"# {note.stem}\n\n"
@@ -1082,6 +1090,7 @@ def editor_page(
     private_pressed = "true" if front_private(text) else "false"
     controls = (
         '<span class="editor-status" id="editor-status" role="status"></span>'
+        f'<a class="reader-help" href="{base}/help/markdown" target="_blank" rel="noopener">Markdown help</a>'
         '<button type="button" id="editor-image" title="Upload an image (or paste/drop)">'
         "Image</button>"
         '<input type="file" id="editor-image-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>'
@@ -1108,7 +1117,7 @@ def editor_page(
         text=text,
         nonce=nonce,
         back=(("View", file_url(root, note, base)) if exists else ("Folder", folder)),
-        options=page.reader_options(root=base + FILES, base=base),
+        options=page.reader_options(root=base + FILES, base=base, **(note_links or {})),
         base=base,
         actions=controls,
         account=account,
@@ -1148,6 +1157,7 @@ class Server(ThreadingHTTPServer):
         self.chosen_logo = logo
         self.chosen_icon = icon
         self.user_folders = user_folders
+        self.notes = links.NoteIndex()
         identity = hashlib.sha256(os.fsencode(self.root)).hexdigest()
         cache = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
         self.comments_root = cache / "aniflow" / "comments" / identity
@@ -1305,6 +1315,72 @@ class Handler(web.Handler):
         gives them out."""
         return visible(self.server.root, path, who, self.server.user_folders)
 
+    def readable(self, who: dict | None) -> dict[str, Path]:
+        """Every file this reader may open, by its path under the served folder, walked
+        with the rules of /api/search: no hidden names, no symlinks, nothing outside, the
+        members' folders left out except the reader's own. Stops at NOTE_WALK_MAX."""
+        root = self.server.root
+        found: dict[str, Path] = {}
+        queue = [root]
+        login = str((who or {}).get("login", "")).lower()
+        while queue and len(found) < NOTE_WALK_MAX:
+            current = queue.pop(0)
+            try:
+                children = sorted(current.iterdir(), key=lambda p: p.name.casefold())
+            except OSError:
+                continue
+            for child in children:
+                if child.name.startswith(".") or child.is_symlink():
+                    continue
+                if self.hidden_folder(child):
+                    own = child / login
+                    if login and LOGIN.fullmatch(login) and own.is_dir():
+                        child = own
+                    else:
+                        continue
+                try:
+                    child.resolve().relative_to(root)
+                except (OSError, ValueError):
+                    continue
+                if not self.sees(child, who):
+                    continue
+                if child.is_dir():
+                    queue.append(child)
+                elif child.is_file():
+                    found[child.relative_to(root).as_posix()] = child
+                    if len(found) >= NOTE_WALK_MAX:
+                        break
+        return found
+
+    def note_links(self, note: Path, who: dict | None, text: str | None = None) -> dict:
+        """The reader options that tie a note to the others: where each [[wikilink]]
+        goes, which notes link here, and when it last changed. Only notes this reader may
+        open are ever named."""
+        root, base = self.server.root, self.server.base
+        if text is None:
+            try:
+                text = note.read_text("utf-8", errors="replace")
+            except OSError:
+                text = ""
+        readable = self.readable(who)
+        rel = note.relative_to(root).as_posix()
+        options: dict[str, object] = {}
+        targets = links.wiki_targets(text)
+        if targets:
+            options["wikilinks"] = {
+                target: links.note_url(base, hit)
+                for target in targets
+                if (hit := links.resolve_wiki(target, rel, readable)) is not None
+            }
+        if rel in readable:
+            options["backlinks"] = self.server.notes.backlinks(rel, readable, base)
+        try:
+            stamp = note.stat().st_mtime
+            options["modified"] = datetime.fromtimestamp(stamp, UTC).isoformat()
+        except OSError:
+            pass
+        return options
+
     def private(self, path: Path) -> bool:
         """is_private(), counting members' own folders on a server that gives them out."""
         return is_private(self.server.root, path, self.server.user_folders)
@@ -1359,6 +1435,7 @@ class Handler(web.Handler):
                 self.server.icon,
                 self.account(),
                 personal=True,
+                note_links=self.note_links(note, session),
             )
         except OSError:
             self.send_error(404)
@@ -2200,10 +2277,12 @@ refuse the change when someone edited the note in between, or send
         if path == "/":
             self.redirect(self.server.url(FILES))
             return
-        if path == "/help":
+        if path in ("/help", "/help/markdown"):
+            guide = path == "/help/markdown"
+            source = MARKDOWN_HELP if guide else HELP
             if raw:
                 self.send_file(
-                    HELP,
+                    source,
                     "text/plain; charset=utf-8",
                     {"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff"},
                 )
@@ -2211,11 +2290,11 @@ refuse the change when someone edited the note in between, or send
                 base = self.server.base
                 body, nonce = reader_page(
                     base + "/",
-                    "aniflow help",
-                    HELP.read_text("utf-8"),
+                    "Markdown in aniflow" if guide else "aniflow help",
+                    source.read_text("utf-8"),
                     ("Files", base + FILES),
-                    [("Raw", base + "/help?raw=1")],
-                    self.server.comments_url("help"),
+                    [("Raw", base + path + "?raw=1")],
+                    "" if guide else self.server.comments_url("help"),
                     base=base,
                     session=self.session(),
                     signin=self.server.signin is not None,
@@ -2223,6 +2302,7 @@ refuse the change when someone edited the note in between, or send
                     logo=self.server.logo,
                     icon=self.server.icon,
                     account=self.account(),
+                    note_links={"wikilinks": {}} if guide else None,
                 )
                 self.send_html(body, page.reader_headers(nonce))
             return
@@ -2311,10 +2391,11 @@ refuse the change when someone edited the note in between, or send
                     elif web.is_markdown(local.name) and not raw:
                         can_write = self.writable(local)
                         relative = quote(local.relative_to(root).as_posix())
+                        text = local.read_text("utf-8", errors="replace")
                         body, nonce = reader_page(
                             base + FILES,
                             local.name,
-                            local.read_text("utf-8", errors="replace"),
+                            text,
                             ("Files", file_url(root, local.parent, base)),
                             [
                                 ("Help", base + "/help"),
@@ -2351,6 +2432,7 @@ refuse the change when someone edited the note in between, or send
                             }
                             if can_write and not personal
                             else None,
+                            note_links=self.note_links(local, who, text),
                         )
                     else:
                         self.send_local_file(local, raw=raw)
@@ -2552,6 +2634,11 @@ def main() -> None:
         action="store_true",
         help="print the diagram walkthrough syntax reference and exit",
     )
+    parser.add_argument(
+        "--markdown",
+        action="store_true",
+        help="print the Markdown reference (the /help/markdown page) and exit",
+    )
     parser.add_argument("--init", metavar="FILE", help="create a starter presentation")
     parser.add_argument(
         "--style",
@@ -2612,6 +2699,7 @@ def main() -> None:
         if (
             args.check
             or args.spec
+            or args.markdown
             or args.share
             or args.open
             or args.export
@@ -2648,6 +2736,9 @@ def main() -> None:
         raise SystemExit(export.check(args.check))
     if args.spec:
         sys.stdout.write(SPEC.read_text("utf-8"))
+        return
+    if args.markdown:
+        sys.stdout.write(MARKDOWN_HELP.read_text("utf-8"))
         return
     if args.revoke_tokens:
         count = tokens.Tokens(token_db()).revoke_member(args.revoke_tokens)
@@ -2709,7 +2800,7 @@ def main() -> None:
     if not serving:
         parser.error(
             "nothing to do: run `aniflow serve [DIRECTORY]` to serve a folder, or "
-            "give an action (--spec, --check, --share, --init, --export, --slides, "
+            "give an action (--spec, --markdown, --check, --share, --init, --export, --slides, "
             "--revoke-tokens); see aniflow -h"
         )
     if not args.directory.is_dir():

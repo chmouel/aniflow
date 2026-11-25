@@ -263,6 +263,7 @@ async function settled() {
 // it. Resolves once its pictures have loaded and its text has been fitted.
 export async function showSlide(index) {
   document.body.classList.add('slide-export');
+  for (const image of host.article.querySelectorAll('img[loading="lazy"]')) image.loading = 'eager';
   if (!present(index, 0, Infinity)) throw new Error('there is no slide ' + (index + 1));
   const story = slideStory();
   if (story) {

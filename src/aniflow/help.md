@@ -94,6 +94,9 @@ flowchart LR
 Start with a page, then add diagrams and playback. Open any “Show the Markdown”
 section to copy its example. More in the header has the source for this whole guide.
 
+For every piece of Markdown the reader understands, from highlights and
+wikilinks to code titles, see [Markdown in aniflow](/help/markdown).
+
 ## Step 1: Open a folder
 
 Run this in the directory that holds your Markdown:

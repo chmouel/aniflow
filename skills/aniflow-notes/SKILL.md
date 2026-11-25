@@ -135,6 +135,19 @@ aniflow comments pac/design.md --json   # structured JSON
 Read the comments, revise the Markdown, and `push` the updated file back to the
 same path with `--if-match`.
 
+## Writing notes
+
+Notes can use more than plain GitHub Markdown: `[[wikilinks]]` between
+notes, picture embeds, highlights, definition lists, code titles and
+highlighted lines, and a "Linked from" list on every page. Read the syntax
+before writing a note rather than guessing it:
+
+```sh
+aniflow --markdown          # the same page as /help/markdown on the server
+```
+
+Link related notes with `[[...]]` so each page lists what points at it.
+
 ## Diagrams
 
 When a note explains a flow, pipeline, or architecture, pair this skill with

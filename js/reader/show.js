@@ -1,6 +1,7 @@
 import { host } from '../host.js';
 import { drawDiagrams } from '../diagram/draw.js';
 import { frameCode } from './code.js';
+import { slug as headingSlug } from './slug.js';
 
 export let tracked = [];
 export let current = null;
@@ -51,7 +52,7 @@ export function show(content) {
   const entries = [];
   for (const heading of host.article.querySelectorAll(':is(h1, h2, h3, h4, h5, h6):not(.sr-only)')) {
     const text = heading.textContent.trim();
-    let slug = text.toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, '').replace(/\s/g, '-') || 'section';
+    let slug = headingSlug(text);
     const used = seen.get(slug) || 0;
     seen.set(slug, used + 1);
     if (used) slug += '-' + used;
@@ -84,14 +85,92 @@ export function show(content) {
     }
     host.toc.hidden = entries.length < 3;
   }
+  dressLinks();
+  for (const image of host.article.querySelectorAll('img')) {
+    if (!image.hasAttribute('loading')) image.loading = document.body.classList.contains('presenting') ? 'eager' : 'lazy';
+    image.decoding = 'async';
+  }
+  for (const table of host.article.querySelectorAll('table')) table.classList.toggle('long-table', table.rows.length > 16);
+  noteMeta();
+  backlinks();
   frameCode();
   drawDiagrams();
   scheduleTrack();
 }
 
+// Links to another site open in a new tab and carry an arrow.
+function dressLinks() {
+  for (const link of host.article.querySelectorAll('a[href]')) {
+    let url;
+    try { url = new URL(link.getAttribute('href'), location.href); } catch (error) { continue; }
+    if (!/^https?:$/.test(url.protocol) || url.origin === location.origin) continue;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.classList.add('external');
+  }
+}
+
+// "4 min read · Updated 3 Mar 2026" under the title.
+function noteMeta() {
+  const words = (host.article.textContent.match(/[\p{L}\p{N}]+/gu) || []).length;
+  const parts = [];
+  if (words >= 200) parts.push(Math.ceil(words / 220) + ' min read');
+  const when = host.modified ? new Date(host.modified) : null;
+  if (when && !Number.isNaN(when.getTime())) {
+    parts.push('Updated ' + when.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }));
+  }
+  if (!parts.length) return;
+  const line = document.createElement('p');
+  line.className = 'note-meta';
+  line.textContent = parts.join(' · ');
+  if (when) line.title = when.toLocaleString();
+  const title = [...host.article.children].find((element) => element.tagName === 'H1');
+  if (title) title.after(line);
+  else host.article.prepend(line);
+}
+
+// The notes that link here, as the server found them.
+function backlinks() {
+  if (!host.backlinks?.length) return;
+  const section = document.createElement('section');
+  section.className = 'backlinks';
+  const head = document.createElement('p');
+  head.className = 'backlinks-title';
+  head.textContent = 'Linked from';
+  const list = document.createElement('ul');
+  for (const item of host.backlinks) {
+    const link = document.createElement('a');
+    link.href = item.url;
+    link.textContent = item.title;
+    const entry = document.createElement('li');
+    entry.append(link);
+    list.append(entry);
+  }
+  section.append(head, list);
+  host.article.append(section);
+}
+
+// A click on a picture shows it at full size.
+function zoomPicture(event) {
+  const image = event.target.closest?.('img');
+  if (!image || !host.article.contains(image) || image.closest('a, .mermaid-diagram, .diagram-stage, .code-block')) return;
+  if (document.body.classList.contains('presenting') || document.body.classList.contains('reviewing')) return;
+  const dialog = document.createElement('dialog');
+  dialog.className = 'image-zoom';
+  const big = document.createElement('img');
+  big.src = image.currentSrc || image.src;
+  big.alt = image.alt;
+  dialog.append(big);
+  dialog.addEventListener('click', () => dialog.close());
+  dialog.addEventListener('close', () => dialog.remove());
+  document.body.append(dialog);
+  dialog.showModal();
+}
+
 export function initShow() {
   addEventListener('scroll', scheduleTrack, { passive: true });
   addEventListener('resize', scheduleTrack);
+  host.article.addEventListener('click', zoomPicture);
   if (host.toc) {
     const wide = matchMedia('(min-width:1240px)');
     const openRail = () => { if (wide.matches) host.toc.open = true; };

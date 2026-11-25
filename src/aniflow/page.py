@@ -14,6 +14,10 @@ MARKDOWN_SCRIPTS = (
     "markdown-it.min.js",
     "markdown-it-footnote.min.js",
     "markdown-it-emoji.min.js",
+    "markdown-it-mark.min.js",
+    "markdown-it-sub.min.js",
+    "markdown-it-sup.min.js",
+    "markdown-it-deflist.min.js",
     "purify.min.js",
 )
 HIGHLIGHT_MAX_BYTES = 512 * 1024
@@ -62,11 +66,17 @@ def reader_options(
     breaks: bool = False,
     callouts: bool = False,
     mermaid: str = "",
+    wikilinks: dict[str, str] | None = None,
+    backlinks: list[dict[str, str]] | None = None,
+    modified: str = "",
 ) -> dict[str, object]:
     """The JSON half of Aniflow.reader()'s options. root keeps links and pictures inside
     that path; comments is the URL of the document's comments; base is the path prefix the
     page is served under, which the built-in icons get too; signin and signout are where a
-    reader signs in to comment and back out, me is who it already is."""
+    reader signs in to comment and back out, me is who it already is. wikilinks maps each
+    [[target]] in the note to the URL it opens (a target left out shows as missing; None
+    lets the reader guess a file beside the note), backlinks lists {title, url} of the
+    notes linking here, modified is the note's ISO change time."""
     options: dict[str, object] = {
         "mermaid": mermaid or base + "/vendor/mermaid.min.js",
         "breaks": breaks,
@@ -92,6 +102,12 @@ def reader_options(
             }
     if root:
         options["root"] = root
+    if wikilinks is not None:
+        options["wikilinks"] = wikilinks
+    if backlinks:
+        options["backlinks"] = backlinks
+    if modified:
+        options["modified"] = modified
     return options
 
 

@@ -1,0 +1,20 @@
+[
+  {"note": "a/n.md", "href": "Topic.md#install", "expect": "a/Topic.md"},
+  {"note": "a/n.md", "href": "Topic.md?raw", "expect": "a/Topic.md"},
+  {"note": "a/b c/n.md", "href": "../Topic.md", "expect": "a/Topic.md"},
+  {"note": "a/n.md", "href": "/b/Topic.md", "expect": "b/Topic.md"},
+  {"note": "a/n.md", "href": "/files/b/Topic.md", "expect": "b/Topic.md"},
+  {"note": "a/n.md", "base": "/pub", "href": "/pub/files/b/Topic.md", "expect": "b/Topic.md"},
+  {"note": "a/n.md", "base": "/pub", "href": "/b/Topic.md", "expect": "b/Topic.md"},
+  {"note": "a/n.md", "href": "%C3%A9%20space.markdown", "expect": "a/é space.markdown"},
+  {"note": "a/n.md", "href": "é space.markdown", "expect": "a/é space.markdown"},
+  {"note": "dir with ?#/n.md", "href": "sib%3F.md", "expect": "dir with ?#/sib?.md"},
+  {"note": "dir with ?#/n.md", "href": "../x.md", "expect": "x.md"},
+  {"note": "a/n.md", "href": "../../etc/x.md", "expect": null},
+  {"note": "a/n.md", "href": "https://example.com/x.md", "expect": null},
+  {"note": "a/n.md", "href": "//example.com/x.md", "expect": null},
+  {"note": "a/n.md", "href": "#top", "expect": null},
+  {"note": "a/n.md", "href": "picture.png", "expect": null},
+  {"note": "a/n.md", "href": "/icons/agent.svg", "expect": null},
+  {"note": "a/n.md", "href": "a\\b.md", "expect": null}
+]

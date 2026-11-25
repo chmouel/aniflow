@@ -2,17 +2,20 @@ import { host } from '../host.js';
 import { deckPlugin } from './deck.js';
 import { frontMatterPlugin } from './frontmatter.js';
 import { githubFlavour, sanitize } from './github.js';
+import { wikilinkPlugin } from './wikilink.js';
 
 export let markdown = null;
 export function renderLocal() {
   try {
     if (!markdown) {
-      markdown = window.markdownit({ html: true, linkify: true, breaks: host.breaks });
+      markdown = window.markdownit({ html: true, linkify: true, typographer: true, breaks: host.breaks });
       // Without a scheme, README.md would become a link to a Moldovan domain.
       markdown.linkify.set({ fuzzyLink: false });
       if (window.markdownitFootnote) markdown.use(window.markdownitFootnote);
       if (window.markdownitEmoji) markdown.use(window.markdownitEmoji);
+      for (const name of ['markdownitMark', 'markdownitSub', 'markdownitSup', 'markdownitDeflist']) if (window[name]) markdown.use(window[name]);
       frontMatterPlugin(markdown);
+      wikilinkPlugin(markdown);
       githubFlavour(markdown);
       deckPlugin(markdown);
       for (const plugin of host.plugins) plugin(markdown);
