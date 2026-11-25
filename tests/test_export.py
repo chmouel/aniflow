@@ -133,7 +133,9 @@ def export_server(tmp_path):
     server = export.ExportServer(
         "# Walk\n", folder, "walk.md", outdir, "png", diagrams=[1]
     )
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+    )
     thread.start()
 
     def request(path, method="GET", headers=None, body=None):
@@ -412,10 +414,7 @@ def test_the_export_page_keeps_the_format_it_was_given(tmp_path):
     assert b"window.aniflowPage = { save: () => {} }" in body
 
 
-@pytest.mark.skipif(
-    os.environ.get("ANIFLOW_EXPORT_E2E") != "1" or export.chrome() is None,
-    reason="set ANIFLOW_EXPORT_E2E=1 with Chrome installed",
-)
+@pytest.mark.chrome
 @pytest.mark.parametrize(
     ("kind", "prefix"),
     [
@@ -604,10 +603,7 @@ def test_slides_flag_checks_its_company(tmp_path, monkeypatch, capsys):
     assert calls == [(str(source), "png", "out")]
 
 
-@pytest.mark.skipif(
-    os.environ.get("ANIFLOW_EXPORT_E2E") != "1" or export.chrome() is None,
-    reason="set ANIFLOW_EXPORT_E2E=1 with Chrome installed",
-)
+@pytest.mark.chrome
 def test_slides_end_to_end_writes_a_pdf_and_pngs(tmp_path, capsys):
     source = tmp_path / "deck.md"
     source.write_text(

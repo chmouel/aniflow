@@ -10,9 +10,7 @@ import pytest
 from aniflow import export
 
 
-@pytest.mark.skipif(
-    export.chrome() is None, reason="Chrome or Chromium is not installed"
-)
+@pytest.mark.chrome
 def test_gallery_and_template_editor(tmp_path):
     root = Path(__file__).resolve().parents[1]
     subprocess.run(["bash", str(root / "docs/site/assemble.sh")], check=True, cwd=root)

@@ -113,7 +113,9 @@ def aniflow_servers(tmp_path, monkeypatch):
 
     def start(root, **options):
         httpd = cli.Server(("127.0.0.1", 0), root, **options)
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread = threading.Thread(
+            target=httpd.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+        )
         thread.start()
         running.append((httpd, thread))
 

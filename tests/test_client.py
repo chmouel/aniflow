@@ -59,7 +59,9 @@ def live_server(tmp_path, monkeypatch):
         signin=oauth.SignIn("cid", "csec", "skey", path="/pub/", admin="alice"),
         user_folders=True,
     )
-    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread = threading.Thread(
+        target=httpd.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+    )
     thread.start()
     host, port = httpd.server_address
     base_url = f"http://{host}:{port}/pub"
