@@ -112,7 +112,8 @@ the wheel, so `uvx --from git+...` works without Node.
   sign-in with `templates/welcome.md`; that `users/` folder is never listed
   and answers 404 when browsed (`Handler.hidden_folder()`), in the page, the
   `/api/notes` listing and `/api/search`, so the root listing never shows who
-  has an account. `editor_page()` shows the Markdown in
+  has an account; `my_space()` instead puts a "My Space" card on the root
+  listing for a signed-in member (`Handler.mine()`), linking to their own folder. `editor_page()` shows the Markdown in
   a textarea beside the reader, which `EDITOR_JS` updates through
   `window.aniflowReader` (set by `BOOT_JS`). `/tokens` lists, makes and
   revokes your API tokens; `/api/me` reports the token's owner and shared

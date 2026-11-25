@@ -34,6 +34,15 @@ DIRECTORY_CSS = """
   .aniflow-browser .demo-play { display:grid; place-items:center; flex:0 0 42px; height:42px; border:1px solid color-mix(in srgb, var(--document-color) 35%, var(--borderColor-default)); border-radius:50%; background:color-mix(in srgb, var(--document-color) 9%, var(--bgColor-default)); color:var(--document-color); }
   .aniflow-browser .demo-play::before { content:''; margin-left:3px; border-top:6px solid transparent; border-bottom:6px solid transparent; border-left:9px solid currentColor; }
   .aniflow-browser .browser-demo:hover strong { color:var(--document-color); }
+  .aniflow-browser .my-space { display:flex; align-items:center; gap:16px; margin-bottom:26px; padding:16px 20px; border:1px solid color-mix(in srgb, var(--document-color) 35%, var(--borderColor-default)); border-radius:12px; background:color-mix(in srgb, var(--document-color) 7%, var(--bgColor-default)); color:var(--fgColor-default); text-decoration:none; }
+  .aniflow-browser .my-space:hover { border-color:var(--document-color); background:color-mix(in srgb, var(--document-color) 12%, var(--bgColor-default)); }
+  .aniflow-browser .my-space-symbol { display:grid; place-items:center; flex:0 0 44px; height:44px; border-radius:50%; background:color-mix(in srgb, var(--document-color) 14%, var(--bgColor-default)); color:var(--document-color); }
+  .aniflow-browser .my-space-symbol svg { width:24px; height:24px; }
+  .aniflow-browser .my-space-text { flex:1; min-width:0; }
+  .aniflow-browser .my-space strong { display:block; margin-bottom:2px; font-size:16px; font-weight:650; }
+  .aniflow-browser .my-space-text span { display:block; color:var(--fgColor-muted); font-size:13px; }
+  .aniflow-browser .my-space:hover .entry-arrow { color:var(--document-color); }
+  .aniflow-browser .my-space:hover .entry-arrow svg { transform:translateX(3px); }
   .aniflow-browser .browser-trail ol { display:flex; flex-wrap:wrap; gap:6px 10px; list-style:none; margin:0; padding:0; color:var(--fgColor-muted); font-size:13px; }
   .aniflow-browser .browser-trail li { display:flex; align-items:center; gap:10px; overflow-wrap:anywhere; }
   .aniflow-browser .browser-trail li + li::before { content:'/'; color:var(--borderColor-default); }

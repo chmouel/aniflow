@@ -690,6 +690,21 @@ def private_toggle(root: Path, folder: Path, base: str, labelled: bool = False) 
     )
 
 
+def my_space(url: str) -> str:
+    """The way into the member's own folder from the root listing, where the folder holding
+    every member's is never shown. Empty url gives nothing."""
+    if not url:
+        return ""
+    return (
+        f'<a class="my-space" href="{html.escape(url)}">'
+        f'<span class="my-space-symbol" aria-hidden="true">{FOLDER_ICON}</span>'
+        '<span class="my-space-text"><strong>My Space</strong>'
+        "<span>Your notes live here: everyone signed in can read them, only you can "
+        "change them.</span></span>"
+        f'<span class="entry-arrow">{NEXT_ICON}</span></a>'
+    )
+
+
 def directory_page(
     root: Path,
     path: Path,
@@ -702,6 +717,7 @@ def directory_page(
     session: dict | None = None,
     writable: Callable[[Path], bool] | None = None,
     hidden: Callable[[Path], bool] | None = None,
+    mine: str = "",
 ) -> tuple[bytes, str]:
     """A folder listing: children the reader may not see are left out, a signed-in one sees
     a lock on the private ones, and writable folders get a toggle for it. A child hidden
@@ -782,7 +798,7 @@ def directory_page(
         else ""
     )
     nonce = secrets.token_urlsafe(16)
-    content = (
+    content = my_space(mine) + (
         f'<div class="browser-toolbar"><label class="folder-filter">{SEARCH_ICON}'
         '<span class="sr-only">Find in this folder</span>'
         '<input type="search" id="folder-search" placeholder="Find a file or folder…" autocomplete="off" aria-controls="directory-groups"></label>'
@@ -1215,6 +1231,20 @@ class Handler(web.Handler):
         """The folder holding every member's own folder is never listed nor browsed, so
         nobody learns who has an account. A member reaches their own by its direct URL."""
         return self.server.user_folders and path == users_folder(self.server.root)
+
+    def mine(self) -> str:
+        """The URL of the signed-in member's own folder, which the root listing offers as
+        My Space since the folder holding it is never shown."""
+        if not self.server.user_folders:
+            return ""
+        session = self.session()
+        if not session:
+            return ""
+        root = self.server.root
+        folder = users_folder(root) / str(session.get("login", "")).lower()
+        if not folder.is_dir() or folder.is_symlink():
+            return ""
+        return file_url(root, folder, self.server.base)
 
     def edit_note(self, key: str) -> None:
         """GET /files/<path>?edit: the editor, for a note the reader may write."""
@@ -2187,6 +2217,7 @@ refuse the change when someone edited the note in between.
                             session=self.who(),
                             writable=self.writable_folder,
                             hidden=self.hidden_folder,
+                            mine=self.mine() if local == root else "",
                         )
                     elif web.is_markdown(local.name) and not raw:
                         can_write = self.writable(local)

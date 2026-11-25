@@ -124,7 +124,8 @@ Add `--user-folders` (requires `--github-oauth`):
   a `welcome.md` starter note. The `users/` folder itself is never listed and
   answers 404 if you browse to it, so the root listing stays a place for
   documents and team folders; a member reaches their own folder through the
-  account menu, or by its direct `/files/users/<login>/` URL.
+  account menu, or the **My Space** card at the top of the root listing, which
+  only a signed-in member sees and which points at their own folder.
 - Everyone can read every folder, so a member's notes under `users/<login>/`
   stay readable unless the folder holds a `.aniflow-private` file.
 - Members can create, edit (split-pane live Markdown preview, Ctrl+S, Insert

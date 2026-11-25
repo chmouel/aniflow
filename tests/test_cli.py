@@ -714,6 +714,24 @@ def test_the_users_folder_is_never_listed(github, local_docs, aniflow_servers):
     )
 
 
+def test_root_links_to_my_space(github, local_docs, aniflow_servers):
+    request = folders_server(local_docs, aniflow_servers)
+    alice, bob = sign_in(request, "alice"), sign_in(request, "bob")
+    # Only a signed-in member gets it, and it points at their own folder.
+    assert b"My Space" not in request("/files/")[2]
+    for cookie, who in ((alice, "alice"), (bob, "bob")):
+        body = request("/files/", headers={"Cookie": cookie})[2]
+        assert f'<a class="my-space" href="/files/users/{who}/">'.encode() in body
+        assert b"<strong>My Space</strong>" in body
+        assert b">users<" not in body
+    # Not offered inside other folders, nor when the folder is not there to open.
+    (local_docs / "pac").mkdir()
+    (local_docs / "pac" / "n.md").write_text("# n\n")
+    assert b"My Space" not in request("/files/pac/", headers={"Cookie": alice})[2]
+    shutil.rmtree(local_docs / "users" / "bob")
+    assert b"My Space" not in request("/files/", headers={"Cookie": bob})[2]
+
+
 def test_a_marked_folder_is_open_to_every_member(github, local_docs, aniflow_servers):
     request = folders_server(local_docs, aniflow_servers)
     bob = sign_in(request, "bob")
