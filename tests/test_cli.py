@@ -1668,6 +1668,25 @@ def test_comment_replies_are_one_level_only(aniflow_server):
         body=json.dumps({"resolved": False}),
     )
     assert status == 200 and "resolved" not in json.loads(body)["comments"][0]
+    # Resolve all closes every open thread at once, leaving replies as they are.
+    aniflow_server(
+        "/comments/add/file/README.md",
+        method="POST",
+        headers={"Content-Type": "application/json"},
+        body=json.dumps({"start": 2, "end": 2, "body": "Second"}),
+    )
+    status, _, body = aniflow_server(
+        "/comments/resolve-all/file/README.md", method="POST"
+    )
+    after = json.loads(body)["comments"]
+    assert status == 200 and len(after) == 3
+    assert [c.get("resolved") for c in after if not c.get("parent")] == [True, True]
+    assert all("resolved" not in c for c in after if c.get("parent"))
+    for c in after:
+        if not c.get("parent") and c["id"] != root_id:
+            aniflow_server(
+                f"/comments/delete/file/README.md?id={c['id']}", method="POST"
+            )
     # Deleting the root removes its replies too.
     status, _, body = aniflow_server(
         f"/comments/delete/file/README.md?id={root_id}", method="POST"

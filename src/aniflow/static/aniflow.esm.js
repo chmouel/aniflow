@@ -3581,6 +3581,7 @@ function initReview() {
       commentButton.hidden = !selection || Boolean(composer);
       clearButton.hidden = !selection;
       copyButton.hidden = Boolean(selection) || !count;
+      resolveAllButton.hidden = Boolean(selection) || !count || !canResolve();
       session.textContent = "";
       if (gated) {
         if (me) session.append(make("span", "", me.login), signInLink("Sign out", host.commentsSignout || host.commentsSignin));
@@ -3978,6 +3979,7 @@ function initReview() {
       const mark = spot(holder.anchorEnd || start);
       if (mark) insertAt(slot(mark, start), holder);
     }, enter = function() {
+      refresh().catch((error) => console.error("comments", error));
       reviewing = true;
       host.article.classList.add("reviewing");
       document.body.classList.add("reviewing");
@@ -4103,7 +4105,32 @@ function initReview() {
     });
     commentButton.addEventListener("click", compose);
     clearButton.addEventListener("click", clear);
-    copyButton.after(session);
+    const resolveAllButton = make("button", "", "Resolve all");
+    resolveAllButton.title = "Resolve every open thread";
+    let resolveArmed = 0;
+    const disarm = () => {
+      clearTimeout(resolveArmed);
+      resolveArmed = 0;
+      resolveAllButton.textContent = "Resolve all";
+    };
+    resolveAllButton.addEventListener("click", async () => {
+      if (!resolveArmed) {
+        resolveAllButton.textContent = "Resolve " + plural(openCount()) + "?";
+        resolveArmed = setTimeout(disarm, 3e3);
+        return;
+      }
+      disarm();
+      resolveAllButton.disabled = true;
+      try {
+        await post("resolve-all", "");
+        notify("All threads resolved");
+      } catch (error) {
+        notify("!Update failed: " + (error.message || error));
+      } finally {
+        resolveAllButton.disabled = false;
+      }
+    });
+    copyButton.after(resolveAllButton, session);
     const layoutButton = make("button", "", "Show inline");
     layoutButton.title = "Comments beside the text, or under the lines they are about";
     layoutButton.addEventListener("click", () => {
@@ -4130,6 +4157,9 @@ function initReview() {
     addEventListener("resize", replace);
     addEventListener("hashchange", follow);
     addEventListener("aniflow-comments", () => refresh().catch((error) => console.error("comments", error)));
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") refresh().catch((error) => console.error("comments", error));
+    });
     refresh().catch((error) => console.error("comments", error)).then(() => {
       settled2 = true;
       follow();

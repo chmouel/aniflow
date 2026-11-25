@@ -976,7 +976,9 @@ the first and last lines.
 
 Try it on this paragraph. Write a comment and save it, then use Edit or
 Delete on the comment card. Copy feedback collects your comments with their
-quoted lines so you can paste them into an editor or chat.
+quoted lines so you can paste them into an editor or chat. The check mark on
+a comment resolves its thread, and Resolve all in the bottom bar folds every
+open thread at once (press it twice to confirm).
 
 Comments work on every Markdown page, including this demo. They stay in
 aniflow's local cache across restarts, separate from your source files. Each

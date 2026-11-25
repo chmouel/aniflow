@@ -228,11 +228,11 @@ def change(
     create_parents: bool = True,
     allowed: Callable[[Path], bool] | None = None,
 ) -> str | None:
-    """Add, edit or delete a comment. Returns an error message, or None when done.
+    """Add, edit, delete or resolve a comment, or resolve them all. Returns an error message, or None when done.
 
     author and author_id name who is asking: a comment belongs to the account that wrote
     it, and only that account, or admin, may change it afterwards."""
-    if action not in ("delete", "resolve"):
+    if action not in ("delete", "resolve", "resolve-all"):
         if not isinstance(data, dict) or not isinstance(data.get("body"), str):
             return "body must be a string"
         body = data["body"].strip()
@@ -300,6 +300,11 @@ def change(
             if author_id:
                 entry["author_id"] = author_id
             entries.append(entry)
+        elif action == "resolve-all":
+            entries = [
+                {**entry, "resolved": True} if not entry.get("parent") else entry
+                for entry in entries
+            ]
         else:
             index = next(
                 (

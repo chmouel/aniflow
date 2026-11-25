@@ -197,16 +197,16 @@ class Handler(BaseHTTPRequestHandler):
         storage: Path,
         **options,
     ) -> None:
-        """POST /comments/<add|edit|delete>/...: options go to comments.change()."""
+        """POST /comments/<add|edit|delete|resolve|resolve-all>/...: options go to comments.change()."""
         action = parsed.path.removeprefix("/comments/").partition("/")[0]
-        if action not in ("add", "edit", "delete", "resolve"):
+        if action not in ("add", "edit", "delete", "resolve", "resolve-all"):
             self.send_json({"error": "not found"}, status=404)
             return
         if path is None or not is_markdown(path.name):
             self.send_json({"error": "not found"}, status=404)
             return
         data: object = None
-        if action not in ("delete", "resolve"):
+        if action not in ("delete", "resolve", "resolve-all"):
             body = self.read_body(comments.COMMENT_MAX_CHARS * 4 + 1024)
             if body is None:
                 self.send_json({"error": "request too large"}, status=413)

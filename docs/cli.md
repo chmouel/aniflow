@@ -114,7 +114,7 @@ reports `still private` until that folder is opened.
 Pushing a copy without `private: true` over a private note makes it public,
 and `push` warns on stderr when that happens.
 
-## Reading review comments
+## Review comments
 
 Fetch review comments (including threaded replies) on a remote note:
 
@@ -122,6 +122,14 @@ Fetch review comments (including threaded replies) on a remote note:
 aniflow comments team/plan.md          # formatted prompt with quoted lines
 aniflow comments team/plan.md --json   # structured JSON
 aniflow comments https://notes.example.com/pub/files/team/plan.md
+```
+
+A comment stays open until it is resolved, even after the note changes: it
+follows its quoted lines, and turns outdated only when they change. Once an
+update addresses them, resolve every open thread at once:
+
+```sh
+aniflow comments team/plan.md --resolve-all
 ```
 
 ## Agent skills

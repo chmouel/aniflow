@@ -130,10 +130,13 @@ your own initiative.
 ```sh
 aniflow comments pac/design.md          # formatted prompt with line quotes and replies
 aniflow comments pac/design.md --json   # structured JSON
+aniflow comments pac/design.md --resolve-all   # resolve every open thread
 ```
 
 Read the comments, revise the Markdown, and `push` the updated file back to the
-same path with `--if-match`.
+same path with `--if-match`. A comment stays open until someone resolves it,
+even when the note changes, so once the update addresses them all, run
+`--resolve-all`. If some are still open questions, leave them and say which.
 
 ## Writing notes
 

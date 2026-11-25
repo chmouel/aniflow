@@ -159,7 +159,7 @@ the wheel, so `uvx --from git+...` works without Node.
   `SameSite=Lax`, `Secure` when the proxy reports https. `next_path()` keeps
   the way back inside the base, so the callback cannot be an open redirect.
 - `src/aniflow/client.py`: the remote CLI (`login`, `whoami`, `ls`,
-  `search`, `push [--private]`, `pull`, `mv`, `rm`, `private [--off]`, `comments`)
+  `search`, `push [--private]`, `pull`, `mv`, `rm`, `private [--off]`, `comments [--resolve-all]`)
   and bundled agent skill
   manager (`skill list|install|show|remove`). Config lives at
   `$XDG_CONFIG_HOME/aniflow/config.json` (`0600`), with `ANIFLOW_URL`,

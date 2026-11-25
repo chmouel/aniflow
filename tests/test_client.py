@@ -191,8 +191,24 @@ def test_client_end_to_end(live_server, tmp_path, capsys, monkeypatch):
     assert client.main(["search", "hidden secret", "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["results"] == []
 
-    # Comments on a remote note
+    # Comments on a remote note: a token may write them, and resolve them all.
     assert client.main(["comments", pushed["view"]]) == 0
+    assert "No review comments" in capsys.readouterr().out
+    status, _, _ = client.request(
+        "POST",
+        f"{base_url}/comments/add/file/pac/plan.md",
+        token=token,
+        body=json.dumps({"start": 1, "end": 1, "body": "Rename it"}).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    assert status == 200
+    assert client.main(["comments", "pac/plan.md"]) == 0
+    assert "Rename it" in capsys.readouterr().out
+    assert client.main(["comments", "pac/plan.md", "--resolve-all", "--json"]) == 0
+    resolved = json.loads(capsys.readouterr().out)["comments"]
+    assert [c["resolved"] for c in resolved] == [True]
+    assert resolved[0]["author"] == "alice"
+    assert client.main(["comments", "pac/plan.md"]) == 0
     assert "No review comments" in capsys.readouterr().out
 
     # Delete by full URL

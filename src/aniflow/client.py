@@ -542,6 +542,17 @@ def cmd_comments(args: argparse.Namespace) -> int:
     url = need_url(url)
     remote = resolve_remote(raw_remote, folder)
     encoded = "/".join(urllib.parse.quote(part) for part in remote.split("/"))
+    if args.resolve_all:
+        _, _, data = request(
+            "POST",
+            f"{url}/comments/resolve-all/file/{encoded}",
+            token=need_token(token),
+        )
+        if args.json:
+            sys.stdout.buffer.write(data)
+        else:
+            print(f"Resolved every open thread on {remote}.")
+        return 0
     suffix = "" if args.json else "?format=prompt"
     _, _, data = request("GET", f"{url}/comments/file/{encoded}{suffix}", token=token)
     sys.stdout.buffer.write(data)
@@ -756,9 +767,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_private)
 
     p = sub.add_parser(
-        "comments", parents=[common], help="read review comments on a remote note"
+        "comments",
+        parents=[common],
+        help="read or resolve review comments on a remote note",
     )
     p.add_argument("remote", help="remote path, e.g. plan.md or pac/plan.md")
+    p.add_argument(
+        "--resolve-all",
+        action="store_true",
+        help="resolve every open thread, once the note addresses them",
+    )
     p.set_defaults(func=cmd_comments)
 
     skill_common = argparse.ArgumentParser(add_help=False)

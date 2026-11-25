@@ -2491,7 +2491,7 @@ refuse the change when someone edited the note in between, or send
             self.change_tokens(path.removeprefix("/tokens/"))
             return
         if path.startswith("/comments/"):
-            session = self.session()
+            session = self.who()
             if self.server.signin is not None and session is None:
                 self.send_json(
                     {
