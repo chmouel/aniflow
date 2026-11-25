@@ -1,6 +1,6 @@
 ---
 name: aniflow-notes
-description: Publish, read, search, edit, delete, make private, and review
+description: Publish, read, search, edit, move, delete, make private, and review
   Markdown notes on an aniflow server using the `aniflow` CLI and API token.
   Use when asked to upload, share (publicly or privately), update, fetch,
   search, hide or unhide, or address review comments on notes hosted on
@@ -27,6 +27,19 @@ aniflow login https://share.chmouel.com/pub   # interactive; any page URL works
 If `whoami` fails with "no server configured" or 401, tell the user to run
 `aniflow login` (tokens are created at `<server>/tokens`).
 
+## Your folder is yours alone
+
+The default folder (`users/<login>/`) can be read by its owner only. Other
+members, the admin and anonymous visitors cannot open, list or search it. It is
+the place for drafts and personal notes, not for anything meant for others.
+
+When the user wants a note shared, published or seen by the team, it has to
+live in a shared folder. Pick the one that fits its topic from
+`aniflow whoami --json` (`shared`) or `aniflow ls / --json` (`shared: true`),
+for example `pac/` for Pipelines-as-Code notes, rather than dropping
+everything in one place. If none fits, ask the user which folder to use; new
+shared folders are created on the server by its operator, not from the CLI.
+
 ## Reading and searching
 
 ```sh
@@ -43,8 +56,8 @@ aniflow pull https://share.chmouel.com/pub/files/pac/design.md  # full URL works
 ## Publishing and editing safely
 
 ```sh
-aniflow push report.md --json                   # -> <your-folder>/report.md
-aniflow push report.md pac/report.md --json     # -> shared folder pac/
+aniflow push report.md --json                   # -> <your-folder>/report.md (only you)
+aniflow push report.md pac/report.md --json     # -> shared folder pac/ (others can read)
 cat draft.md | aniflow push - pac/draft.md --json
 ```
 
@@ -67,13 +80,32 @@ aniflow rm pac/old.md --json
 aniflow rm pac/old.md --if-match "$ver" --json
 ```
 
+## Moving a note out of your folder
+
+```sh
+aniflow mv plan.md pac/ --json                # users/<login>/plan.md -> pac/plan.md
+aniflow mv plan.md team/design/spec.md --json # move and rename
+```
+
+`mv` answers `{"from", "to", "view", "private"}`; give the user the `view`
+URL. It refuses (412) when a note already exists at the destination, so it
+never overwrites one: pick another name or ask. If the original changed
+between the copy and the delete, both copies stay and `mv` says so; tell the
+user. Pictures beside the note and its review comments stay behind, and `mv`
+warns on stderr when the note links to relative pictures: upload or fix
+those links before telling the user it is done.
+
 ## Private notes and folders
 
 A private note or folder is only for signed-in readers: anonymous visitors
 don't see it in listings or search, and its URL shows a sign-in page. Any
 signed-in account can read it (on a server with `--github-org`, that means the
 organisation's members), so it is not a way to keep something from your
-team. Everything under a private folder is private too.
+team. Everything under a private folder is private too. Notes in your own
+folder always report `private: true`, since only you can read them.
+
+To share something with signed-in members only, move or push it into a shared
+folder with `--private` (or run `aniflow private` on it there).
 
 ```sh
 aniflow push plan.md pac/plan.md --private --json  # share it privately

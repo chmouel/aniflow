@@ -109,7 +109,9 @@ the wheel, so `uvx --from git+...` works without Node.
   button at the right end of every page's bar: "Sign in" (back to the same
   page), or the avatar and login with the profile and "Sign out".
   `--user-folders` gives each member `<root>/users/<login>/`, made on first
-  sign-in with `templates/welcome.md`; that `users/` folder is never listed
+  sign-in with `templates/welcome.md` (`refresh_welcome()` replaces a copy
+  still matching `OLD_WELCOMES`); each one is readable by its owner only
+  (`personal_parts()`, `owners_of()`, `Handler.sees()`); that `users/` folder is never listed
   and answers 404 when browsed (`Handler.hidden_folder()`), in the page, the
   `/api/notes` listing and `/api/search`, so the root listing never shows who
   has an account; `my_space()` instead puts a "My Space" card on the root
@@ -152,7 +154,7 @@ the wheel, so `uvx --from git+...` works without Node.
   `SameSite=Lax`, `Secure` when the proxy reports https. `next_path()` keeps
   the way back inside the base, so the callback cannot be an open redirect.
 - `src/aniflow/client.py`: the remote CLI (`login`, `whoami`, `ls`,
-  `search`, `push [--private]`, `pull`, `rm`, `private [--off]`, `comments`)
+  `search`, `push [--private]`, `pull`, `mv`, `rm`, `private [--off]`, `comments`)
   and bundled agent skill
   manager (`skill list|install|show|remove`). Config lives at
   `$XDG_CONFIG_HOME/aniflow/config.json` (`0600`), with `ANIFLOW_URL`,
@@ -383,7 +385,7 @@ Keep these when changing code.
   takes `.md`/`.markdown` only, inside a folder (never at the top), with no
   hidden part and no symlink leading out; `may_write()` allows the member's
   own `<root>/users/<login>/`, any folder under one holding a `.aniflow-shared`
-  file, or everything for the admin. A save carries the version it was
+  file, or everything but other members' folders for the admin. A save carries the version it was
   opened at and is refused (409, or 412 for the API) when the file changed
   since; the check and the write happen under `NOTES_LOCK`. A symlink
   anywhere on the path, folders included, makes it unwritable. The mark is a
@@ -403,6 +405,13 @@ Keep these when changing code.
   non-HTML requests stay 404. The only write is POST
   `/notes/private/<path>`, behind `--user-folders`, `may_write()` and
   `NOTES_LOCK`, and the marker is a hidden name, so nothing serves it.
+- With `--user-folders`, `users/<login>/` is for its owner alone, admin
+  included: `Handler.sees()` and `Handler.private()` pass `personal` to
+  `visible()`/`is_private()`, which compare the login with every owner of the
+  path as named and as resolved, so a symlink in or out counts. Another
+  member gets 404; an anonymous visitor gets the gate for any `users/<x>/`
+  page path, decided from the URL alone so it never tells whether the member
+  or note exists. Use `sees()` for every new read route.
 - `/vendor/`, `/static/` and `/icons/` serve fixed names only, never a path
   joined from the request.
 

@@ -10,6 +10,7 @@ import argparse
 import getpass
 import json
 import os
+import re
 import shutil
 import sys
 import urllib.error
@@ -28,6 +29,7 @@ COMMANDS = frozenset(
         "push",
         "pull",
         "rm",
+        "mv",
         "private",
         "comments",
         "skill",
@@ -426,6 +428,79 @@ def cmd_rm(args: argparse.Namespace) -> int:
     return 0
 
 
+LOCAL_PICTURE = re.compile(
+    r"!\[[^\]]*\]\((?!https?:|data:|/)[^)\s]+|<img[^>]+src=[\"'](?!https?:|data:|/)",
+    re.IGNORECASE,
+)
+
+
+def cmd_mv(args: argparse.Namespace) -> int:
+    """Move a note to another folder: write the copy, never over a note already there,
+    then delete the original only if nobody changed it in between."""
+    url, token, folder = settings(args)
+    raw_src, raw_dest = args.src, args.dest
+    if parsed := split_url_target(raw_src):
+        url, raw_src = parsed[0] or url, parsed[1]
+    if parsed := split_url_target(raw_dest):
+        raw_dest = parsed[1]
+    url, token = need_url(url), need_token(token)
+    src = resolve_remote(raw_src, folder)
+    name = src.rsplit("/", 1)[-1]
+    dest = raw_dest.strip().lstrip("/")
+    if not dest.lower().endswith((".md", ".markdown")):
+        dest = f"{dest.rstrip('/')}/{name}" if dest.strip("/") else name
+    elif "/" not in dest and folder:
+        dest = f"{folder}/{dest}"
+    if dest == src:
+        raise SystemExit(f"aniflow: {src} is already there")
+    _, headers, data = request("GET", f"{url}/api/notes/{quoted(src)}", token=token)
+    version = headers.get("etag", "")
+    _, _, answer = request(
+        "PUT",
+        f"{url}/api/notes/{quoted(dest)}",
+        token=token,
+        body=data,
+        headers={
+            "Content-Type": "text/markdown; charset=utf-8",
+            "If-None-Match": "*",
+        },
+    )
+    written = json.loads(answer)
+    try:
+        request(
+            "DELETE",
+            f"{url}/api/notes/{quoted(src)}",
+            token=token,
+            headers={"If-Match": version},
+        )
+    except SystemExit as error:
+        raise SystemExit(
+            f"{error}\naniflow: {dest} was written but {src} is still there; "
+            "remove one of them"
+        ) from None
+    if LOCAL_PICTURE.search(data.decode("utf-8", errors="replace")):
+        print(
+            f"aniflow: warning: {dest} links to pictures beside {src}; they did not "
+            "move with it",
+            file=sys.stderr,
+        )
+    out = {
+        "from": src,
+        "to": dest,
+        "view": web_url(url, dest),
+        "private": bool(written.get("private")),
+    }
+    if args.json:
+        print(json.dumps(out))
+    else:
+        print(out["view"])
+    return 0
+
+
+def quoted(remote: str) -> str:
+    return "/".join(urllib.parse.quote(part) for part in remote.split("/"))
+
+
 def cmd_private(args: argparse.Namespace) -> int:
     """Hide a note or folder from readers who are not signed in, or open it again."""
     url, token, folder = settings(args)
@@ -658,6 +733,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="ETag/version to guard against deleting a changed note",
     )
     p.set_defaults(func=cmd_rm)
+
+    p = sub.add_parser(
+        "mv",
+        parents=[common],
+        help="move a note, e.g. from your folder into a shared one",
+    )
+    p.add_argument("src", help="note to move, e.g. plan.md or users/me/plan.md")
+    p.add_argument(
+        "dest",
+        help="folder (pac/) or note path (pac/plan.md); never overwrites a note",
+    )
+    p.set_defaults(func=cmd_mv)
 
     p = sub.add_parser(
         "private",

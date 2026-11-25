@@ -651,6 +651,26 @@ def test_first_sign_in_makes_a_folder(github, local_docs, aniflow_servers):
     assert welcome.read_text() == "mine now"
 
 
+def test_an_untouched_old_welcome_is_replaced(
+    github, local_docs, aniflow_servers, monkeypatch
+):
+    request = folders_server(local_docs, aniflow_servers)
+    welcome = local_docs / "users" / "alice" / "welcome.md"
+    welcome.parent.mkdir(parents=True)
+    old = "Everyone signed in can read it.\n"
+    monkeypatch.setattr(
+        cli,
+        "OLD_WELCOMES",
+        {oauth.hashlib.sha256(f"# Welcome, {{login}}\n{old}".encode()).hexdigest()},
+    )
+    welcome.write_text(f"# Welcome, alice\n{old}")
+    sign_in(request, "alice")
+    assert "only you can read or change it" in welcome.read_text()
+    welcome.write_text(f"# Welcome, alice\n{old}edited\n")
+    sign_in(request, "alice")
+    assert welcome.read_text().endswith("edited\n")
+
+
 def test_members_write_their_own_folder(github, local_docs, aniflow_servers):
     request = folders_server(local_docs, aniflow_servers)
     alice, bob = sign_in(request, "alice"), sign_in(request, "bob")
@@ -662,8 +682,10 @@ def test_members_write_their_own_folder(github, local_docs, aniflow_servers):
     assert save(request, alice, "users/alice/plan.md", "lost", "old")[0] == 409
     status, answer = save(request, alice, "users/alice/plan.md", "# Plan v2\n", version)
     assert status == 200
-    # bob reads it but cannot change it, and nobody writes without signing in.
-    assert request("/files/users/alice/plan.md")[0] == 200
+    # Nobody else reads it or changes it, and nobody writes without signing in.
+    assert request("/files/users/alice/plan.md", headers={"Cookie": alice})[0] == 200
+    assert request("/files/users/alice/plan.md", headers={"Cookie": bob})[0] == 404
+    assert request("/files/users/alice/plan.md")[0] == 401
     assert save(request, bob, "users/alice/plan.md", "x", answer["version"])[0] == 403
     status, _, _ = request(
         "/notes/save/users/alice/plan.md",
@@ -672,16 +694,17 @@ def test_members_write_their_own_folder(github, local_docs, aniflow_servers):
         body='{"text": "x"}',
     )
     assert status == 401
-    # The admin may change anyone's notes.
+    # Not even the admin.
     boss = sign_in(request, "boss")
     assert (
-        save(request, boss, "users/alice/plan.md", "fixed", answer["version"])[0] == 200
+        save(request, boss, "users/alice/plan.md", "fixed", answer["version"])[0] == 403
     )
+    assert request("/files/users/alice/plan.md", headers={"Cookie": boss})[0] == 404
     status, _, _ = request(
         "/notes/delete/users/alice/plan.md",
         method="POST",
         headers={"Cookie": alice, "Content-Type": "application/json"},
-        body=json.dumps({"version": oauth.hashlib.sha256(b"fixed").hexdigest()}),
+        body=json.dumps({"version": answer["version"]}),
     )
     assert status == 200 and not (local_docs / "users" / "alice" / "plan.md").exists()
 
@@ -789,19 +812,17 @@ def test_editor_and_its_links(github, local_docs, aniflow_servers):
     )
     assert status == 200 and b'id="editor-text"' in body and b"# new" in body
     assert b'id="editor-delete"' not in body
-    assert request("/files/users/alice/new.md?edit", headers={"Cookie": bob})[0] == 403
+    assert request("/files/users/alice/new.md?edit", headers={"Cookie": bob})[0] == 404
     # Edit and Delete on your notes, New note in your folder, My folder in the account menu.
     _, _, body = request("/files/users/alice/welcome.md", headers={"Cookie": alice})
     assert b'href="/files/users/alice/welcome.md?edit">Edit</a>' in body
     assert b'data-delete-url="/notes/delete/users/alice/welcome.md"' in body
     assert b'href="/files/users/alice/"' in body and b"My folder</a>" in body
-    _, _, body = request("/files/users/alice/welcome.md", headers={"Cookie": bob})
-    assert b">Edit</a>" not in body
-    assert b"data-delete-url=" not in body
+    assert b'class="private-badge" title="Only you can see this"' in body
+    assert b"data-private-url=" not in body
     _, _, body = request("/files/users/alice/", headers={"Cookie": alice})
-    assert b'id="new-note"' in body
-    _, _, body = request("/files/users/alice/", headers={"Cookie": bob})
-    assert b'id="new-note"' not in body
+    assert b'id="new-note"' in body and b"Private (only you)" in body
+    assert b'class="folder-privacy"' not in body
 
 
 def test_user_folders_need_github(tmp_path, monkeypatch, capsys):
@@ -849,7 +870,8 @@ def test_api_tokens_write_like_their_owner(github, local_docs, aniflow_servers):
         request, "PUT", "users/alice/plan.md", token, "# Plan\n"
     )
     assert status == 201 and json.loads(body)["url"] == "/files/users/alice/plan.md"
-    status, headers, body = api(request, "GET", "users/alice/plan.md")
+    assert api(request, "GET", "users/alice/plan.md")[0] == 404
+    status, headers, body = api(request, "GET", "users/alice/plan.md", token)
     assert status == 200 and body == b"# Plan\n"
     etag = headers["ETag"]
     assert (
@@ -907,14 +929,16 @@ def test_admin_comes_from_the_server_not_the_token(github, local_docs, aniflow_s
     sign_in(request, "alice")
     boss = sign_in(request, "boss")
     token = make_token(request, boss)[1]["token"]
-    assert api(request, "PUT", "users/alice/fix.md", token, "x")[0] == 201
+    (local_docs / "pac").mkdir()
+    assert api(request, "PUT", "pac/fix.md", token, "x")[0] == 201
+    assert api(request, "PUT", "users/alice/fix.md", token, "x")[0] == 403
     # The same database behind a server that no longer names boss as admin.
     demoted = aniflow_servers(
         local_docs,
         signin=oauth.SignIn("client-id", "s", "signing-key"),
         user_folders=True,
     )
-    assert api(demoted, "PUT", "users/alice/fix.md", token, "y")[0] == 403
+    assert api(demoted, "PUT", "pac/fix.md", token, "y")[0] == 403
     assert api(demoted, "PUT", "users/boss/own.md", token, "y")[0] == 201
 
 
@@ -925,7 +949,7 @@ def test_concurrent_writes_at_one_version_do_not_both_land(
     alice = sign_in(request, "alice")
     token = make_token(request, alice)[1]["token"]
     api(request, "PUT", "users/alice/race.md", token, "start")
-    etag = api(request, "GET", "users/alice/race.md")[1]["ETag"]
+    etag = api(request, "GET", "users/alice/race.md", token)[1]["ETag"]
     results = []
 
     def put(text):
@@ -993,7 +1017,9 @@ def test_mkdir_and_rename_note_rules(github, local_docs, aniflow_servers):
     assert status == 200 and json.loads(body)["url"] == "/files/users/alice/renamed.md"
     assert not (local_docs / "users" / "alice" / "old.md").exists()
     assert (local_docs / "users" / "alice" / "renamed.md").read_text() == "# Hello\n"
-    status, _, cbody = request("/comments/file/users/alice/renamed.md")
+    status, _, cbody = request(
+        "/comments/file/users/alice/renamed.md", headers={"Cookie": alice}
+    )
     assert (
         status == 200
         and json.loads(cbody)["comments"][0]["body"] == "Keep this comment"
@@ -1113,7 +1139,7 @@ def test_large_images_are_brought_under_two_megabytes(
     stored = (local_docs / "users" / "alice" / made["path"]).read_bytes()
     assert len(stored) <= cli.IMAGE_STORED_MAX
     assert stored[:4] == b"RIFF" and stored[8:12] == b"WEBP"
-    status, headers, _ = request(made["url"])
+    status, headers, _ = request(made["url"], headers={"Cookie": alice})
     assert status == 200 and headers["Content-Type"] == "image/webp"
 
 

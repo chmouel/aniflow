@@ -281,3 +281,24 @@ def test_client_private_notes_and_folders(live_server, tmp_path, capsys):
     assert "still private" in capsys.readouterr().out
     assert client.main(["private", "pac", "--off", *login]) == 0
     assert not (root / "pac" / cli.PRIVATE_MARK).exists()
+
+
+def test_client_mv_publishes_a_note(live_server, capsys):
+    base_url, token, root = live_server
+    login = ["--url", base_url, "--token", token]
+    mine = root / "users" / "alice"
+    mine.mkdir(parents=True, exist_ok=True)
+    (mine / "plan.md").write_text("# Plan\n![chart](images/chart.png)\n")
+
+    assert client.main(["mv", "users/alice/plan.md", "pac/", "--json", *login]) == 0
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["to"] == "pac/plan.md"
+    assert "did not move" in captured.err
+    assert not (mine / "plan.md").exists()
+    assert (root / "pac" / "plan.md").read_text().startswith("# Plan\n")
+
+    (mine / "design.md").write_text("# Mine\n")
+    with pytest.raises(SystemExit, match="412"):
+        client.main(["mv", "users/alice/design.md", "pac/", *login])
+    assert (mine / "design.md").is_file()
+    assert (root / "pac" / "design.md").read_text() != "# Mine\n"

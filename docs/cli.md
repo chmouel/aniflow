@@ -68,6 +68,30 @@ ver=$(aniflow pull team/plan.md --json | jq -r .version)
 aniflow push plan.md team/plan.md --if-match "$ver" --json
 ```
 
+## Moving a note to a shared folder
+
+Your own folder (`users/<login>/`) is readable by you alone. To let others
+read a note, move it into a shared folder that fits its topic; `aniflow
+whoami` lists the shared folders you may write to, and `aniflow ls /` marks
+them:
+
+```sh
+aniflow mv plan.md pac/                   # users/<login>/plan.md -> pac/plan.md
+aniflow mv plan.md team/design/spec.md    # move and rename
+aniflow mv plan.md pac/ --json            # {"from", "to", "view", "private"}
+```
+
+`mv` writes the copy only when nothing is at the destination yet, then
+deletes the original only if it has not changed in between. If that delete
+fails, both copies stay and `mv` says so. Pictures beside the note and its
+review comments do not move; `mv` warns on stderr when the note links to
+relative pictures. Add `private: true` to the note first (or run
+`aniflow private` on it afterwards) to share it with signed-in members only.
+
+Scripts using the API directly can send `If-None-Match: *` with a `PUT` to
+create a note without ever replacing one; a note already there answers
+`412 Precondition Failed`.
+
 ## Private notes and folders
 
 A private note or folder is for signed-in readers only (see
@@ -82,7 +106,8 @@ aniflow private team/plan.md --off                # make it public again
 
 `--private` adds `private: true` to the note's front matter before upload, and
 `aniflow private` does the same on the server, or adds the folder's hidden
-`.aniflow-private` marker. `aniflow ls` tags private entries with
+`.aniflow-private` marker. Notes in your own folder always report private,
+since nobody else can read them. `aniflow ls` tags private entries with
 `(private)`. A note stays private when a folder above it is, so `--off` on it
 reports `still private` until that folder is opened.
 

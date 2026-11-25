@@ -126,10 +126,23 @@ Add `--user-folders` (requires `--github-oauth`):
   documents and team folders; a member reaches their own folder through the
   account menu, or the **My Space** card at the top of the root listing, which
   only a signed-in member sees and which points at their own folder.
-- Everyone can read every folder, so a member's notes under `users/<login>/`
-  stay readable unless the folder holds a `.aniflow-private` file.
+- Only its owner can read `users/<login>/`, notes, pictures, raw Markdown,
+  comments, listings, search and API included. Another member gets a 404, as
+  for a missing file, and so does the `--comments-admin` account, which cannot
+  write there either. An anonymous visitor gets the sign-in page for any path
+  under `users/`, whether that member or note exists or not, so it cannot be
+  used to find out who has an account. A symlink elsewhere that leads into a
+  personal folder follows the same rule.
 - Members can create, edit (split-pane live Markdown preview, Ctrl+S, Insert
   diagram), and delete `.md`/`.markdown` files inside their own folder.
+- To let others read a note, a member moves it into a shared folder, one per
+  team or topic such as `pac/` or `team/design/`, with
+  `aniflow mv plan.md pac/` (see [cli.md](cli.md)) or by creating it there with
+  **New note**. Pictures under `images/` and review comments stay behind. Add
+  `private: true` to the moved note to keep it for signed-in members.
+- When a member signs in and their `welcome.md` is still an unchanged copy of
+  the older template, aniflow replaces it with the current one. Edited copies
+  are left alone.
 - To make a team folder writable by all signed-in members, drop a hidden
   `.aniflow-shared` file inside it from the server shell:
 
@@ -201,7 +214,8 @@ line wins over a `private: false` one.
 The **Make private** / **Make public** buttons — on a folder row, in a note's
 More menu, or in the editor's toolbar — need `--user-folders` and write only
 where that member may already write: their own folder, a shared one, or
-anything for the admin. They set the marker file or the `private: true` front
+anything outside other members' folders for the admin. A personal folder is
+always owner-only, so its toggle has nothing to open. They set the marker file or the `private: true` front
 matter, nothing else. With an API token, `aniflow private PATH [--off]` and
 `aniflow push FILE PATH --private` do the same from a shell (see
 [cli.md](cli.md#private-notes-and-folders)).

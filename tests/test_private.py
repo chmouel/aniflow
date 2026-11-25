@@ -74,8 +74,9 @@ def test_private_folder_and_alias(local_docs, aniflow_servers):
 
 
 def test_private_toggles(local_docs, aniflow_servers):
-    folder = local_docs / "users" / "alice"
+    folder = local_docs / "team"
     folder.mkdir(parents=True)
+    (folder / cli.SHARED_MARK).touch()
     note = folder / "note.md"
     note.write_text("# Note\n")
     request = aniflow_servers(
@@ -86,16 +87,15 @@ def test_private_toggles(local_docs, aniflow_servers):
         "Cookie": f"{oauth.SESSION_COOKIE}={cookie}",
         "Content-Type": "application/json",
     }
-    url = "/notes/private/users/alice/note.md"
+    url = "/notes/private/team/note.md"
     assert request(url, "POST", body='{"private":true}')[0] == 401
     for wanted in (True, False):
         assert request(url, "POST", headers, json.dumps({"private": wanted}))[0] == 200
         assert cli.note_private(note) == wanted
-        assert request("/files/users/alice/note.md")[0] == (401 if wanted else 200)
+        assert request("/files/team/note.md")[0] == (401 if wanted else 200)
     assert note.read_text() == "# Note\n"
     assert (
-        request("/notes/private/users/alice/", "POST", headers, '{"private":true}')[0]
-        == 200
+        request("/notes/private/team/", "POST", headers, '{"private":true}')[0] == 200
     )
     assert (folder / cli.PRIVATE_MARK).is_file()
     assert request("/notes/private/", "POST", headers, '{"private":true}')[0] == 404
@@ -174,7 +174,9 @@ def test_private_pages_are_not_cached(local_docs, aniflow_servers):
 
 
 def test_private_is_shown_when_signed_in(local_docs, aniflow_servers):
-    vault = local_docs / "users" / "alice" / "vault"
+    (local_docs / "team").mkdir()
+    (local_docs / "team" / cli.SHARED_MARK).touch()
+    vault = local_docs / "team" / "vault"
     (vault / "sub").mkdir(parents=True)
     (vault / cli.PRIVATE_MARK).touch()
     (vault / "plan.md").write_text("# Plan\n")
@@ -183,15 +185,77 @@ def test_private_is_shown_when_signed_in(local_docs, aniflow_servers):
     )
     cookie = oauth.seal({"id": 1, "login": "alice", "exp": 9999999999}, "key")
     signed = {"Cookie": f"{oauth.SESSION_COOKIE}={cookie}"}
-    body = request("/files/users/alice/vault/", headers=signed)[2]
+    body = request("/files/team/vault/", headers=signed)[2]
     assert b'class="folder-privacy"' in body and b"Make public" in body
     assert b'class="folder-private"' in body
-    body = request("/files/users/alice/vault/sub/", headers=signed)[2]
+    body = request("/files/team/vault/sub/", headers=signed)[2]
     assert b"from a parent folder" in body
     assert b'class="folder-privacy"' not in body
     assert (
         b'class="private-badge"'
-        in request("/files/users/alice/vault/plan.md", headers=signed)[2]
+        in request("/files/team/vault/plan.md", headers=signed)[2]
     )
-    body = request("/files/users/alice/", headers=signed)[2]
+    body = request("/files/team/", headers=signed)[2]
     assert b'class="folder-privacy"' in body and b"Make private" in body
+
+
+def test_personal_folders_are_for_their_owner(local_docs, aniflow_servers):
+    alice_dir = local_docs / "users" / "alice"
+    (alice_dir / "images").mkdir(parents=True)
+    (alice_dir / "plan.md").write_text("# Plan\nSECRET PLAN\n")
+    (alice_dir / "images" / "a.png").write_bytes(b"picture")
+    (local_docs / "users" / "bob").mkdir()
+    (local_docs / "guides" / "peek").symlink_to(alice_dir, target_is_directory=True)
+    (alice_dir / "into-bob").symlink_to(
+        local_docs / "users" / "bob", target_is_directory=True
+    )
+    request = aniflow_servers(
+        local_docs,
+        signin=oauth.SignIn("id", "secret", "key", admin="boss"),
+        user_folders=True,
+    )
+
+    def cookie(login, uid):
+        sealed = oauth.seal({"id": uid, "login": login, "exp": 9999999999}, "key")
+        return {"Cookie": f"{oauth.SESSION_COOKIE}={sealed}"}
+
+    alice, bob, boss = cookie("alice", 1), cookie("bob", 2), cookie("boss", 9)
+    bob_token = tokens.Tokens(cli.token_db()).create(2, "bob", "t")["token"]
+    bearer = {"Authorization": f"Bearer {bob_token}"}
+    reads = [
+        "/files/users/alice/",
+        "/files/users/alice/plan.md",
+        "/files/users/alice/plan.md?raw",
+        "/files/users/alice/images/a.png",
+        "/files/guides/peek/plan.md",
+        "/api/notes/users/alice",
+        "/api/notes/users/alice/plan.md",
+        "/api/search?q=SECRET&folder=users/alice",
+        "/comments/file/users/alice/plan.md",
+    ]
+    for path in reads:
+        assert request(path, headers=alice)[0] == 200, path
+        for other in (bob, boss, bearer):
+            assert request(path, headers=other)[0] == 404, path
+    assert b"peek" not in request("/files/guides/", headers=bob)[2]
+    assert b"peek" in request("/files/guides/", headers=alice)[2]
+    # A link out of alice's folder into bob's opens for neither of them.
+    assert request("/files/users/alice/into-bob/", headers=alice)[0] == 404
+    # Anonymous readers get the same answer whether the member or the note exists.
+    for path in (
+        "/files/users/alice/",
+        "/files/users/nobody/",
+        "/files/users/alice/plan.md",
+        "/files/users/alice/missing.md",
+    ):
+        status, _, body = request(path)
+        assert status == 401 and b"SECRET" not in body, path
+    for path in ("/files/users/alice/images/a.png", "/files/users/x/images/a.png"):
+        assert request(path)[0] == 404
+    # The API reports them private, and a member writes create-only on request.
+    listing = json.loads(request("/api/notes/users/alice", headers=alice)[2])
+    assert all(note["private"] for note in listing["notes"])
+    alice_token = tokens.Tokens(cli.token_db()).create(1, "alice", "t")["token"]
+    create_only = {"Authorization": f"Bearer {alice_token}", "If-None-Match": "*"}
+    assert request("/api/notes/users/alice/plan.md", "PUT", create_only, "x")[0] == 412
+    assert request("/api/notes/users/alice/new.md", "PUT", create_only, "x")[0] == 201
