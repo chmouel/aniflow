@@ -575,8 +575,9 @@ EDITOR_CSS = """
   .bar nav button.editor-save { padding:5px 14px; border-radius:999px; background:var(--fgColor-accent); color:var(--bgColor-default); }
   .bar nav button.editor-save:disabled { opacity:.6; }
   .bar nav button.editor-delete { color:var(--fgColor-danger); }
+  .bar nav :is(.editor-private, .editor-delete) svg { width:16px; height:16px; }
   .bar nav button.editor-private { color:var(--fgColor-muted); }
-  .bar nav button.editor-private[aria-pressed="true"] { border:1px solid color-mix(in srgb, var(--fgColor-attention) 45%, var(--borderColor-default)); border-radius:999px; color:var(--fgColor-attention); }
+  .bar nav button.editor-private[aria-pressed="true"] { color:var(--fgColor-attention); background:color-mix(in srgb, var(--fgColor-attention) 18%, transparent); }
   .bar nav button.editor-private:disabled { opacity:.55; cursor:not-allowed; }
   @media (max-width:900px) {
     body.aniflow-editing .page.reader { grid-template-columns:minmax(0, 1fr); row-gap:24px; }

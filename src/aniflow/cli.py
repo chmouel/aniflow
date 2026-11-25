@@ -102,6 +102,25 @@ def offline_pictures(text: str) -> list[str]:
 
 
 MARKDOWN_ICON = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M14.85 3c.63 0 1.15.52 1.14 1.15v7.7c0 .63-.51 1.15-1.15 1.15H1.15C.52 13 0 12.48 0 11.84V4.15C0 3.52.52 3 1.15 3ZM9 11V5H7L5.5 7 4 5H2v6h2V8l1.5 1.92L7 8v3Zm2.99.5L14.5 8H13V5h-2v3H9.5Z"/></svg>'
+
+
+def editor_icon(paths: str) -> str:
+    return (
+        '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">'
+        '<g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"'
+        f' stroke-linejoin="round">{paths}</g></svg>'
+    )
+
+
+IMAGE_ICON = editor_icon(
+    '<rect x="2" y="2.5" width="12" height="11" rx="1.5"/>'
+    '<circle cx="5.8" cy="6.2" r="1.2"/><path d="m14 10.5-3.2-3.2L4 13.5"/>'
+)
+DIAGRAM_ICON = editor_icon(
+    '<rect x="1.5" y="2" width="5" height="4" rx="1"/>'
+    '<rect x="9.5" y="10" width="5" height="4" rx="1"/>'
+    '<path d="M4 6v3a1 1 0 0 0 1 1h4.5"/>'
+)
 NEXT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>'
 
 
@@ -1093,16 +1112,20 @@ def editor_page(
         '<span class="editor-status" id="editor-status" role="status"></span>'
         f'<a class="renderer" href="{base}/help/markdown" target="_blank" rel="noopener"'
         f' aria-label="Markdown help" title="Markdown help">{MARKDOWN_ICON}</a>'
-        '<button type="button" id="editor-image" title="Upload an image (or paste/drop)">'
-        "Image</button>"
+        '<button type="button" class="renderer" id="editor-image"'
+        ' aria-label="Upload an image" title="Upload an image (or paste/drop)">'
+        f"{IMAGE_ICON}</button>"
         '<input type="file" id="editor-image-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>'
-        '<button type="button" id="editor-diagram" title="Insert an animated diagram">'
-        "Insert diagram</button>"
-        f'<button type="button" class="editor-private" id="editor-private"'
-        f' aria-pressed="{private_pressed}" title="{html.escape(private_title)}"'
-        f"{' disabled' if folder_private else ''}>Private</button>"
+        '<button type="button" class="renderer" id="editor-diagram"'
+        ' aria-label="Insert diagram" title="Insert an animated diagram">'
+        f"{DIAGRAM_ICON}</button>"
+        f'<button type="button" class="renderer editor-private" id="editor-private"'
+        f' aria-label="Private" aria-pressed="{private_pressed}"'
+        f' title="{html.escape(private_title)}"'
+        f"{' disabled' if folder_private else ''}>{LOCK_ICON}</button>"
         + (
-            '<button type="button" class="editor-delete" id="editor-delete">Delete</button>'
+            '<button type="button" class="renderer editor-delete" id="editor-delete"'
+            f' aria-label="Delete" title="Delete this note">{TRASH_ICON}</button>'
             if exists
             else ""
         )
